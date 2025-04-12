@@ -1,40 +1,43 @@
-    name: Release Electron App
+name: Release Electron App
 
-    on:
-      push:
-        branches:
-          - main # Trigger on push to main branch
+on:
+  push:
+    branches:
+      - main # Trigger on push to main branch
 
-    jobs:
-      release:
-        runs-on: ${{ matrix.os }} # Build on multiple OS
+jobs:
+  release:
+    runs-on: ${{ matrix.os }} # Build on multiple OS
 
-        strategy:
-          matrix:
-            os: [macos-latest, ubuntu-latest, windows-latest]
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
 
-        # Removed defaults block, steps will run at repository root
-        steps:
-          - name: Check out Git repository
-            uses: actions/checkout@v3
+    # Removed defaults block, steps will run at repository root
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v3
 
-          - name: Set up Node.js
-            uses: actions/setup-node@v3
-            with:
-              node-version: '18' # Or your project's node version
-              cache: 'npm'
-              cache-dependency-path: package-lock.json # Path relative to the default working-directory
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Or your project's node version
+          cache: 'npm'
+          cache-dependency-path: package-lock.json # Path relative to the default working-directory
 
-          - name: Install dependencies
-            # working-directory removed, uses default
-            run: npm ci
+      - name: Install dependencies
+        # working-directory removed, uses default
+        run: npm ci
 
-          - name: Build and Publish Electron app
-            env:
-              GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
-            # Build artifacts for each OS in parallel.
-            # Only publish (upload assets and create release) from the Linux job.
-            run: >-
-              npx electron-builder
-              --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
-              ${{ matrix.os == 'ubuntu-latest' && '--publish always' || '' }}
+      - name: Build Vue/Vite Frontend
+        run: npm run build # Creates the dist/ directory
+
+      - name: Build and Publish Electron app
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
+        # Build artifacts for each OS in parallel.
+        # Only publish (upload assets and create release) from the Linux job.
+        run: >-
+          npx electron-builder
+          --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
+          ${{ matrix.os == 'ubuntu-latest' && '--publish always' || '' }}
