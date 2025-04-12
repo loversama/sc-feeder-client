@@ -189,7 +189,7 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
         // Production: Load file using url.format relative to __dirname
         // Inside ASAR, __dirname points to the app.asar root. The 'dist' folder is at the same level.
         const productionIndexUrl = url.format({
-            pathname: path.join(__dirname, '..', 'renderer', 'index.html'), // Path relative to out/main -> app.asar/out/renderer/index.html
+            pathname: path.join(__dirname, '..', 'dist', 'index.html'), // Path relative to dist-electron -> app.asar/dist/index.html
             protocol: 'file:',
             slashes: true
         });
@@ -286,7 +286,7 @@ export function createSettingsWindow(): BrowserWindow | null {
     } else {
         // Production: Load file using url.format relative to __dirname
         const productionSettingsUrl = url.format({
-            pathname: path.join(__dirname, '..', 'renderer', 'settings.html'),
+            pathname: path.join(__dirname, '..', 'dist', 'settings.html'),
             protocol: 'file:',
             slashes: true
         });
@@ -375,7 +375,7 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
      } else {
        // Production: Load file using url.format relative to __dirname
        const productionDetailsUrl = url.format({
-           pathname: path.join(__dirname, '..', 'renderer', 'event-details.html'),
+           pathname: path.join(__dirname, '..', 'dist', 'event-details.html'),
            protocol: 'file:',
            slashes: true
        });

@@ -8,7 +8,8 @@
     "output": "release/${version}"
   },
   "files": [
-    "out/**/*" // Include all build output from electron-vite
+    "dist/**/*",
+    "dist-electron"
   ],
   // --- Add this publish block ---
   "publish": {
