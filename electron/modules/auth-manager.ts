@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
 
 const MODULE_NAME = 'AuthManager';
-const SERVER_API_URL = 'http://localhost:5324'; // TODO: Make configurable
+const SERVER_API_URL = 'https://server-killfeed.sinfulshadows.com';
 
 // Secure storage for refresh token
 const store = new Store({ name: 'auth-state' }); // Use a separate store file
