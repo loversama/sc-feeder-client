@@ -28,14 +28,6 @@ const changePage = (page: string) => {
         <span>Kill Feed</span>
       </button>
       
-      <button 
-        @click="changePage('debug')" 
-        class="nav-button"
-        :class="{ active: activePage === 'debug' }"
-      >
-        <div class="icon">🔍</div>
-        <span>Debug</span>
-      </button>
       
     </div>
   </nav>

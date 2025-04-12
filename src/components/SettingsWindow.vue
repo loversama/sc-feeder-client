@@ -1,6 +1,7 @@
 <script setup lang="ts">
 console.log('[SettingsWindow.vue] <script setup> executing...'); // Add early log
 import { ref, onMounted } from 'vue';
+import DebugActions from './DebugActions.vue'; // Import the new component
 
 // State for the active category
 const activeCategory = ref<string>('general'); // Default to 'general'
@@ -11,7 +12,8 @@ const categories = ref([
   { id: 'killfeed', name: 'KILL FEED' },
   { id: 'notifications', name: 'NOTIFICATIONS' },
   { id: 'data_api', name: 'DATA & API' },
-  { id: 'account', name: 'ACCOUNT' }, // Add Account category
+  { id: 'account', name: 'ACCOUNT' },
+  { id: 'debug', name: 'DEBUG' }, // Add Debug category
   { id: 'about', name: 'ABOUT' },
 ]);
 
@@ -478,11 +480,17 @@ const setStatus = (msg: string, duration = 3000) => {
       <section v-if="activeCategory === 'about'">
         <h3 class="content-title">ABOUT</h3>
         <div class="about-content">
-          <p><strong>SC KillFeeder</strong></p>
-          <p>Version: 1.0.2 (Placeholder)</p>
-          <p>Developed by: [Your Name/Alias]</p>
+          <p><strong>SC Feeder Client</strong></p>
+          <p>Version: 0.0.2-alpha.0</p>
+          <p>Developed by: SinfulShadows</p>
           <p>This application monitors your Star Citizen Game.log file to provide a real-time feed of combat and other significant events.</p>
         </div>
+      </section>
+
+      <!-- Debug Actions Section -->
+      <section v-if="activeCategory === 'debug'">
+        <h3 class="content-title">DEBUG ACTIONS</h3>
+        <DebugActions />
       </section>
 
       <!-- Account Settings -->

@@ -7,7 +7,8 @@ import type { KillEvent } from '../../shared/types'; // Import from the new shar
 
 const killEvents = ref<KillEvent[]>([]); // Player-involved events
 const globalKillEvents = ref<KillEvent[]>([]); // All events including non-player ones
-const feedMode = ref<'player' | 'global'>('player'); // Default to player view
+// const feedMode = ref<'player' | 'global'>('player'); // Removed feed mode toggle
+const isAuthenticated = ref<boolean>(false); // Track auth status
 const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
 // Use a relative path that will work with Electron
 const killSound = new Audio(); // Create an empty Audio object for now
@@ -90,8 +91,10 @@ const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event I
 let cleanupFunctions: (() => void)[] = [];
 
 // Get the current event source based on feed mode
+// Get the current event source based on authentication status
 const currentEvents = computed(() => {
-  return feedMode.value === 'player' ? killEvents.value : globalKillEvents.value;
+  // If authenticated, show global events, otherwise show only player events
+  return isAuthenticated.value ? globalKillEvents.value : killEvents.value;
 });
 
 // Filter events based on search query and sort chronologically (newest at top)
@@ -153,29 +156,7 @@ const formatTime = (isoTime: string): string => {
   }
 };
 
-// Functions to switch feed mode
-const toggleFeedMode = async () => {
-  // Toggle between player and global modes
-  feedMode.value = feedMode.value === 'player' ? 'global' : 'player';
-  
-  // Store preference
-  await window.logMonitorApi.setFeedMode(feedMode.value);
-  
-  // Reload events with new mode
-  await loadKillEvents();
-};
-
-// Function to load the saved feed mode preference
-const loadFeedModePreference = async () => {
-  try {
-    feedMode.value = await window.logMonitorApi.getFeedMode();
-    console.log(`Loaded feed mode preference: ${feedMode.value}`);
-  } catch (error) {
-    console.error('Failed to load feed mode preference:', error);
-    // Default to player mode if preference can't be loaded
-    feedMode.value = 'player';
-  }
-};
+// Removed toggleFeedMode and loadFeedModePreference functions
 
 // Function to load sound effects setting - simplified version
 const loadSoundEffectsSetting = async () => {
@@ -295,12 +276,43 @@ const cleanShipName = (name: string | undefined): string => {
 };
 
 
+// Function to check authentication status
+const checkAuthStatus = async () => {
+  try {
+    if (window.logMonitorApi?.authGetStatus) {
+      const status = await window.logMonitorApi.authGetStatus();
+      isAuthenticated.value = status.isAuthenticated;
+      console.log(`[KillFeed] Auth status checked: ${isAuthenticated.value}`);
+    } else {
+      console.warn('[KillFeed] authGetStatus API not available.');
+      isAuthenticated.value = false; // Assume not authenticated if API is missing
+    }
+  } catch (error) {
+    console.error('[KillFeed] Error checking auth status:', error);
+    isAuthenticated.value = false; // Assume not authenticated on error
+  }
+};
+
+
 onMounted(() => {
-  // Load feed mode preference and sound settings, then load the events
+  // Check auth status, load sound settings, then load events
   Promise.all([
-    loadFeedModePreference(),
-    loadSoundEffectsSetting()
-  ]).then(() => loadKillEvents());
+    checkAuthStatus(),
+    loadSoundEffectsSetting(),
+    // Add listener for auth status changes
+    (() => {
+      if (window.logMonitorApi?.onAuthStatusChanged) {
+        const cleanup = window.logMonitorApi.onAuthStatusChanged((_event, status) => {
+          console.log('[KillFeed] Received auth status update:', status);
+          isAuthenticated.value = status.isAuthenticated;
+          // Optionally, trigger event reload or other actions based on status change
+        });
+        cleanupFunctions.push(cleanup); // Add to cleanup array
+      } else {
+        console.warn('[KillFeed] onAuthStatusChanged API not available.');
+      }
+    })()
+  ]).then(() => loadKillEvents()); // Load events after checking auth and settings
   
   // Listen for new/updated spacecraft events
   cleanupFunctions.push(
@@ -405,8 +417,8 @@ onMounted(() => {
 
       // Scroll to top based on current feed mode if new event was added
       // Check killEvent is not null before accessing its properties
-      if (killEvent && wasNewEvent && ((feedMode.value === 'global') ||
-          (feedMode.value === 'player' && killEvent.isPlayerInvolved))) {
+      // Scroll to top if the new event should be visible based on auth status
+      if (killEvent && wasNewEvent && (isAuthenticated.value || killEvent.isPlayerInvolved)) {
         nextTick(() => {
           if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
         });
@@ -441,22 +453,8 @@ onUnmounted(() => {
 <template>
   <div class="kill-feed-container">
     <!-- Controls bar -->
-    <div class="controls-container">
-      <!-- Mode Toggle -->
-      <div class="mode-toggle">
-        <span class="toggle-label" :class="{ active: feedMode === 'player' }">Player</span>
-        <button
-          class="toggle-button"
-          :class="{ 'global-active': feedMode === 'global' }"
-          @click="toggleFeedMode"
-          title="Toggle between Player events and All events"
-        >
-          <span class="toggle-slider"></span>
-        </button>
-        <span class="toggle-label" :class="{ active: feedMode === 'global' }">Global</span>
-      </div>
-      
-      <!-- Search input - takes remaining space -->
+    <!-- Controls bar - Removed Mode Toggle, Search takes full width -->
+    <div class="controls-container full-width-search">
       <input
         v-model="searchQuery"
         placeholder="Search events (Player, Ship, Location, Weapon...)"
@@ -468,13 +466,14 @@ onUnmounted(() => {
     <!-- Status bar -->
     <div class="status-bar">
       <!-- Stats section -->
+      <!-- Stats section - Simplified view indicator -->
       <div class="stats-section">
         <span class="stats-item view-mode-indicator">
-          <span class="mode-badge" :class="{ 'global-mode': feedMode === 'global' }">
-            {{ feedMode === 'player' ? 'Player Events' : 'All Events' }}
+          <span class="mode-badge" :class="{ 'global-mode': isAuthenticated }">
+            {{ isAuthenticated ? 'All Events' : 'Player Events' }}
           </span>
           <span class="count-badge">
-            {{ feedMode === 'player' ? killEvents.length : globalKillEvents.length }} events
+            {{ currentEvents.length }} events <!-- Use currentEvents directly -->
           </span>
         </span>
         <span class="stats-item" v-if="currentPlayerShip">Ship: {{ currentPlayerShip }}</span>
@@ -506,8 +505,9 @@ onUnmounted(() => {
           :key="event.id"
           class="kill-event-item clickable"
           :class="[
-            getEventClass(event.deathType),
-            { 'player-involved': event.isPlayerInvolved && feedMode === 'global' },
+          getEventClass(event.deathType),
+          // Highlight player events when viewing global feed (if authenticated)
+          { 'player-involved': event.isPlayerInvolved && isAuthenticated },
             { 'updated': recentlyUpdatedIds.has(event.id) } // Add class if ID is recently updated
           ]"
           @click="openEventDetails(event)"
@@ -521,7 +521,8 @@ onUnmounted(() => {
           <!-- Game Mode Pill -->
           <span v-if="event.gameMode && event.gameMode !== 'Unknown'" class="event-mode-pill">{{ event.gameMode }}</span>
           <!-- Player Involved Badge -->
-          <span v-if="event.isPlayerInvolved && feedMode === 'global'" class="player-involved-badge">YOU</span>
+          <!-- Show 'YOU' badge if event involves player and user is viewing global feed -->
+          <span v-if="event.isPlayerInvolved && isAuthenticated" class="player-involved-badge">YOU</span>
           <span class="event-location" v-if="event.location">{{ event.location }}</span>
           <span class="event-time">{{ formatTime(event.timestamp) }}</span>
         </div>
@@ -600,8 +601,8 @@ onUnmounted(() => {
   padding: 12px 15px; /* Restore padding */
   background-color: #1a1a1a;
   border-bottom: 1px solid #333;
-  flex-shrink: 0; /* Restore flex-shrink */
-  gap: 15px; /* Space between items */
+  flex-shrink: 0;
+  /* gap: 15px; Removed gap as only search input remains */
   align-items: center;
 }
 
@@ -674,6 +675,12 @@ onUnmounted(() => {
 }
 .search-input::placeholder {
   color: #777;
+}
+
+/* Ensure search input takes full width when toggle is removed */
+.controls-container.full-width-search .search-input {
+  width: 100%; /* Explicitly set width */
+  flex-grow: 1; /* Keep flex-grow as well */
 }
 
 /* Status bar */

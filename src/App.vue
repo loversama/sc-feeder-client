@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
-import DebugPage from './pages/DebugPage.vue'
+// import DebugPage from './pages/DebugPage.vue' // Removed - Moved to Settings
 import SettingsPage from './pages/SettingsPage.vue'
 
 // --- Window Control Methods ---
@@ -105,7 +105,7 @@ onUnmounted(() => {
     <!-- Page content -->
     <main class="content-container flex-1"> <!-- Removed overflow-auto and p-4 -->
       <KillFeedPage v-if="activePage === 'kill-feed'" />
-      <DebugPage v-else-if="activePage === 'debug'" />
+      <!-- <DebugPage v-else-if="activePage === 'debug'" /> --> <!-- Removed - Moved to Settings -->
       <SettingsPage v-else-if="activePage === 'settings'" />
     </main>
   </div>

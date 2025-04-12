@@ -101,19 +101,19 @@ export function createTrayMenu() {
                 setTimeout(() => win?.webContents.send('change-page', 'kill-feed'), 100);
             }
         },
-        {
-            label: 'Debug',
-            click: () => {
-                 let win = getMainWindow();
-                 if (!win) {
-                     win = createMainWindow(); // Create if doesn't exist
-                 }
-                 // Ensure window is shown before sending message
-                 win.show();
-                 // Send message after a short delay to ensure renderer is ready
-                 setTimeout(() => win?.webContents.send('change-page', 'debug'), 100);
-            }
-        },
+        // { // Removed Debug option from tray menu
+        //     label: 'Debug',
+        //     click: () => {
+        //          let win = getMainWindow();
+        //          if (!win) {
+        //              win = createMainWindow(); // Create if doesn't exist
+        //          }
+        //          // Ensure window is shown before sending message
+        //          win.show();
+        //          // Send message after a short delay to ensure renderer is ready
+        //          setTimeout(() => win?.webContents.send('change-page', 'debug'), 100);
+        //     }
+        // },
         {
             label: 'Settings',
             click: () => {

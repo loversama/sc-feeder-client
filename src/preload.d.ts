@@ -59,7 +59,7 @@ export interface LogMonitorApi {
   onLogStatus: (callback: (event: IpcRendererEvent, status: string) => void) => () => void;
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void) => () => void;
-
+  onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void; // Add this line
   // Cleanup
   removeAllListeners: () => void;
 }

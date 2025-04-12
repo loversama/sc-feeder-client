@@ -1,5 +1,6 @@
 import { BrowserWindow, shell, app, screen, Rectangle } from 'electron'; // Import screen and Rectangle
 import path from 'node:path';
+import url from 'node:url'; // Import the url module
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url'; // Added for ESM __dirname
 import Store from 'electron-store'; // Import electron-store
@@ -185,15 +186,20 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
         mainWindow.loadURL(VITE_DEV_SERVER_URL)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load main window from dev server:', err));
     } else {
-        // Production: Load file relative to app root (works with ASAR)
-        const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
-        logger.info(MODULE_NAME, `Loading main window from file: ${indexPath}`);
-        mainWindow.loadFile(indexPath)
+        // Production: Load file using url.format relative to __dirname
+        // Inside ASAR, __dirname points to the app.asar root. The 'dist' folder is at the same level.
+        const productionIndexUrl = url.format({
+            pathname: path.join(__dirname, '..', '..', 'dist', 'index.html'), // Correct path relative to modules dir -> app.asar/dist/index.html
+            protocol: 'file:',
+            slashes: true
+        });
+        logger.info(MODULE_NAME, `Loading main window from URL: ${productionIndexUrl}`);
+        mainWindow.loadURL(productionIndexUrl)
             .catch(err => {
-                logger.error(MODULE_NAME, `Failed to load index.html from ${indexPath}:`, err);
+                logger.error(MODULE_NAME, `Failed to load index.html from ${productionIndexUrl}:`, err);
                 // Display a more informative error within the window if loading fails
                 if (mainWindow) { // Add null check
-                    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${indexPath}. Please check application integrity and logs.</p><p>${err}</p>`)}`);
+                    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${productionIndexUrl}. Please check application integrity and logs.</p><p>${err}</p>`)}`);
                 }
             });
     }
@@ -278,14 +284,18 @@ export function createSettingsWindow(): BrowserWindow | null {
         settingsWindow.loadURL(settingsUrl)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load settings.html from dev server:', err));
     } else {
-        // Production: Load file relative to app root
-        const settingsHtmlPath = path.join(app.getAppPath(), 'dist', 'settings.html');
-        logger.info(MODULE_NAME, `Loading settings window from file: ${settingsHtmlPath}`);
-        settingsWindow.loadFile(settingsHtmlPath)
+        // Production: Load file using url.format relative to __dirname
+        const productionSettingsUrl = url.format({
+            pathname: path.join(__dirname, '..', '..', 'dist', 'settings.html'),
+            protocol: 'file:',
+            slashes: true
+        });
+        logger.info(MODULE_NAME, `Loading settings window from URL: ${productionSettingsUrl}`);
+        settingsWindow.loadURL(productionSettingsUrl)
             .catch(err => {
-                logger.error(MODULE_NAME, `Failed to load settings.html from ${settingsHtmlPath}:`, err);
+                logger.error(MODULE_NAME, `Failed to load settings.html from ${productionSettingsUrl}:`, err);
                 if (settingsWindow) { // Add null check
-                    settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load settings page from ${settingsHtmlPath}.</p><p>${err}</p>`)}`);
+                    settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load settings page from ${productionSettingsUrl}.</p><p>${err}</p>`)}`);
                 }
             });
     }
@@ -363,13 +373,17 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
        detailsWindow.loadURL(detailsUrl)
          .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html from dev server:', err));
      } else {
-       // Production: Load file relative to app root
-       const detailsHtmlPath = path.join(app.getAppPath(), 'dist', 'event-details.html');
-       logger.info(MODULE_NAME, `Loading event details window from file: ${detailsHtmlPath}`);
-       detailsWindow.loadFile(detailsHtmlPath)
+       // Production: Load file using url.format relative to __dirname
+       const productionDetailsUrl = url.format({
+           pathname: path.join(__dirname, '..', '..', 'dist', 'event-details.html'),
+           protocol: 'file:',
+           slashes: true
+       });
+       logger.info(MODULE_NAME, `Loading event details window from URL: ${productionDetailsUrl}`);
+       detailsWindow.loadURL(productionDetailsUrl)
            .catch(err => {
-               logger.error(MODULE_NAME, `Failed to load event-details.html from ${detailsHtmlPath}:`, err);
-               detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${detailsHtmlPath}.</p><p>${err}</p>`)}`);
+               logger.error(MODULE_NAME, `Failed to load event-details.html from ${productionDetailsUrl}:`, err);
+               detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${productionDetailsUrl}.</p><p>${err}</p>`)}`);
            });
      }
 

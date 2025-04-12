@@ -1,6 +1,6 @@
 import Store from 'electron-store';
 import * as logger from './logger';
-import { ipcMain } from 'electron';
+import { ipcMain, BrowserWindow } from 'electron'; // Import BrowserWindow
 import os from 'node:os'; // Import os module for hostname
 import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
@@ -68,7 +68,19 @@ export function getPersistedClientId(): string { // Added export
     logger.info(MODULE_NAME, `Retrieved stored clientId: ${storedId}`);
   }
   clientId = storedId ?? uuidv4(); // Fallback just in case store fails
-  return clientId;
+  return clientId; // Add missing return statement
+}
+
+// Helper function to broadcast auth status changes to all renderer windows
+function broadcastAuthStatusChange(): void {
+  const status = getAuthStatus();
+  logger.info(MODULE_NAME, `Broadcasting auth status change: isAuthenticated=${status.isAuthenticated}`);
+  BrowserWindow.getAllWindows().forEach(window => {
+    if (window && !window.isDestroyed() && window.webContents) {
+      window.webContents.send('auth-status-changed', status);
+    }
+  });
+  // This function should not return anything (void)
 }
 
 
@@ -141,6 +153,7 @@ export async function login(identifier: string, password: string): Promise<{ suc
              // Force reconnect after successful login
              disconnectFromServer();
              connectToServer();
+             broadcastAuthStatusChange(); // Broadcast change after successful login
              return { success: true };
         } else {
             logger.error(MODULE_NAME, 'Access token missing from login response.');
@@ -181,6 +194,7 @@ export async function logout(): Promise<boolean> {
     await requestAndStoreGuestToken();
     // Attempt to reconnect (should now use the new guest token)
     connectToServer();
+    broadcastAuthStatusChange(); // Broadcast change after logout
     return true; // Logout considered successful locally even if server call fails
 }
 
@@ -233,6 +247,7 @@ export async function refreshToken(): Promise<{ userId: string; username: string
                  await clearTokens(); // Clear state on decode error (includes guest token)
                  return null;
              }
+             broadcastAuthStatusChange(); // Broadcast change after successful refresh
              return loggedInUser; // Return the user info object
          } else {
              logger.error(MODULE_NAME, 'Access token missing from refresh response.');

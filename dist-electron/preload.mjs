@@ -108,6 +108,11 @@ electron.contextBridge.exposeInMainWorld("logMonitorApi", {
     electron.ipcRenderer.on("kill-feed-event", callback);
     return () => electron.ipcRenderer.removeListener("kill-feed-event", callback);
   },
+  // Listener for auth status changes from main process
+  onAuthStatusChanged: (callback) => {
+    electron.ipcRenderer.on("auth-status-changed", callback);
+    return () => electron.ipcRenderer.removeListener("auth-status-changed", callback);
+  },
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
     electron.ipcRenderer.removeAllListeners("log-update");
@@ -115,5 +120,6 @@ electron.contextBridge.exposeInMainWorld("logMonitorApi", {
     electron.ipcRenderer.removeAllListeners("log-status");
     electron.ipcRenderer.removeAllListeners("log-path-updated");
     electron.ipcRenderer.removeAllListeners("kill-feed-event");
+    electron.ipcRenderer.removeAllListeners("auth-status-changed");
   }
 });
