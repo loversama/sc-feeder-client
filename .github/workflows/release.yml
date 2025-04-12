@@ -1,0 +1,35 @@
+    name: Release Electron App
+
+    on:
+      push:
+        branches:
+          - main # Trigger on push to main branch
+
+    jobs:
+      release:
+        runs-on: ${{ matrix.os }} # Build on multiple OS
+
+        strategy:
+          matrix:
+            os: [macos-latest, ubuntu-latest, windows-latest]
+
+        steps:
+          - name: Check out Git repository
+            uses: actions/checkout@v3
+
+          - name: Set up Node.js
+            uses: actions/setup-node@v3
+            with:
+              node-version: '18' # Or your project's node version
+              cache: 'npm'
+              cache-dependency-path: log-monitor-client/package-lock.json # Adjust path if needed
+
+          - name: Install dependencies
+            working-directory: ./log-monitor-client # Adjust path if needed
+            run: npm ci
+
+          - name: Build and release Electron app
+            working-directory: ./log-monitor-client # Adjust path if needed
+            env:
+              GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
+            run: npm run release -- --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
