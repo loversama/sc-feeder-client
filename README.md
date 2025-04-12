@@ -1,18 +1,99 @@
-# Vue 3 + TypeScript + Vite
+# SC Kill Feed - Log Monitor Client
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/loversama/sc-feeder-client?style=flat-square)](https://github.com/loversama/sc-feeder-client/releases/latest)
+[![License](https://img.shields.io/github/license/loversama/sc-feeder-client?style=flat-square)](LICENSE) <!-- Add a LICENSE file if applicable -->
 
-## Recommended IDE Setup
+**SC Kill Feed** is a desktop application designed to monitor your Star Citizen `Game.log` file in real-time. It automatically detects and processes in-game events such as kills, deaths, vehicle destructions, and more.
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur) + [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin).
+![SC Kill Feed Screenshot](placeholder.png) <!-- Replace placeholder.png with an actual screenshot path/URL if available -->
 
-## Type Support For `.vue` Imports in TS
+## Features
 
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [TypeScript Vue Plugin (Volar)](https://marketplace.visualstudio.com/items?itemName=Vue.vscode-typescript-vue-plugin) to make the TypeScript language service aware of `.vue` types.
+*   **Real-time Log Monitoring:** Automatically detects your Star Citizen log file location (or allows manual selection) and watches for changes.
+*   **Event Feed:** Displays a live feed of detected events, including kills, deaths (combat, environmental, crashes), and vehicle destructions.
+*   **Player/Global View:** Toggle between viewing only events involving you or seeing all detected events.
+*   **Event Details:** Click on an event to view detailed information, including involved players/ships and potentially RSI profile data (if enabled).
+*   **Server Integration:** Securely uploads processed events to the central SC Kill Feed server to populate leaderboards and player statistics on the companion website.
+*   **Session Tracking:** Automatically detects new game sessions.
+*   **Notifications:** Provides optional desktop notifications for significant events involving your player.
+*   **Auto-Updates:** Automatically checks for and installs updates when new releases are published.
 
-If the standalone TypeScript plugin doesn't feel fast enough to you, Volar has also implemented a [Take Over Mode](https://github.com/johnsoncodehk/volar/discussions/471#discussioncomment-1361669) that is more performant. You can enable it by the following steps:
+## Getting Started
 
-1. Disable the built-in TypeScript Extension
-   1. Run `Extensions: Show Built-in Extensions` from VSCode's command palette
-   2. Find `TypeScript and JavaScript Language Features`, right click and select `Disable (Workspace)`
-2. Reload the VSCode window by running `Developer: Reload Window` from the command palette.
+### Recommended Method: Download Installer
+
+The easiest way to get started is to download the latest installer for your operating system from the **[GitHub Releases](https://github.com/loversama/sc-feeder-client/releases/latest)** page.
+
+Installers are available for:
+
+*   Windows (`.exe`)
+*   macOS (`.dmg`)
+*   Linux (`.AppImage`)
+
+Download the appropriate file, run the installer, and launch the application. The app will guide you through locating your `Game.log` file if needed.
+
+### Building from Source
+
+If you prefer to build the application yourself, follow these steps:
+
+**Prerequisites:**
+
+*   [Node.js](https://nodejs.org/) (LTS version recommended)
+*   [npm](https://www.npmjs.com/) (usually included with Node.js)
+*   [Git](https://git-scm.com/)
+
+**Steps:**
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/loversama/sc-feeder-client.git
+    cd sc-feeder-client/log-monitor-client
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+3.  **Build the application:**
+    *   **For Development (Run locally without packaging):**
+        ```bash
+        npm run dev
+        ```
+    *   **For Production (Build installers):**
+        *   Windows: `npm run build:win`
+        *   macOS: `npm run build:mac`
+        *   Linux: `npm run build:linux`
+
+    The built installers will be located in the `log-monitor-client/release/<version>` directory.
+
+## Configuration
+
+The application settings can be accessed via the gear icon (⚙️) in the main window. Here you can:
+
+*   Verify or change the path to your `Game.log` file.
+*   Configure API settings for connecting to the SC Kill Feed server (URL and optional API Key).
+*   Enable/disable desktop notifications.
+*   Enable/disable automatic fetching of RSI profile data.
+*   Manage CSV logging options.
+*   And more...
+
+## How it Works
+
+The client application uses Electron, Vue.js, and TypeScript.
+
+1.  It monitors the `Game.log` file specified in the settings.
+2.  New log lines are parsed using regular expressions to identify key game events.
+3.  Events are processed, correlated (e.g., linking vehicle destruction to player death logs), and enriched with data (like player ship, game version).
+4.  (Optional) RSI profile data for involved players is fetched via scraping.
+5.  Processed events are displayed in the user interface (the kill feed).
+6.  Events are securely sent to the configured backend API server for aggregation.
+7.  (Optional) Events are logged locally to a CSV file.
+
+## Contributing
+
+Contributions are welcome! Please feel free to open an issue or submit a pull request. (Add contribution guidelines if desired).
+
+## License
+
+(Specify license details here if applicable, e.g., MIT License. Create a LICENSE file.)
