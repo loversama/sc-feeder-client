@@ -7,7 +7,7 @@ import Store from 'electron-store'; // Import electron-store
 import { isQuitting } from './app-lifecycle'; // Import the flag
 import { KillEvent } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
-
+import { attachTitlebarToWindow } from "custom-electron-titlebar/main"; // Import for custom title bar
 const MODULE_NAME = 'WindowManager'; // Define module name for logger
 
 // Define __dirname for ES module scope
@@ -118,7 +118,8 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
             devTools: !app.isPackaged, // Enable DevTools only in development
             spellcheck: false
         },
-        frame: false, // Make the window frameless
+        titleBarStyle: 'hidden', // Add for custom title bar
+        titleBarOverlay: false, // Add for custom title bar (Windows controls overlay)
         autoHideMenuBar: true,
         useContentSize: true,
         backgroundColor: '#222',
@@ -158,9 +159,10 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
 
     // Create the window with calculated/saved options
     mainWindow = new BrowserWindow(windowOptions);
+    attachTitlebarToWindow(mainWindow); // Attach the custom title bar
 
     mainWindow.setTitle('SC Kill Feed');
-    mainWindow.setMenu(null);
+    // mainWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
     // Open DevTools automatically in development (but not in CI)
     if (!app.isPackaged && !process.env.CI) {

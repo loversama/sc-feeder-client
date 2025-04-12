@@ -16,8 +16,9 @@ const changePage = (page: string) => {
 
 <template>
   <nav class="nav-container">
-    <div class="app-title">SC Kill Feed</div>
-    
+    <div class="nav-draggable">
+    <div class="app-title cet-drag-region">SC Kill Feed</div>
+    </div>
     <div class="nav-buttons">
       <button 
         @click="changePage('kill-feed')" 
@@ -34,6 +35,33 @@ const changePage = (page: string) => {
 </template>
 
 <style scoped>
+
+.app-title {
+    font-size: 1.2em;
+    font-weight: 600;
+    color: #e74c3c;
+    margin-left: 10px;
+    font-size: 30px !important;
+    margin-top: 0px;
+
+}
+
+.app-title.cet-drag-region {
+  height: 50px;
+  width: 80%;
+}
+
+.cet-drag-region {
+    top: 0;
+    left: 0;
+    display: block;
+    position: absolute;
+    width: 100%;
+    height: 25px;
+    z-index: -1;
+    -webkit-app-region: drag;
+}
+
 .nav-container {
   display: flex;
   background-color: #121212;
@@ -47,6 +75,12 @@ const changePage = (page: string) => {
   width: 100%;
 }
 
+.nav-draggable {
+  display: flex;
+  width:80vw;
+  height:50px;
+}
+
 .app-title {
   font-size: 1.2em;
   font-weight: 600;
@@ -57,6 +91,7 @@ const changePage = (page: string) => {
 .nav-buttons {
   display: flex;
   height: 100%;
+
 }
 
 .nav-button {

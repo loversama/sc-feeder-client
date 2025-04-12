@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import * as AppLifecycle from './modules/app-lifecycle.ts'; // Added .ts
 import { getMainWindow } from './modules/window-manager.ts'; // Import getMainWindow - Added .ts
 import * as logger from './modules/logger'; // Import the logger utility
-
+import { setupTitlebar } from "custom-electron-titlebar/main"; // Import for custom title bar
 const MODULE_NAME = 'Main'; // Define module name for logger
 
 // --- Basic Setup ---
@@ -34,6 +34,9 @@ if (!app.requestSingleInstanceLock()) {
       mainWindow.focus();
     }
   });
+
+  // Setup the titlebar main process
+  setupTitlebar();
 
   // --- Initialize Application ---
   // The initialize function now sets up all app event listeners,

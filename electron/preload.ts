@@ -1,5 +1,5 @@
 import { ipcRenderer, contextBridge } from 'electron'
-
+import { Titlebar, TitlebarColor } from "custom-electron-titlebar"; // Import TitlebarColor as well
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -141,3 +141,15 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.removeAllListeners('auth-status-changed') // Clean up new listener
   }
 })
+
+// --- Custom Title Bar Initialization ---
+window.addEventListener('DOMContentLoaded', () => {
+  // Title bar implementation
+  new Titlebar({
+    iconSize: 60,
+    overflow: 'auto',
+    enableMnemonics: true,
+    backgroundColor: TitlebarColor.fromHex('#121212'), // Make background transparent
+    removeMenuBar: true,
+  });
+});

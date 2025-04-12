@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
-// import DebugPage from './pages/DebugPage.vue' // Removed - Moved to Settings
 import SettingsPage from './pages/SettingsPage.vue'
 
 // --- Window Control Methods ---
@@ -69,31 +68,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Right Section (Window Controls) -->
-  <div class="window-controls
-   flex items-center space-x-1 flex-shrink-0">
-    <button @click="minimizeWindow" title="Minimize">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-    </button>
-    <button @click="toggleMaximizeWindow" title="Maximize/Restore">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-    </button>
-    <button @click="closeWindow" title="Close" class="close-button">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-    </button>
-  </div>
+
+
 
   <div class="app-container bg-theme-bg-dark text-theme-text-light">
 
-    <!-- Custom Title Bar -->
-    <div class="title-bar flex items-center justify-between h-12 px-2 bg-theme-bg-panel border-b border-theme-border">
-      <!-- Left Section (Logo/Title) -->
-      <div class="flex items-center space-x-2 flex-shrink-0">
-        <!-- Placeholder for Logo -->
-        <div class="w-6 h-6 bg-theme-accent-blue rounded-sm"></div>
-        <span class="font-semibold text-theme-text-white">1</span>
-      </div>
-    </div>
       <!-- Center Section (Navigation) -->
       <div class="flex-grow flex justify-center">
         <Navigation :activePage="activePage" @change-page="changePage" />
@@ -113,6 +92,29 @@ onUnmounted(() => {
 
 <style>
 /* Make the title bar draggable */
+
+.cet-container {
+  position: relative !important;
+    bottom: 0;
+    overflow: auto;
+    z-index: 1;
+}
+
+.cet-drag-region {
+  /* padding-bottom: 80px; */
+  z-index: 1 !important;
+
+}
+    
+
+.cet-menubar {
+    display: none !important;
+}
+
+.cet-icon {
+    display: none !important;
+}
+
 .title-bar {
   -webkit-app-region: drag;
   user-select: none; /* Prevent text selection */
