@@ -4,7 +4,12 @@ import { getAccessToken, getGuestToken, getPersistedClientId } from './auth-mana
 // Client ID logic moved to auth-manager
 
 const MODULE_NAME = 'ServerConnection';
-const SERVER_URL = 'http://localhost:5324'; // TODO: Make this configurable
+
+// Determine server URL based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const DEV_SERVER_URL = 'ws://localhost:5324'; // Use ws:// for local dev
+const PROD_SERVER_URL = 'wss://killfeed.sinfulshadows.com'; // Use wss:// for production
+const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 
 let socket: Socket | null = null;
 let isAuthenticated = false; // Track authentication status
@@ -36,7 +41,7 @@ export function connectToServer(): void {
     return;
   }
 
-  logger.info(MODULE_NAME, `Attempting to connect to server at ${SERVER_URL} using ${tokenType}`);
+  logger.info(MODULE_NAME, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
 
   // Disconnect previous socket if exists (e.g., if token changed)
   if (socket) {
