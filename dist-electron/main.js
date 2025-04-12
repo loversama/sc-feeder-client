@@ -31722,13 +31722,20 @@ function createSettingsWindow() {
       // Enable DevTools only in development
       spellcheck: false
     },
+    frame: false,
+    // Add for custom title bar
+    titleBarStyle: "hidden",
+    // Add for custom title bar
+    titleBarOverlay: true,
+    // Add for custom title bar (Windows controls overlay)
     autoHideMenuBar: true,
+    // Keep this, title bar library might interact with it
     show: false,
     // Show when ready
     icon: path$m.join(process.env.VITE_PUBLIC || "", "electron-vite.svg")
     // Use app icon
   });
-  settingsWindow.setMenu(null);
+  mainExports.attachTitlebarToWindow(settingsWindow);
   if (VITE_DEV_SERVER_URL) {
     const settingsUrl = `${VITE_DEV_SERVER_URL}/settings.html`;
     info(MODULE_NAME$f, `Loading settings window from dev server: ${settingsUrl}`);
@@ -31782,18 +31789,25 @@ function createEventDetailsWindow(eventData, currentUsername2) {
       // Reuse preload
       nodeIntegration: false,
       contextIsolation: true,
-      devTools: !app$1.isPackaged,
-      // Enable DevTools only in development
+      devTools: true,
+      // Always enable DevTools for this window
       spellcheck: false
     },
+    frame: false,
+    // Add for custom title bar
+    titleBarStyle: "hidden",
+    // Add for custom title bar
+    titleBarOverlay: true,
+    // Add for custom title bar (Windows controls overlay)
     title: `Event Details - ${eventData.deathType} (${new Date(eventData.timestamp).toLocaleTimeString()})`,
     backgroundColor: "#1a1a1a",
     show: false,
     autoHideMenuBar: true,
+    // Keep this
     center: true
     // alwaysOnTop: true // Avoid alwaysOnTop unless strictly necessary
   });
-  detailsWindow.setMenu(null);
+  mainExports.attachTitlebarToWindow(detailsWindow);
   detailsWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
       info(MODULE_NAME$f, `Opening external link from details window: ${url2}`);
@@ -31823,9 +31837,7 @@ function createEventDetailsWindow(eventData, currentUsername2) {
     info(MODULE_NAME$f, "Event details window ready-to-show");
     detailsWindow.show();
     detailsWindow.focus();
-    if (!app$1.isPackaged) {
-      detailsWindow.webContents.openDevTools();
-    }
+    detailsWindow.webContents.openDevTools();
   });
   detailsWindow.on("closed", () => {
     if ((activeEventDataForWindow == null ? void 0 : activeEventDataForWindow.id) === eventData.id) {

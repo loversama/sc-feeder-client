@@ -374,7 +374,40 @@ onMounted(async () => {
   </div>
 </template>
 
-<style scoped>
+<style>
+
+.cet-title.cet-title-center {
+display: none !important;
+}
+
+.cet-container {
+  position: relative !important;
+  top: 0px !important;
+  bottom: 0;
+  overflow: auto;
+  z-index: 1;
+  }
+
+.cet-drag-region {
+  /* padding-bottom: 80px; */
+  z-index: 1 !important;
+
+}
+    
+
+.cet-menubar {
+    display: none !important;
+}
+
+.cet-icon {
+    display: none !important;
+}
+
+.title-bar {
+  -webkit-app-region: drag;
+  user-select: none; /* Prevent text selection */
+}
+
 /* Styles copied from event-details.html <style> tag */
 .event-details-container { /* Renamed root element */
   width: 100%;

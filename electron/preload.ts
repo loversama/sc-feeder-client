@@ -149,7 +149,7 @@ window.addEventListener('DOMContentLoaded', () => {
     iconSize: 60,
     overflow: 'auto',
     enableMnemonics: true,
-    backgroundColor: TitlebarColor.fromHex('#121212'), // Make background transparent
+    backgroundColor: TitlebarColor.TRANSPARENT,
     removeMenuBar: true,
   });
 });

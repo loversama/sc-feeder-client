@@ -272,12 +272,16 @@ export function createSettingsWindow(): BrowserWindow | null {
             devTools: !app.isPackaged, // Enable DevTools only in development
             spellcheck: false
         },
-        autoHideMenuBar: true,
+        frame: false, // Add for custom title bar
+        titleBarStyle: 'hidden', // Add for custom title bar
+        titleBarOverlay: true, // Add for custom title bar (Windows controls overlay)
+        autoHideMenuBar: true, // Keep this, title bar library might interact with it
         show: false, // Show when ready
         icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg') // Use app icon
     });
 
-    settingsWindow.setMenu(null); // No menu bar
+    attachTitlebarToWindow(settingsWindow); // Attach the custom title bar
+    // settingsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
     // Load settings content
     if (VITE_DEV_SERVER_URL) {
@@ -344,18 +348,23 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
          preload: getPreloadPath(), // Reuse preload
          nodeIntegration: false,
          contextIsolation: true,
-         devTools: !app.isPackaged, // Enable DevTools only in development
+         devTools: true, // Always enable DevTools for this window
          spellcheck: false
        },
+       frame: false, // Add for custom title bar
+       titleBarStyle: 'hidden', // Add for custom title bar
+       titleBarOverlay: true, // Add for custom title bar (Windows controls overlay)
        title: `Event Details - ${eventData.deathType} (${new Date(eventData.timestamp).toLocaleTimeString()})`,
        backgroundColor: '#1a1a1a',
        show: false,
-       autoHideMenuBar: true,
+       autoHideMenuBar: true, // Keep this
        center: true,
        // alwaysOnTop: true // Avoid alwaysOnTop unless strictly necessary
      });
 
-     detailsWindow.setMenu(null);
+   attachTitlebarToWindow(detailsWindow); // Attach the custom title bar
+
+     // detailsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
      // Intercept navigation requests and open external links
      detailsWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -393,9 +402,8 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
        logger.info(MODULE_NAME, 'Event details window ready-to-show');
        detailsWindow.show();
        detailsWindow.focus();
-       if (!app.isPackaged) {
-           detailsWindow.webContents.openDevTools(); // Open dev tools in dev
-       }
+       // Always open DevTools for this window
+       detailsWindow.webContents.openDevTools();
      });
 
      // Clear the stored data when the window is closed

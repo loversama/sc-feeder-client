@@ -20,7 +20,7 @@ const changePage = (page: string) => {
     <div class="app-title cet-drag-region">SC Kill Feed</div>
     </div>
     <div class="nav-buttons">
-      <button 
+      <!-- <button 
         @click="changePage('kill-feed')" 
         class="nav-button"
         :class="{ active: activePage === 'kill-feed' }"
@@ -28,7 +28,7 @@ const changePage = (page: string) => {
         <div class="icon">⚔️</div>
         <span>Kill Feed</span>
       </button>
-      
+       -->
       
     </div>
   </nav>
