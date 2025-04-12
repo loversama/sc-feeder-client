@@ -18,7 +18,7 @@ const pageTitle = ref<string>('Kill Feed')
 .page-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100vh; /* Use viewport height */
   width: 100%;
   margin: 0;
   padding: 0;
@@ -40,9 +40,10 @@ const pageTitle = ref<string>('Kill Feed')
 
 .page-content {
   flex: 1;
-  padding: 0; /* Remove padding to allow full-width components */
-  overflow: hidden; /* Prevent nested scrollbars */
-  display: flex; /* Add flex display */
-  flex-direction: column; /* Stack children vertically */
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Critical for nested flex scrolling */
 }
 </style>

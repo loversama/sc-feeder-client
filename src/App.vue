@@ -103,7 +103,7 @@ onUnmounted(() => {
  
 
     <!-- Page content -->
-    <main class="content-container flex-1 overflow-auto p-4">
+    <main class="content-container flex-1"> <!-- Removed overflow-auto and p-4 -->
       <KillFeedPage v-if="activePage === 'kill-feed'" />
       <DebugPage v-else-if="activePage === 'debug'" />
       <SettingsPage v-else-if="activePage === 'settings'" />

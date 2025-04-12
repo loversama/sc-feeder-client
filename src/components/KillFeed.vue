@@ -498,9 +498,9 @@ onUnmounted(() => {
     </div>
     <!-- Otherwise, render the list -->
     <!-- Apply flex/scroll properties to this wrapper div -->
-    <div v-else class="kill-events-list" ref="killFeedListRef">
-      <!-- Apply flex layout and gap to the transition-group's rendered div -->
-      <transition-group name="feed-anim" tag="div" class="feed-items-container">
+    <div v-else class="kill-feed-scroll-area" ref="killFeedListRef"> <!-- Renamed class for clarity. This div now only handles flex sizing. -->
+        <!-- Apply flex layout and gap to the transition-group's rendered div -->
+        <transition-group name="feed-anim" tag="div" class="feed-items-container">
         <div
           v-for="event in sortedFilteredEvents"
           :key="event.id"
@@ -575,7 +575,7 @@ onUnmounted(() => {
            </div>
          </div>
        </div> <!-- End of v-for element -->
-     </transition-group> <!-- Close transition-group here -->
+       </transition-group> <!-- Close transition-group here -->
      <!-- The v-else-if conditions are handled earlier, this closes the v-else div -->
    </div>
  </div> <!-- Close kill-feed-container -->
@@ -585,22 +585,22 @@ onUnmounted(() => {
 .kill-feed-container {
   display: flex;
   flex-direction: column;
-  height: 100%; /* Fill parent */
+  height: 100%;
   width: 100%;
   margin: 0;
   background-color: #1a1a1a;
   padding: 0;
-  overflow: hidden; /* Main container shouldn't scroll */
+  overflow: hidden;
   box-sizing: border-box;
 }
 
 /* Controls container */
 .controls-container {
   display: flex; /* Use flexbox */
-  padding: 12px 15px; /* Adjusted padding */
+  padding: 12px 15px; /* Restore padding */
   background-color: #1a1a1a;
   border-bottom: 1px solid #333;
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-shrink: 0; /* Restore flex-shrink */
   gap: 15px; /* Space between items */
   align-items: center;
 }
@@ -679,12 +679,12 @@ onUnmounted(() => {
 /* Status bar */
 .status-bar {
   display: flex;
-  padding: 8px 15px; /* Reduced padding */
+  padding: 8px 15px; /* Restore padding */
   background-color: #222;
   border-bottom: 1px solid #333;
   justify-content: space-between;
   font-size: 0.8em; /* Smaller font */
-  flex-shrink: 0; /* Prevent shrinking */
+  flex-shrink: 0; /* Restore flex-shrink */
   align-items: center;
 }
 
@@ -759,22 +759,29 @@ onUnmounted(() => {
   flex-grow: 1; /* Take remaining space */
 }
 
-.kill-events-list {
-  display: flex;
-  flex-direction: column; /* Newest at top, grows down */
-  gap: 8px; /* Ensure gap for spacing between items */
+.kill-feed-scroll-area {
+  flex: 1;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  min-height: 0;
   padding: 10px;
-  flex: 1; /* Take remaining vertical space */
-  overflow-y: auto; /* Enable vertical scrolling */
-  overflow-x: hidden; /* Prevent horizontal scrolling */
-  min-height: 0; /* Important for flexbox scrolling */
+  box-sizing: border-box;
 }
 
 /* Scrollbar styling */
-.kill-events-list::-webkit-scrollbar { width: 8px; }
-.kill-events-list::-webkit-scrollbar-track { background: #222; }
+.kill-feed-scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+
+.kill-feed-scroll-area::-webkit-scrollbar-track {
+  background: #222;
+}
+
 /* Make scrollbar thumb rectangular */
-.kill-events-list::-webkit-scrollbar-thumb { background-color: #444; border-radius: 0; }
+.kill-feed-scroll-area::-webkit-scrollbar-thumb {
+  background-color: #444;
+  border-radius: 0;
+}
 
 /* Individual Event Item */
 .kill-event-item {
@@ -785,12 +792,8 @@ onUnmounted(() => {
   font-size: 0.9em;
   transition: background-color 0.3s ease;
   line-height: 1.4;
-  margin-bottom: 8px; /* Increased spacing between items */
+  margin-bottom: 5px; /* Reduced spacing between items from 8px to 5px */
   position: relative; /* For positioning the player-involved indicator */
-}
-
-.kill-event-item:hover {
-  background-color: #2a2a2a;
 }
 
 /* Style for player-involved events in global view */
@@ -937,7 +940,8 @@ onUnmounted(() => {
 .feed-items-container {
   display: flex;
   flex-direction: column;
-  /* gap: 8px; <-- Remove gap from container */
+  gap: 5px; /* Reduced gap from 8px to 5px */
+  padding-bottom: 100px; /* Increased padding from 20px to 100px to ensure all items are fully visible */
 }
 
 /* --- Transition Group Animations --- */
