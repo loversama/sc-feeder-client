@@ -64,7 +64,7 @@ const formatTimestamp = (timestamp: string | undefined): string => {
 };
 
 const getHeroBannerImage = (event: KillEvent | null): string => {
-    // Define the full image map here
+    // Define the fallback image map here
     const images = {
       default: 'https://robertsspaceindustries.com/media/yrkicvmlfj52dr/source/Vehicle-Concept-April-2023-Desktop.jpg',
       combat: [
@@ -86,59 +86,50 @@ const getHeroBannerImage = (event: KillEvent | null): string => {
       ],
       bleedout: 'https://robertsspaceindustries.com/media/sz0mccvmljugdr/source/Medical_JumpPoint06.jpg',
       suffocation: 'https://robertsspaceindustries.com/media/53f7bjlv4f0p9r/source/Anvil-Carrack-v3-Copy.jpg',
-      aegs: 'https://robertsspaceindustries.com/media/tps8jq5sl17pzr/source/Aegis-Gladius-Space.jpg',
-      anvl: 'https://robertsspaceindustries.com/media/o1l3oclxruue1r/source/Hurricane-Flying.jpg',
-      orig: 'https://robertsspaceindustries.com/media/xbtvd9ku0tpser/source/300i_beauty_visual.jpg',
-      rsi: 'https://robertsspaceindustries.com/media/0ijlvx0ltdzpfr/source/RSI-Constellation-Andromeda-Space-001.jpg',
-      drak: 'https://robertsspaceindustries.com/media/vy5wy6k44v6aar/source/Drake_cutlass_engines.jpg',
-      misc: 'https://robertsspaceindustries.com/media/z6wl2jrzxlu1cr/source/Gladius-Gold-Standard-01.jpg',
-      cnou: 'https://robertsspaceindustries.com/media/1a93ycn0dqqepr/source/Mustang_Alpha_fighting.jpg'
+      // Manufacturer specific images are removed as we now use CDN based on vehicleType
     };
 
    const defaultBanner = images.default;
    if (!event) return defaultBanner;
-   
+
+   // --- NEW: Prioritize vehicle type from CDN ---
+   if (event.vehicleType && event.vehicleType !== 'Player') {
+       // Attempt to load PNG first. The browser will handle if it fails.
+       // We don't implement a complex JS-based check for PNG vs JPG here.
+       const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType}.png`;
+       // Consider adding .toLowerCase() if vehicleType casing is inconsistent
+       // const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType.toLowerCase()}.png`;
+       return vehicleImageUrl;
+   }
+
+   // --- Fallback Logic (if no vehicleType or it's 'Player') ---
    const getRandomImage = (category: keyof typeof images) => {
+        // Ensure 'images' is accessible here or passed in if scope changes
         const categoryImages = images[category] || images.default; // Fallback to default category
         if (Array.isArray(categoryImages)) {
             return categoryImages[Math.floor(Math.random() * categoryImages.length)];
         }
         // Ensure we return a string, even if the category doesn't exist or isn't an array
-        return typeof categoryImages === 'string' ? categoryImages : images.default; 
+        return typeof categoryImages === 'string' ? categoryImages : images.default;
     };
 
     const deathType = event.deathType?.toLowerCase();
 
-    // Handle specific death types first (ensure they return a string)
+    // Handle specific death types first
     if (deathType === 'bleedout') return images.bleedout || defaultBanner;
     if (deathType === 'suffocation') return images.suffocation || defaultBanner;
-    
-    // Handle ship manufacturers (ensure they return a string)
-    if (event.vehicleType) {
-        const vehicleType = event.vehicleType.toLowerCase();
-        for (const manufacturer of ['aegs', 'anvl', 'orig', 'rsi', 'drak', 'misc', 'cnou']) {
-            if (vehicleType.includes(manufacturer)) {
-                 // Check if the manufacturer image exists and is a string
-                 const manuImage = images[manufacturer as keyof typeof images];
-                 if (typeof manuImage === 'string') {
-                     return manuImage;
-                 }
-                 // If it's an array or doesn't exist, fall through to random combat/default
-                 break; // Found manufacturer, but no specific image, use default logic
-            }
-        }
-    }
-    
-    // Handle categories that might have arrays
+
+    // Handle categories that might have arrays (Combat, Collision, Crash)
     if (deathType === 'combat') return getRandomImage('combat');
     if (deathType === 'collision') return getRandomImage('collision');
     if (deathType === 'crash') return getRandomImage('crash');
-    
+
+    // Handle location
     const location = event.location?.toLowerCase() || '';
     if (location.includes('space') || location.includes('station')) return getRandomImage('space');
-    
+
     // Final fallback
-    return getRandomImage('default');
+    return getRandomImage('default'); // Use the helper for the final default
 };
 
 
