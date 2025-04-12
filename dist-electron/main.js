@@ -163559,7 +163559,10 @@ async function initializeAuth() {
   return connectionReady;
 }
 const MODULE_NAME$4 = "ServerConnection";
-const SERVER_URL = "http://localhost:5324";
+const isProduction = process.env.NODE_ENV === "production";
+const DEV_SERVER_URL = "ws://localhost:5324";
+const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
+const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 let socket = null;
 let isAuthenticated = false;
 let logChunkBuffer = [];
@@ -163582,7 +163585,7 @@ function connectToServer() {
     warn(MODULE_NAME$4, "Already connected to server.");
     return;
   }
-  info(MODULE_NAME$4, `Attempting to connect to server at ${SERVER_URL} using ${tokenType}`);
+  info(MODULE_NAME$4, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
   if (socket) {
     socket.disconnect();
     socket = null;
