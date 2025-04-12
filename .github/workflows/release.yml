@@ -15,7 +15,7 @@
 
         defaults: # Add defaults block
           run:
-            working-directory: ./log-monitor-client # Set default working dir for run steps
+            working-directory: log-monitor-client # Set default working dir for run steps (removed ./)
 
         steps:
           - name: Check out Git repository
