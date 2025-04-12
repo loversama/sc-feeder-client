@@ -13,10 +13,7 @@
           matrix:
             os: [macos-latest, ubuntu-latest, windows-latest]
 
-        defaults: # Add defaults block
-          run:
-            working-directory: log-monitor-client # Set default working dir for run steps (removed ./)
-
+        # Removed defaults block, steps will run at repository root
         steps:
           - name: Check out Git repository
             uses: actions/checkout@v3
