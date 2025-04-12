@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Event Details - SC KillFeeder</title> <!-- Title will be updated by Vue -->
+  <style>
+    /* Basic reset and dark theme */
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow: hidden; /* Prevent body scroll */
+      background-color: #0a0d12; /* Match Vue component background */
+      color: #e0e0e0;
+      font-family: 'Exo', sans-serif; /* Match font */
+    }
+    #app {
+      height: 100%;
+      width: 100%;
+    }
+     /* Add scrollbar styling */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0a0d12; }
+    ::-webkit-scrollbar-thumb { background: #2c3e50; border-radius: 0; }
+    ::-webkit-scrollbar-thumb:hover { background: #3498db; }
+  </style>
+   <!-- Preconnect fonts used in Vue component -->
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+   <link href="https://fonts.googleapis.com/css2?family=Exo:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app"></div> <!-- Vue app mounts here -->
+  <!-- Entry point for the Event Details Vue app -->
+  <script type="module" src="/src/event-details-main.ts"></script>
+</body>
+</html>
