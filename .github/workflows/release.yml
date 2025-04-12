@@ -13,6 +13,10 @@
           matrix:
             os: [macos-latest, ubuntu-latest, windows-latest]
 
+        defaults: # Add defaults block
+          run:
+            working-directory: ./log-monitor-client # Set default working dir for run steps
+
         steps:
           - name: Check out Git repository
             uses: actions/checkout@v3
@@ -22,14 +26,14 @@
             with:
               node-version: '18' # Or your project's node version
               cache: 'npm'
-              cache-dependency-path: log-monitor-client/package-lock.json # Adjust path if needed
+              cache-dependency-path: package-lock.json # Path relative to the default working-directory
 
           - name: Install dependencies
-            working-directory: ./log-monitor-client # Adjust path if needed
+            # working-directory removed, uses default
             run: npm ci
 
           - name: Build and release Electron app
-            working-directory: ./log-monitor-client # Adjust path if needed
+            # working-directory removed, uses default
             env:
               GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
             run: npm run release -- --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}

@@ -48,8 +48,8 @@ process.env.APP_ROOT = process.env.APP_ROOT || path.join(__dirname, '..', '..');
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST;
+// RENDERER_DIST is no longer needed, paths will be calculated relative to app.getAppPath() when packaged.
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist'); // Adjust VITE_PUBLIC calculation
 
 // --- Helper Functions ---
 
@@ -185,15 +185,17 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
         mainWindow.loadURL(VITE_DEV_SERVER_URL)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load main window from dev server:', err));
     } else {
-        const indexPath = path.join(RENDERER_DIST, 'index.html');
+        // Production: Load file relative to app root (works with ASAR)
+        const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
         logger.info(MODULE_NAME, `Loading main window from file: ${indexPath}`);
-        if (fsSync.existsSync(indexPath)) {
-            mainWindow.loadFile(indexPath)
-                .catch(err => logger.error(MODULE_NAME, 'Failed to load index.html:', err));
-        } else {
-            logger.error(MODULE_NAME, `index.html not found at ${indexPath}.`);
-            mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent('<h1>Error</h1><p>Could not load application content. File not found.</p>')}`);
-        }
+        mainWindow.loadFile(indexPath)
+            .catch(err => {
+                logger.error(MODULE_NAME, `Failed to load index.html from ${indexPath}:`, err);
+                // Display a more informative error within the window if loading fails
+                if (mainWindow) { // Add null check
+                    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${indexPath}. Please check application integrity and logs.</p><p>${err}</p>`)}`);
+                }
+            });
     }
 
     // Handle external links
@@ -276,15 +278,16 @@ export function createSettingsWindow(): BrowserWindow | null {
         settingsWindow.loadURL(settingsUrl)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load settings.html from dev server:', err));
     } else {
-        const settingsHtmlPath = path.join(RENDERER_DIST, 'settings.html');
+        // Production: Load file relative to app root
+        const settingsHtmlPath = path.join(app.getAppPath(), 'dist', 'settings.html');
         logger.info(MODULE_NAME, `Loading settings window from file: ${settingsHtmlPath}`);
-        if (fsSync.existsSync(settingsHtmlPath)) {
-            settingsWindow.loadFile(settingsHtmlPath)
-                .catch(err => logger.error(MODULE_NAME, 'Failed to load settings.html:', err));
-        } else {
-            logger.error(MODULE_NAME, `settings.html not found at ${settingsHtmlPath}.`);
-            settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent('<h1>Error</h1><p>Could not load settings page. File not found.</p>')}`);
-        }
+        settingsWindow.loadFile(settingsHtmlPath)
+            .catch(err => {
+                logger.error(MODULE_NAME, `Failed to load settings.html from ${settingsHtmlPath}:`, err);
+                if (settingsWindow) { // Add null check
+                    settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load settings page from ${settingsHtmlPath}.</p><p>${err}</p>`)}`);
+                }
+            });
     }
 
     settingsWindow.once('ready-to-show', () => {
@@ -360,15 +363,14 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
        detailsWindow.loadURL(detailsUrl)
          .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html from dev server:', err));
      } else {
-       const detailsHtmlPath = path.join(RENDERER_DIST, 'event-details.html');
+       // Production: Load file relative to app root
+       const detailsHtmlPath = path.join(app.getAppPath(), 'dist', 'event-details.html');
        logger.info(MODULE_NAME, `Loading event details window from file: ${detailsHtmlPath}`);
-       if (fsSync.existsSync(detailsHtmlPath)) {
-           detailsWindow.loadFile(detailsHtmlPath)
-             .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html:', err));
-       } else {
-           logger.error(MODULE_NAME, `event-details.html not found at ${detailsHtmlPath}.`);
-           detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent('<h1>Error</h1><p>Could not load event details page. File not found.</p>')}`);
-       }
+       detailsWindow.loadFile(detailsHtmlPath)
+           .catch(err => {
+               logger.error(MODULE_NAME, `Failed to load event-details.html from ${detailsHtmlPath}:`, err);
+               detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${detailsHtmlPath}.</p><p>${err}</p>`)}`);
+           });
      }
 
      detailsWindow.once('ready-to-show', () => {
