@@ -29,8 +29,12 @@
             # working-directory removed, uses default
             run: npm ci
 
-          - name: Build and release Electron app
-            # working-directory removed, uses default
+          - name: Build and Publish Electron app
             env:
               GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
-            run: npm run release -- --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
+            # Build artifacts for each OS in parallel.
+            # Only publish (upload assets and create release) from the Linux job.
+            run: >-
+              npx electron-builder
+              --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
+              ${{ matrix.os == 'ubuntu-latest' && '--publish always' || '' }}
