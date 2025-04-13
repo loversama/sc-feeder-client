@@ -95,9 +95,11 @@ export function getIconPath(): string {
 
     let basePath = '';
     if (isProd) {
-        // In production, resources (like icons from 'public') are usually in process.resourcesPath
-        basePath = process.resourcesPath;
-        logger.info(MODULE_NAME, `Production mode detected. Using process.resourcesPath as base for icons: ${basePath}`);
+        // In production, assets are often within the app's packaged code directory, specifically the build output ('dist')
+        // Use app.getAppPath() which points to 'resources/app' or similar
+        basePath = path.join(app.getAppPath(), 'dist'); // Look inside the 'dist' folder within the app path
+        logger.info(MODULE_NAME, `Production mode. Using app.getAppPath()/dist as base: ${basePath}`);
+        // Removed logging for __dirname and process.resourcesPath as app.getAppPath() is more relevant now
     } else {
         // In development, use VITE_PUBLIC which points to the 'public' source folder
         basePath = vitePublic || ''; // Use vitePublic, fallback to empty string
@@ -106,7 +108,7 @@ export function getIconPath(): string {
 
     if (basePath && typeof basePath === 'string') {
         const iconFullPath = path.join(basePath, preferredIconFilename);
-        logger.debug(MODULE_NAME, `Checking for preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
+        logger.info(MODULE_NAME, `Checking production icon path inside app/dist: ${iconFullPath}`); // Log the full path being checked
         try {
              if (fsSync.existsSync(iconFullPath)) {
                  iconPath = iconFullPath; // Use the preferred icon if it exists

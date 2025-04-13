@@ -42,6 +42,7 @@ async function onReady() {
     logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
     // logger.info(MODULE_NAME, `MAIN_DIST calculated as: ${MAIN_DIST}`); // Log if MAIN_DIST is kept
 
+
     // Register IPC handlers first (can now potentially use paths if needed)
     registerIpcHandlers(); // Register general handlers
     registerAuthIpcHandlers(); // Register auth handlers
