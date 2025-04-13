@@ -5,6 +5,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 // Importing type only, no runtime dependency
 import type { KillEvent } from '../../shared/types'; // Import from the new shared types file
 
+const MAX_EVENTS_DISPLAY = 100; // Local constant for display limit
 const killEvents = ref<KillEvent[]>([]); // Player-involved events
 const globalKillEvents = ref<KillEvent[]>([]); // All events including non-player ones
 // const feedMode = ref<'player' | 'global'>('player'); // Removed feed mode toggle
@@ -87,7 +88,7 @@ const openEventDetails = async (event: KillEvent) => {
     alert(`Error setting up window open handler: ${errorMessage}`);
   }
 };
-const searchQuery = ref('');
+const searchQuery = ref<string>(''); // Explicitly type and initialize
 const logStatus = ref<string>('Initializing...'); // Log file monitoring status
 const currentPlayerShip = ref<string>('');
 const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
@@ -425,54 +426,57 @@ onMounted(() => {
         const existingGlobalIndex = globalKillEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
 
         if (existingGlobalIndex !== -1) {
-          // Existing event found - REPLACE it
-          console.log(`Received update for global event: ${killEvent.id}`);
-          globalKillEvents.value.splice(existingGlobalIndex, 1, killEvent); // Replace
+            // Existing event found - REPLACE it by creating a new array
+            console.log(`Received update for global event: ${killEvent.id}`);
+            const updatedEvents = [...globalKillEvents.value];
+            updatedEvents[existingGlobalIndex] = killEvent;
+            globalKillEvents.value = updatedEvents; // Assign new array
           // Trigger update animation
           const eventId = killEvent.id; // Capture ID locally
           recentlyUpdatedIds.value.add(eventId);
           setTimeout(() => recentlyUpdatedIds.value.delete(eventId), 1000); // Use local constant
         } else {
-          // No existing event found - add as new event
-          globalKillEvents.value.unshift(killEvent);
-          console.log(`Added new global event: ${killEvent.id}`);
-          wasNewEvent = true; // Mark as new
-          
-          // Play sound effect for new events
-          playKillSound();
-          
-          // Keep global events array size in check
-          if (globalKillEvents.value.length > 100) {
-            globalKillEvents.value.pop(); // Use pop for oldest
-          }
+            // No existing event found - add as new event by creating a new array
+            console.log(`Added new global event: ${killEvent.id}`);
+            // Add to the beginning (limit removed)
+            const newEvents = [killEvent, ...globalKillEvents.value]; //.slice(0, MAX_EVENTS_DISPLAY);
+            globalKillEvents.value = newEvents; // Assign new array
+            wasNewEvent = true; // Mark as new
+
+            // Play sound effect for new events
+            playKillSound();
+            // No need for separate pop() as slice() handles the limit
         }
 
         // Handle player events array similarly
         if (killEvent.isPlayerInvolved) {
           const existingPlayerIndex = killEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
           if (existingPlayerIndex !== -1) {
-            // Existing event found - REPLACE it
+            // Existing event found - REPLACE it by creating a new array
             console.log(`Received update for player event: ${killEvent.id}`);
-            killEvents.value.splice(existingPlayerIndex, 1, killEvent); // Replace
+            const updatedPlayerEvents = [...killEvents.value];
+            updatedPlayerEvents[existingPlayerIndex] = killEvent;
+            killEvents.value = updatedPlayerEvents; // Assign new array
             // Trigger update animation
             const eventId = killEvent.id; // Capture ID locally
             recentlyUpdatedIds.value.add(eventId);
             setTimeout(() => recentlyUpdatedIds.value.delete(eventId), 1000); // Use local constant
           } else {
-            // No existing event found - add as new event
-            killEvents.value.unshift(killEvent);
+            // No existing event found - add as new event by creating a new array
             console.log(`Added new player event: ${killEvent.id}`);
-            // Keep player events array size in check
-            if (killEvents.value.length > 100) {
-              killEvents.value.pop(); // Use pop for oldest
-            }
+            // Add to the beginning (limit removed)
+            const newPlayerEvents = [killEvent, ...killEvents.value]; //.slice(0, MAX_EVENTS_DISPLAY);
+            killEvents.value = newPlayerEvents; // Assign new array
+            // No need for separate pop()
           }
         } else {
           // If the updated event NO LONGER involves the player, remove it from player list
           const existingPlayerIndex = killEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
           if (existingPlayerIndex !== -1) {
-            console.log(`Removing event ${killEvent.id} from player list as it no longer involves the player.`);
-            killEvents.value.splice(existingPlayerIndex, 1);
+              // Remove by creating a new filtered array
+              console.log(`Removing event ${killEvent.id} from player list as it no longer involves the player.`);
+              killEvents.value = killEvents.value.filter(ev => ev.id !== killEvent!.id); // Assign new array
+              killEvents.value = killEvents.value.filter(ev => ev.id !== killEvent!.id);
           }
         }
 

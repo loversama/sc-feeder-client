@@ -27,23 +27,24 @@ function sendConnectionStatus(status: ConnectionStatus) {
 }
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
 export function connectToServer(): void {
-  // Determine which token to use (user access token takes priority)
-  let tokenToUse = getAccessToken();
-  let tokenType = 'User Access Token';
-  if (!tokenToUse) {
-    tokenToUse = getGuestToken();
-    tokenType = 'Guest Token';
-  }
+  // Determine which token to use for auth handshake (ONLY user access token)
+  const accessToken = getAccessToken();
+  const guestToken = getGuestToken(); // Still get guest token for logging/potential future use
+  const tokenForHandshake = accessToken; // Only send access token in handshake
+  const tokenType = accessToken ? 'User Access Token' : (guestToken ? 'Guest Token (Not Sent)' : 'No Token');
 
-  // If neither token is available, don't attempt connection
-  if (!tokenToUse) {
-    logger.warn(MODULE_NAME, 'No user or guest token available. Cannot connect to server.');
-    // Ensure socket is null if we explicitly decide not to connect
-    if (socket) {
-        socket.disconnect();
-        socket = null;
-    }
-    return;
+  // Decide if connection is possible (needs at least a guest token conceptually, even if not sent)
+  const canConnect = !!accessToken || !!guestToken;
+
+  // If neither token is available conceptually, don't attempt connection
+  if (!canConnect) {
+      logger.warn(MODULE_NAME, 'No user or guest token available conceptually. Cannot connect to server.');
+      // Ensure socket is null if we explicitly decide not to connect
+      if (socket) {
+          socket.disconnect();
+          socket = null;
+      }
+      return;
   }
 
   // Don't reconnect if already connected with the same socket instance
@@ -70,18 +71,42 @@ export function connectToServer(): void {
     transports: ['websocket'], // Use WebSocket transport
     // Send access token for authentication
     auth: (cb) => {
-      // Pass the determined token (user or guest)
-      logger.debug(MODULE_NAME, `Socket auth callback: Providing ${tokenType}: ${tokenToUse ? 'Yes (first 10 chars: ' + tokenToUse.substring(0, 10) + '...)' : 'No'}`);
-      cb({ token: tokenToUse });
+      // ONLY pass the access token if available. If only guest token exists, send nothing.
+      const tokenToSend = accessToken; // Explicitly use accessToken here
+      const sendingType = tokenToSend ? 'User Access Token' : 'No Token';
+      logger.debug(MODULE_NAME, `Socket auth callback: Providing ${sendingType}: ${tokenToSend ? 'Yes (first 10 chars: ' + tokenToSend.substring(0, 10) + '...)' : 'No'}`);
+      cb(tokenToSend ? { token: tokenToSend } : {}); // Send empty object if no access token
     }
   });
 
   socket.on('connect', () => {
-    logger.info(MODULE_NAME, `Successfully connected to server: ${socket?.id}. Waiting for authentication...`);
-    // Still 'connecting' until server confirms 'authenticated' event
-    // sendConnectionStatus('connected'); // Moved to 'authenticated' handler
-    // Authentication happens via the guard on the server now for the connection itself
-    // We need a confirmation event from the server.
+    logger.info(MODULE_NAME, `Successfully connected to server: ${socket?.id}. Checking authentication method...`);
+
+    // Check if we connected as a guest (no access token sent in handshake, but guest token exists)
+    const currentAccessToken = getAccessToken();
+    const currentGuestToken = getGuestToken();
+
+    if (!currentAccessToken && currentGuestToken) {
+      // Connected without user auth, attempt guest auth via message
+      logger.info(MODULE_NAME, `Connected without user token. Sending authenticate_guest message...`);
+      socket?.emit('authenticate_guest', { token: currentGuestToken }, (ack: { success: boolean; error?: string }) => {
+         if (ack?.success) {
+            logger.info(MODULE_NAME, 'Server acknowledged guest authentication request.');
+            // Wait for the 'authenticated' event from the server now
+         } else {
+            logger.error(MODULE_NAME, `Server rejected guest authentication: ${ack?.error || 'Unknown error'}`);
+            // Handle error - maybe disconnect or retry? For now, just log.
+            // The 'authenticated' event will likely not arrive.
+         }
+      });
+    } else if (currentAccessToken) {
+       // Connected with user access token, waiting for 'authenticated' event from server handshake validation
+       logger.info(MODULE_NAME, `Connected with user token. Waiting for server authentication confirmation...`);
+    } else {
+       // Connected without any token (should not happen based on connectToServer logic, but handle defensively)
+       logger.warn(MODULE_NAME, `Connected without any token. Cannot authenticate.`);
+    }
+    // Still 'connecting' until server confirms 'authenticated' event via handshake or message response
   });
 
   // Listen for custom 'authenticated' event from server
