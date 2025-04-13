@@ -46,6 +46,12 @@ if (!app.requestSingleInstanceLock()) {
   // Setup the titlebar main process
   setupTitlebar();
 
+  // Set AppUserModelID for Windows to prevent "electron.app" in notifications
+  if (process.platform === 'win32') {
+    app.setAppUserModelId(app.name);
+    logger.info(MODULE_NAME, `AppUserModelID set to: ${app.name}`);
+  }
+
   // --- Initialize Application ---
   // The initialize function now sets up all app event listeners,
   // creates windows, tray, registers IPC handlers, etc.
