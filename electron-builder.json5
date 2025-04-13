@@ -8,9 +8,10 @@
     "output": "release/${version}"
   },
   "files": [
-    "dist/**/*",
-    "dist-electron/**/*",
-    "package.json"
+    "dist/**/*",          // Include built renderer code
+    "dist-electron/**/*", // Include built main process code
+    "package.json",
+    "public/**/*"         // Include contents of the public directory (icons, sounds, etc.)
   ],
   // --- Add this publish block ---
   "publish": {

@@ -86,41 +86,54 @@ function createSaveBoundsHandler(window: BrowserWindow, storeKey: WindowStoreKey
 export function getIconPath(): string {
     const isProd = app.isPackaged;
     const vitePublic = process.env.VITE_PUBLIC; // Set in app-lifecycle onReady
-    const resourcesPath = process.resourcesPath;
+    const appPath = app.getAppPath(); // Path to app root (e.g., app.asar or unpacked dir)
     let iconPath = '';
 
-    // Determine base path: app root in prod, VITE_PUBLIC in dev
-    // app.getAppPath() usually points to the root of the packaged app (e.g., app.asar or unpacked dir)
-    const appPath = app.getAppPath();
-    const basePath = isProd ? appPath : vitePublic;
-    logger.debug(MODULE_NAME, `Icon Path Check: isProd=${isProd}, basePath=${basePath}`);
+    // Determine the platform-specific preferred icon filename
+    const isWindows = process.platform === 'win32';
+    const preferredIconFilename = isWindows ? 'electron-vite.ico' : 'electron-vite.svg';
+
+    let basePath = '';
+    if (isProd) {
+        // In production, assume icons are copied to the app root by the builder
+        basePath = appPath;
+        logger.info(MODULE_NAME, `Production mode detected. Using appPath as base for icons: ${basePath}`);
+    } else {
+        // In development, use VITE_PUBLIC which points to the 'public' source folder
+        basePath = vitePublic || ''; // Use vitePublic, fallback to empty string
+        logger.info(MODULE_NAME, `Development mode detected. Using VITE_PUBLIC as base for icons: ${basePath}`);
+    }
 
     if (basePath && typeof basePath === 'string') {
-        // Determine the platform-specific preferred icon filename
-        const isWindows = process.platform === 'win32';
-        const preferredIconFilename = isWindows ? 'electron-vite.ico' : 'electron-vite.svg';
         const iconFullPath = path.join(basePath, preferredIconFilename);
-
-        logger.debug(MODULE_NAME, `Checking for platform preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
+        logger.debug(MODULE_NAME, `Checking for preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
         try {
              if (fsSync.existsSync(iconFullPath)) {
                  iconPath = iconFullPath; // Use the preferred icon if it exists
+                 logger.info(MODULE_NAME, `Found icon at: ${iconPath}`);
              } else {
                   logger.error(MODULE_NAME, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
-                  // Optional: Could add a check for a generic fallback like 'icon.png' here if desired
+                  // Optional: Check for fallback SVG on Windows if ICO failed?
+                  if (isWindows) {
+                      const fallbackSvgPath = path.join(basePath, 'electron-vite.svg');
+                      logger.warn(MODULE_NAME, `Windows ICO not found, checking for SVG fallback: ${fallbackSvgPath}`);
+                      if (fsSync.existsSync(fallbackSvgPath)) {
+                          iconPath = fallbackSvgPath;
+                          logger.info(MODULE_NAME, `Found fallback SVG icon at: ${iconPath}`);
+                      } else {
+                           logger.error(MODULE_NAME, `Fallback SVG icon also not found at ${fallbackSvgPath}.`);
+                      }
+                  }
              }
         } catch (err: any) {
              logger.error(MODULE_NAME, `Error checking icon path ${iconFullPath}: ${err.message}`);
         }
     } else {
-        logger.error(MODULE_NAME, `Base path for icon is invalid or not a string: ${basePath}`);
+        logger.error(MODULE_NAME, `Base path for icon is invalid or not determined. isProd=${isProd}, appPath=${appPath}, vitePublic=${vitePublic}`);
     }
 
-    if (iconPath) {
-        logger.info(MODULE_NAME, `Using icon path: ${iconPath}`);
-    } else {
+    if (!iconPath) {
         logger.warn(MODULE_NAME, "Could not find a valid icon path. Windows/Tray might lack an icon.");
-        // Consider returning a default path or letting Electron handle the default if empty string is problematic
     }
     return iconPath; // Return found path or empty string
 }
