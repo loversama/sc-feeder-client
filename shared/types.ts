@@ -5,13 +5,19 @@ export interface ProfileData {
   // Victim fields
   victimEnlisted?: string;
   victimRsiRecord?: string;
-  victimOrg?: string;
+  victimOrg?: string;         // Main org name
+  victimOrgSid?: string;      // Main org SID (handle)
+  victimOrgLogoUrl?: string;  // Main org logo URL
+  victimAffiliatedOrgs?: string[]; // Affiliated org names (consider adding SID/Logo later if needed)
   victimPfpUrl?: string;
   
   // Attacker fields (mirroring victim fields)
   attackerEnlisted?: string;
   attackerRsiRecord?: string;
-  attackerOrg?: string;
+  attackerOrg?: string;         // Main org name
+  attackerOrgSid?: string;      // Main org SID (handle)
+  attackerOrgLogoUrl?: string;  // Main org logo URL
+  attackerAffiliatedOrgs?: string[]; // Affiliated org names (consider adding SID/Logo later if needed)
   attackerPfpUrl?: string;
 }
 
@@ -31,8 +37,8 @@ export interface StoreSchema {
   showNotifications: boolean;
   lastActivePage: string;
   // Phase 2 Settings
-  apiUrl: string;
-  apiKey: string;
+  // apiUrl: string; // Removed
+  // apiKey: string; // Removed
   offlineMode: boolean;
   csvLogPath: string;
   // Profile data fetching setting

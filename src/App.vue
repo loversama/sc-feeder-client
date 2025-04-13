@@ -102,6 +102,7 @@ onUnmounted(() => {
 .app-title.cet-drag-region {
   top: 15px;
   left:8px;
+  margin-bottom:20px;
 }
 
 .cet-container {

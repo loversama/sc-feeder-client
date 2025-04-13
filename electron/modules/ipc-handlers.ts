@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'; // Import BrowserWindow directly
+import { ipcMain, dialog, BrowserWindow, app } from 'electron'; // Import app
 import path from 'node:path';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
 import * as WindowManager from './window-manager.ts'; // Added .ts
@@ -136,14 +136,16 @@ export function registerIpcHandlers() {
 
     // API/CSV Settings
     ipcMain.handle('get-api-settings', () => {
+        // Only return offlineMode now
         return {
-            apiUrl: ConfigManager.getApiUrl(),
-            apiKey: ConfigManager.getApiKey(),
+            // apiUrl: ConfigManager.getApiUrl(), // Removed
+            // apiKey: ConfigManager.getApiKey(), // Removed
             offlineMode: ConfigManager.getOfflineMode()
         };
     });
-    ipcMain.handle('set-api-settings', (event, settings: { apiUrl: string; apiKey: string; offlineMode: boolean }) => {
-        ConfigManager.setApiSettings(settings);
+    ipcMain.handle('set-api-settings', (event, settings: { offlineMode: boolean }) => {
+        // Pass only offlineMode to config manager
+        ConfigManager.setOfflineMode(settings.offlineMode); // Assuming a dedicated setter exists or update setApiSettings
         return true; // Indicate success
     });
 
@@ -153,6 +155,27 @@ export function registerIpcHandlers() {
     ipcMain.handle('set-csv-log-path', (event, newPath: string) => {
         return ConfigManager.setCsvLogPath(newPath);
     });
+// --- Resource Path Handler ---
+logger.debug(MODULE_NAME, "Attempting to register handler for 'get-resource-path'...");
+try {
+    ipcMain.handle('get-resource-path', () => { // Keep only one handler call
+        const isProd = app.isPackaged;
+        const vitePublic = process.env.VITE_PUBLIC; // Set in app-lifecycle onReady
+        const resourcesPath = process.resourcesPath;
+        const basePath = isProd ? resourcesPath : vitePublic;
+        logger.debug(MODULE_NAME, `Providing resource path: ${basePath} (isProd: ${isProd})`);
+        // Ensure a valid string is returned
+        if (basePath && typeof basePath === 'string') {
+            return basePath;
+        }
+        logger.error(MODULE_NAME, `Could not determine valid resource path. isProd=${isProd}, resourcesPath=${resourcesPath}, vitePublic=${vitePublic}`);
+        return ''; // Return empty string if path is invalid
+    }); // End of handler function
+    logger.info(MODULE_NAME, "Successfully registered handler for 'get-resource-path'.");
+} catch (error: any) { // Correct catch syntax
+     logger.error(MODULE_NAME, `FATAL: Failed to register handler for 'get-resource-path': ${error.message}`, error.stack);
+     // Decide if the app should quit or continue without this functionality
+} // End of try...catch
 
     // --- Window Management Handlers ---
     ipcMain.handle('open-settings-window', () => {

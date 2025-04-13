@@ -23,11 +23,17 @@ interface KillEvent {
   eventDescription: string;
   victimEnlisted?: string;
   victimRsiRecord?: string;
-  victimOrg?: string;
+  victimOrg?: string;         // Main org name
+  victimOrgSid?: string;      // Main org SID (handle)
+  victimOrgLogoUrl?: string;  // Main org logo URL
+  victimAffiliatedOrgs?: string[]; // Affiliated org names
   victimPfpUrl?: string;
   attackerEnlisted?: string;
   attackerRsiRecord?: string;
-  attackerOrg?: string;
+  attackerOrg?: string;         // Main org name
+  attackerOrgSid?: string;      // Main org SID (handle)
+  attackerOrgLogoUrl?: string;  // Main org logo URL
+  attackerAffiliatedOrgs?: string[]; // Affiliated org names
   attackerPfpUrl?: string;
   attackerShip?: string; // Added attacker ship
   isPlayerInvolved: boolean;
@@ -209,12 +215,18 @@ onMounted(async () => {
                      <img class="player-avatar attacker-avatar" :src="eventData.attackerPfpUrl || 'https://robertsspaceindustries.com/rsi/static/images/account/avatar_default_big.jpg'" alt="Attacker">
                      <div class="player-info">
                          <div class="player-name">{{ eventData.killers?.[0] || 'Unknown Attacker' }}</div>
+                         <!-- Org Badge -->
+                         <div v-if="eventData.attackerOrg && eventData.attackerOrg !== '-'" class="org-badge">
+                             <img v-if="eventData.attackerOrgLogoUrl" :src="eventData.attackerOrgLogoUrl" alt="Org Logo" class="org-logo" title="Organization Logo">
+                             <span class="org-name">{{ eventData.attackerOrg }}</span>
+                             <span v-if="eventData.attackerOrgSid && eventData.attackerOrgSid !== '-'" class="org-sid">[{{ eventData.attackerOrgSid }}]</span>
+                         </div>
+                         <!-- End Org Badge -->
                          <div class="player-detail">Ship: {{ eventData.attackerShip || eventData.playerShip || 'Unknown' }}</div>
                          <div class="player-detail">Weapon: {{ eventData.weapon || 'Unknown' }}</div>
                          <div class="player-detail">Damage Type: {{ eventData.damageType || 'Unknown' }}</div>
                          <div v-if="eventData.attackerEnlisted && eventData.attackerEnlisted !== '-'" class="player-detail">Enlisted: {{ eventData.attackerEnlisted }}</div>
                          <div v-if="eventData.attackerRsiRecord && eventData.attackerRsiRecord !== '-'" class="player-detail">Record: {{ eventData.attackerRsiRecord }}</div>
-                         <div v-if="eventData.attackerOrg && eventData.attackerOrg !== '-'" class="player-detail">Organization: {{ eventData.attackerOrg }}</div>
                      </div>
                  </div>
              </div>
@@ -235,11 +247,17 @@ onMounted(async () => {
                          <div class="player-name">
                              {{ eventData.victims[0].includes('_') ? cleanShipName(eventData.vehicleType || eventData.victims[0]) : eventData.victims[0] }}
                          </div>
+                         <!-- Org Badge -->
+                         <div v-if="eventData.victimOrg && eventData.victimOrg !== '-' && !eventData.victims[0].includes('_')" class="org-badge">
+                             <img v-if="eventData.victimOrgLogoUrl" :src="eventData.victimOrgLogoUrl" alt="Org Logo" class="org-logo" title="Organization Logo">
+                             <span class="org-name">{{ eventData.victimOrg }}</span>
+                             <span v-if="eventData.victimOrgSid && eventData.victimOrgSid !== '-'" class="org-sid">[{{ eventData.victimOrgSid }}]</span>
+                         </div>
+                         <!-- End Org Badge -->
                          <div v-if="eventData.vehicleType && !eventData.victims[0].includes('_')" class="player-detail">Ship: {{ cleanShipName(eventData.vehicleType) }}</div>
                          <div v-if="eventData.victims[0].includes('_')" class="player-detail">ID: {{ eventData.victims[0] }}</div>
                          <template v-else>
                             <div class="player-detail">Enlisted: {{ eventData.victimEnlisted || 'Unknown' }}</div>
-                            <div class="player-detail">Organization: {{ eventData.victimOrg || 'None' }}</div>
                          </template>
                      </div>
                  </div>
@@ -277,7 +295,9 @@ onMounted(async () => {
                  <div class="detail-card"><div class="detail-title">RSI Handle</div><div class="detail-value">{{ eventData.killers?.[0] || 'Unknown' }}</div></div>
                  <div class="detail-card"><div class="detail-title">Enlisted Date</div><div class="detail-value">{{ eventData.attackerEnlisted || 'Unknown' }}</div></div>
                  <div class="detail-card"><div class="detail-title">Citizen Record</div><div class="detail-value">{{ eventData.attackerRsiRecord || 'Unknown' }}</div></div>
-                 <div class="detail-card"><div class="detail-title">Organization</div><div class="detail-value">{{ eventData.attackerOrg || 'None' }}</div></div>
+                 <div class="detail-card"><div class="detail-title">Organization</div><div class="detail-value">{{ eventData.attackerOrg && eventData.attackerOrg !== '-' ? `${eventData.attackerOrg} [${eventData.attackerOrgSid || 'N/A'}]` : 'None' }}</div></div>
+                 <!-- Optionally add affiliated orgs here -->
+                 <div v-if="eventData.attackerAffiliatedOrgs && eventData.attackerAffiliatedOrgs.length > 0" class="detail-card full-width"><div class="detail-title">Affiliated Orgs</div><div class="detail-value">{{ eventData.attackerAffiliatedOrgs.join(', ') }}</div></div>
              </div>
          </div>
          <!-- Environmental Cause Section (Show only if isEnvironmentalEvent) -->
@@ -300,7 +320,9 @@ onMounted(async () => {
                  <div class="detail-card"><div class="detail-title">RSI Handle</div><div class="detail-value">{{ eventData.victims?.[0] || 'Unknown' }}</div></div>
                  <div class="detail-card"><div class="detail-title">Enlisted Date</div><div class="detail-value">{{ eventData.victimEnlisted || 'Unknown' }}</div></div>
                  <div class="detail-card"><div class="detail-title">Citizen Record</div><div class="detail-value">{{ eventData.victimRsiRecord || 'Unknown' }}</div></div>
-                 <div class="detail-card"><div class="detail-title">Organization</div><div class="detail-value">{{ eventData.victimOrg || 'None' }}</div></div>
+                 <div class="detail-card"><div class="detail-title">Organization</div><div class="detail-value">{{ eventData.victimOrg && eventData.victimOrg !== '-' ? `${eventData.victimOrg} [${eventData.victimOrgSid || 'N/A'}]` : 'None' }}</div></div>
+                 <!-- Optionally add affiliated orgs here -->
+                 <div v-if="eventData.victimAffiliatedOrgs && eventData.victimAffiliatedOrgs.length > 0" class="detail-card full-width"><div class="detail-title">Affiliated Orgs</div><div class="detail-value">{{ eventData.victimAffiliatedOrgs.join(', ') }}</div></div>
              </div>
          </div>
 
@@ -498,5 +520,10 @@ display: none !important;
 .attacker-tag { background: #c0392b; }
 .victim-tag { background: #2980b9; }
 .fallback { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; text-align: center; padding: 20px; font-size: 16px; }
+.org-badge { display: flex; align-items: center; gap: 5px; margin-top: 3px; margin-bottom: 5px; }
+.org-logo { height: 18px; width: auto; vertical-align: middle; border-radius: 2px; background-color: rgba(255,255,255,0.1); /* Slight background for visibility */ object-fit: contain; /* Prevent stretching */ }
+.org-name { font-size: 0.9em; font-weight: 500; } /* Org name style */
+.org-sid { font-size: 0.8em; opacity: 0.7; margin-left: 4px; } /* Faded SID style */
+.detail-card.full-width { min-width: calc(100% - 0px); /* Adjust based on gap */ flex-basis: 100%; } /* Allow affiliated orgs card to take full width */
 .fallback.error h2 { color: #e74c3c; }
 </style>

@@ -28,14 +28,14 @@ const schema = {
     type: 'string',
     default: 'kill-feed'
   },
-  apiUrl: {
-    type: 'string',
-    default: ''
-  },
-  apiKey: {
-    type: 'string',
-    default: ''
-  },
+  // apiUrl: { // Removed
+  //   type: 'string',
+  //   default: ''
+  // },
+  // apiKey: { // Removed
+  //   type: 'string',
+  //   default: ''
+  // },
   offlineMode: {
     type: 'boolean',
     default: false
@@ -99,23 +99,17 @@ export function setShowNotifications(value: boolean): void {
     store.set('showNotifications', value);
 }
 
-export function getApiUrl(): string {
-    return store.get('apiUrl');
-}
-
-export function getApiKey(): string {
-    return store.get('apiKey');
-}
+// Removed getApiUrl
+// Removed getApiKey
 
 export function getOfflineMode(): boolean {
     return store.get('offlineMode');
 }
 
-export function setApiSettings(settings: { apiUrl: string; apiKey: string; offlineMode: boolean }): void {
-    store.set('apiUrl', settings.apiUrl || '');
-    store.set('apiKey', settings.apiKey || '');
-    store.set('offlineMode', !!settings.offlineMode);
-    logger.info(MODULE_NAME, 'API Settings Updated:', settings);
+// Renamed and simplified to only handle offlineMode
+export function setOfflineMode(offlineMode: boolean): void {
+    store.set('offlineMode', !!offlineMode); // Ensure boolean
+    logger.info(MODULE_NAME, `Offline Mode Updated: ${!!offlineMode}`);
 }
 
 

@@ -22,9 +22,19 @@ let settingsWindow: BrowserWindow | null = null;
 let activeEventDataForWindow: KillEvent | null = null;
 
 // electron-store setup for window state
-const store = new Store<{ windowBounds?: Rectangle }>({
+// Define the type for the store schema explicitly
+type WindowStoreSchema = {
+    windowBounds?: Rectangle;
+    settingsWindowBounds?: Rectangle;
+    eventDetailsWindowBounds?: Rectangle;
+};
+
+// electron-store setup for window state
+const store = new Store<WindowStoreSchema>({
     defaults: {
-        windowBounds: undefined // Initialize with no default bounds
+        windowBounds: undefined,
+        settingsWindowBounds: undefined,
+        eventDetailsWindowBounds: undefined
     }
 });
 
@@ -41,25 +51,95 @@ function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
         }, waitFor);
     };
 }
+// --- Helper Functions (Continued) ---
+
+// Define the valid keys as a type
+type WindowStoreKey = keyof WindowStoreSchema;
+
+// Generic function to create a debounced bounds saver
+function createSaveBoundsHandler(window: BrowserWindow, storeKey: WindowStoreKey) {
+    return debounce(() => {
+        if (window && !window.isDestroyed() && !window.isMinimized()) {
+            const bounds = window.getBounds();
+            // Use String() to ensure storeKey is treated as a string for logging
+            logger.debug(MODULE_NAME, `Saving bounds for ${String(storeKey)}:`, bounds);
+            // Explicitly cast storeKey to the correct type for store.set
+            store.set(storeKey as WindowStoreKey, bounds);
+        }
+    }, 500); // Debounce saving by 500ms
+}
+
 // --- Constants and Environment Variables ---
-// Moved from main.ts - needed for loading URLs/files
+// These are now set centrally in main.ts and accessed via process.env
+// VITE_DEV_SERVER_URL, MAIN_DIST, VITE_PUBLIC, APP_ROOT
 
-// Ensure APP_ROOT is set (consider moving this to a central init point if needed elsewhere)
-process.env.APP_ROOT = process.env.APP_ROOT || path.join(__dirname, '..', '..'); // Adjust path relative to modules dir
-
-export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
-// RENDERER_DIST is no longer needed, paths will be calculated relative to app.getAppPath() when packaged.
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist'); // Adjust VITE_PUBLIC calculation
+// We still might need to read them here for convenience
+// REMOVED: VITE_DEV_SERVER_URL will be read directly from process.env inside functions
+// export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+// REMOVED: MAIN_DIST will be calculated dynamically inside getPreloadPath
+// export const MAIN_DIST = path.join(process.env.APP_ROOT!, 'dist-electron');
+// VITE_PUBLIC is read directly from process.env where needed (e.g., icon paths)
 
 // --- Helper Functions ---
 
+// Function to determine the correct path for application icons
+export function getIconPath(): string {
+    const isProd = app.isPackaged;
+    const vitePublic = process.env.VITE_PUBLIC; // Set in app-lifecycle onReady
+    const resourcesPath = process.resourcesPath;
+    let iconPath = '';
+
+    // Determine base path: resources in prod, VITE_PUBLIC in dev
+    const basePath = isProd ? resourcesPath : vitePublic;
+    logger.debug(MODULE_NAME, `Icon Path Check: isProd=${isProd}, basePath=${basePath}`);
+
+    if (basePath && typeof basePath === 'string') {
+        // Determine the platform-specific preferred icon filename
+        const isWindows = process.platform === 'win32';
+        const preferredIconFilename = isWindows ? 'electron-vite.ico' : 'electron-vite.svg';
+        const iconFullPath = path.join(basePath, preferredIconFilename);
+
+        logger.debug(MODULE_NAME, `Checking for platform preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
+        try {
+             if (fsSync.existsSync(iconFullPath)) {
+                 iconPath = iconFullPath; // Use the preferred icon if it exists
+             } else {
+                  logger.error(MODULE_NAME, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
+                  // Optional: Could add a check for a generic fallback like 'icon.png' here if desired
+             }
+        } catch (err: any) {
+             logger.error(MODULE_NAME, `Error checking icon path ${iconFullPath}: ${err.message}`);
+        }
+    } else {
+        logger.error(MODULE_NAME, `Base path for icon is invalid or not a string: ${basePath}`);
+    }
+
+    if (iconPath) {
+        logger.info(MODULE_NAME, `Using icon path: ${iconPath}`);
+    } else {
+        logger.warn(MODULE_NAME, "Could not find a valid icon path. Windows/Tray might lack an icon.");
+        // Consider returning a default path or letting Electron handle the default if empty string is problematic
+    }
+    return iconPath; // Return found path or empty string
+}
+
 function getPreloadPath(filename: string = 'preload.mjs'): string {
+    const appRoot = process.env.APP_ROOT;
+    if (!appRoot) {
+        logger.error(MODULE_NAME, "APP_ROOT not set when trying to get preload path. Cannot proceed.");
+        // Return a dummy path or throw an error, as preload is critical
+        return ''; // Or throw new Error("APP_ROOT not set");
+    }
+
+    // Calculate MAIN_DIST path dynamically here
+    const mainDist = path.join(appRoot, 'dist-electron');
+    logger.debug(MODULE_NAME, `Calculated mainDist for preload: ${mainDist}`);
+
     let preloadPath: string | undefined;
     const possiblePaths = [
-        path.join(__dirname, '..', filename), // Relative to modules dir -> electron dir
-        path.join(MAIN_DIST, filename), // Production path
-        path.join(process.env.APP_ROOT || '', 'dist-electron', filename) // Alternative production path
+        path.join(__dirname, '..', filename), // Relative to modules dir -> electron dir (Dev path)
+        path.join(mainDist, filename),        // Production path using dynamically calculated mainDist
+        path.join(appRoot, 'dist-electron', filename) // Alternative production path (redundant but safe fallback)
     ];
 
     if (app.isPackaged) {
@@ -103,9 +183,12 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     // Get saved bounds or use defaults
     const savedBounds = store.get('windowBounds');
 
+    // Get the application icon path
+    const appIconPath = getIconPath();
+
     // Define base window options
     const windowOptions: Electron.BrowserWindowConstructorOptions = {
-        icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg'),
+        icon: appIconPath || undefined, // Use found path or let Electron default
         title: 'SC Kill Feed',
         width: defaultWidth,
         height: defaultHeight,
@@ -183,9 +266,10 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     });
 
     // Load URL or File
-    if (VITE_DEV_SERVER_URL) {
-        logger.info(MODULE_NAME, `Loading main window from dev server: ${VITE_DEV_SERVER_URL}`);
-        mainWindow.loadURL(VITE_DEV_SERVER_URL)
+    const devServerUrl = process.env['VITE_DEV_SERVER_URL']; // Read env var inside function
+    if (devServerUrl) {
+        logger.info(MODULE_NAME, `Loading main window from dev server: ${devServerUrl}`);
+        mainWindow.loadURL(devServerUrl)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load main window from dev server:', err));
     } else {
         // Production: Load file using url.format relative to __dirname
@@ -233,16 +317,9 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     });
 
     // --- Save Window Bounds on Resize/Move ---
-    const saveBounds = debounce(() => {
-        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isMinimized()) {
-            const bounds = mainWindow.getBounds();
-            logger.debug(MODULE_NAME, 'Saving window bounds:', bounds);
-            store.set('windowBounds', bounds);
-        }
-    }, 500); // Debounce saving by 500ms
-
-    mainWindow.on('resize', saveBounds);
-    mainWindow.on('move', saveBounds);
+    const saveMainWindowBounds = createSaveBoundsHandler(mainWindow, 'windowBounds');
+    mainWindow.on('resize', saveMainWindowBounds);
+    mainWindow.on('move', saveMainWindowBounds);
 
     return mainWindow;
 }
@@ -259,33 +336,68 @@ export function createSettingsWindow(): BrowserWindow | null {
     //   return null;
     // }
 
-    settingsWindow = new BrowserWindow({
+    // --- Settings Window Bounds ---
+    const savedSettingsBounds = store.get('settingsWindowBounds');
+    const settingsWindowOptions: Electron.BrowserWindowConstructorOptions = {
         width: 800,
         height: 650,
+        x: undefined,
+        y: undefined,
         title: 'SC KillFeeder - Settings',
-        // parent: mainWindow, // Optional: Make it a child of the main window
-        modal: false, // Set to true if it should block interaction with the main window
+        modal: false,
         webPreferences: {
-            preload: getPreloadPath(), // Reuse preload script
+            preload: getPreloadPath(),
             nodeIntegration: false,
             contextIsolation: true,
-            devTools: !app.isPackaged, // Enable DevTools only in development
+            devTools: !app.isPackaged,
             spellcheck: false
         },
-        frame: false, // Add for custom title bar
-        titleBarStyle: 'hidden', // Add for custom title bar
-        titleBarOverlay: true, // Add for custom title bar (Windows controls overlay)
-        autoHideMenuBar: true, // Keep this, title bar library might interact with it
-        show: false, // Show when ready
-        icon: path.join(process.env.VITE_PUBLIC || '', 'electron-vite.svg') // Use app icon
-    });
+        frame: false,
+        titleBarStyle: 'hidden',
+        titleBarOverlay: true,
+        autoHideMenuBar: true,
+        show: false,
+        icon: getIconPath() || undefined, // Use centralized function
+        minWidth: 500, // Add reasonable min dimensions
+        minHeight: 400
+    };
+
+    // Validate and apply saved bounds
+    if (savedSettingsBounds) {
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+            const displayBounds = display.workArea;
+            return (
+                savedSettingsBounds.x < displayBounds.x + displayBounds.width &&
+                savedSettingsBounds.x + savedSettingsBounds.width > displayBounds.x &&
+                savedSettingsBounds.y < displayBounds.y + displayBounds.height &&
+                savedSettingsBounds.y + savedSettingsBounds.height > displayBounds.y
+            );
+        });
+
+        if (isVisible) {
+            logger.info(MODULE_NAME, 'Applying saved settings window bounds:', savedSettingsBounds);
+            settingsWindowOptions.x = savedSettingsBounds.x;
+            settingsWindowOptions.y = savedSettingsBounds.y;
+            settingsWindowOptions.width = savedSettingsBounds.width;
+            settingsWindowOptions.height = savedSettingsBounds.height;
+        } else {
+            logger.warn(MODULE_NAME, 'Saved settings window bounds are outside visible screen area. Using defaults.');
+            store.delete('settingsWindowBounds'); // Clear invalid bounds
+        }
+    } else {
+         logger.info(MODULE_NAME, `No saved settings bounds found. Using default size: ${settingsWindowOptions.width}x${settingsWindowOptions.height}`);
+    }
+
+    settingsWindow = new BrowserWindow(settingsWindowOptions);
 
     attachTitlebarToWindow(settingsWindow); // Attach the custom title bar
     // settingsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
     // Load settings content
-    if (VITE_DEV_SERVER_URL) {
-        const settingsUrl = `${VITE_DEV_SERVER_URL}/settings.html`;
+    const devServerUrlForSettings = process.env['VITE_DEV_SERVER_URL']; // Read env var inside function
+    if (devServerUrlForSettings) {
+        const settingsUrl = `${devServerUrlForSettings}/settings.html`;
         logger.info(MODULE_NAME, `Loading settings window from dev server: ${settingsUrl}`);
         settingsWindow.loadURL(settingsUrl)
             .catch(err => logger.error(MODULE_NAME, 'Failed to load settings.html from dev server:', err));
@@ -317,6 +429,11 @@ export function createSettingsWindow(): BrowserWindow | null {
         settingsWindow = null; // Dereference the window object
     });
 
+    // --- Save Settings Window Bounds ---
+    const saveSettingsBounds = createSaveBoundsHandler(settingsWindow, 'settingsWindowBounds');
+    settingsWindow.on('resize', saveSettingsBounds);
+    settingsWindow.on('move', saveSettingsBounds);
+
     // Handle external links in settings window
     settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('http:') || url.startsWith('https:')) {
@@ -341,26 +458,62 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
      };
      activeEventDataForWindow = enhancedEventData; // Store temporarily
 
-     const detailsWindow = new BrowserWindow({
+     // --- Event Details Window Bounds ---
+     const savedEventDetailsBounds = store.get('eventDetailsWindowBounds');
+     const detailsWindowOptions: Electron.BrowserWindowConstructorOptions = {
        width: 1260,
        height: 940,
+       x: undefined,
+       y: undefined,
        webPreferences: {
-         preload: getPreloadPath(), // Reuse preload
+         preload: getPreloadPath(),
          nodeIntegration: false,
          contextIsolation: true,
-         devTools: true, // Always enable DevTools for this window
+         devTools: true,
          spellcheck: false
        },
-       frame: false, // Add for custom title bar
-       titleBarStyle: 'hidden', // Add for custom title bar
-       titleBarOverlay: true, // Add for custom title bar (Windows controls overlay)
+       frame: false,
+       titleBarStyle: 'hidden',
+       titleBarOverlay: true,
        title: `Event Details - ${eventData.deathType} (${new Date(eventData.timestamp).toLocaleTimeString()})`,
        backgroundColor: '#1a1a1a',
        show: false,
-       autoHideMenuBar: true, // Keep this
-       center: true,
-       // alwaysOnTop: true // Avoid alwaysOnTop unless strictly necessary
-     });
+       autoHideMenuBar: true,
+       minWidth: 800, // Add reasonable min dimensions
+       minHeight: 600,
+       icon: getIconPath() || undefined, // Use centralized function
+       // center: true, // Position is now managed by saved bounds
+       // alwaysOnTop: true
+     };
+
+     // Validate and apply saved bounds
+     if (savedEventDetailsBounds) {
+         const displays = screen.getAllDisplays();
+         const isVisible = displays.some(display => {
+             const displayBounds = display.workArea;
+             return (
+                 savedEventDetailsBounds.x < displayBounds.x + displayBounds.width &&
+                 savedEventDetailsBounds.x + savedEventDetailsBounds.width > displayBounds.x &&
+                 savedEventDetailsBounds.y < displayBounds.y + displayBounds.height &&
+                 savedEventDetailsBounds.y + savedEventDetailsBounds.height > displayBounds.y
+             );
+         });
+
+         if (isVisible) {
+             logger.info(MODULE_NAME, 'Applying saved event details window bounds:', savedEventDetailsBounds);
+             detailsWindowOptions.x = savedEventDetailsBounds.x;
+             detailsWindowOptions.y = savedEventDetailsBounds.y;
+             detailsWindowOptions.width = savedEventDetailsBounds.width;
+             detailsWindowOptions.height = savedEventDetailsBounds.height;
+         } else {
+             logger.warn(MODULE_NAME, 'Saved event details window bounds are outside visible screen area. Using defaults.');
+             store.delete('eventDetailsWindowBounds'); // Clear invalid bounds
+         }
+     } else {
+          logger.info(MODULE_NAME, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
+     }
+
+     const detailsWindow = new BrowserWindow(detailsWindowOptions);
 
    attachTitlebarToWindow(detailsWindow); // Attach the custom title bar
 
@@ -378,9 +531,10 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
      });
 
      // Load event details content
-     if (VITE_DEV_SERVER_URL) {
-       const detailsUrl = `${VITE_DEV_SERVER_URL}/event-details.html`;
-       logger.info(MODULE_NAME, `Loading event details window from dev server: ${detailsUrl}`);
+     const devServerUrlForDetails = process.env['VITE_DEV_SERVER_URL']; // Read env var inside function
+     if (devServerUrlForDetails) {
+         const detailsUrl = `${devServerUrlForDetails}/event-details.html`;
+         logger.info(MODULE_NAME, `Loading event details window from dev server: ${detailsUrl}`);
        detailsWindow.loadURL(detailsUrl)
          .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html from dev server:', err));
      } else {
@@ -415,7 +569,12 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
        }
      });
 
-     return detailsWindow;
+    // --- Save Event Details Window Bounds ---
+    const saveEventDetailsBounds = createSaveBoundsHandler(detailsWindow, 'eventDetailsWindowBounds');
+    detailsWindow.on('resize', saveEventDetailsBounds);
+    detailsWindow.on('move', saveEventDetailsBounds);
+
+    return detailsWindow;
 }
 
 // --- Accessor Functions ---

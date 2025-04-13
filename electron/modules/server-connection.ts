@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
 import { getAccessToken, getGuestToken, getPersistedClientId } from './auth-manager'; // Import token getters AND clientId getter
+import { getMainWindow } from './window-manager'; // Import window manager to send messages
 // Client ID logic moved to auth-manager
 
 const MODULE_NAME = 'ServerConnection';
@@ -13,6 +14,17 @@ const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 
 let socket: Socket | null = null;
 let isAuthenticated = false; // Track authentication status
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+let currentStatus: ConnectionStatus = 'disconnected';
+
+// Helper function to send status updates to renderer
+function sendConnectionStatus(status: ConnectionStatus) {
+    if (status !== currentStatus) {
+        logger.info(MODULE_NAME, `Connection status changed: ${currentStatus} -> ${status}`);
+        currentStatus = status;
+        getMainWindow()?.webContents.send('connection-status-changed', status);
+    }
+}
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
 export function connectToServer(): void {
   // Determine which token to use (user access token takes priority)
@@ -42,6 +54,7 @@ export function connectToServer(): void {
   }
 
   logger.info(MODULE_NAME, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
+  sendConnectionStatus('connecting'); // Update status: Connecting
 
   // Disconnect previous socket if exists (e.g., if token changed)
   if (socket) {
@@ -65,6 +78,8 @@ export function connectToServer(): void {
 
   socket.on('connect', () => {
     logger.info(MODULE_NAME, `Successfully connected to server: ${socket?.id}. Waiting for authentication...`);
+    // Still 'connecting' until server confirms 'authenticated' event
+    // sendConnectionStatus('connected'); // Moved to 'authenticated' handler
     // Authentication happens via the guard on the server now for the connection itself
     // We need a confirmation event from the server.
   });
@@ -73,17 +88,20 @@ export function connectToServer(): void {
   socket.on('authenticated', () => {
       logger.info(MODULE_NAME, `Server confirmed authentication for socket: ${socket?.id}`);
       isAuthenticated = true;
+      sendConnectionStatus('connected'); // Update status: Connected (after auth confirmation)
       flushLogBuffer(); // Attempt to send any buffered logs
   });
 
   socket.on('disconnect', (reason: Socket.DisconnectReason) => { // Add type for reason
     logger.warn(MODULE_NAME, `Disconnected from server: ${reason}`);
     isAuthenticated = false; // Reset auth status on disconnect
+    sendConnectionStatus('disconnected'); // Update status: Disconnected
     // Socket.io handles reconnection attempts automatically based on options
   });
 
   socket.on('connect_error', (error: Error) => { // Add type for error
     logger.error(MODULE_NAME, `Connection error: ${error.message}`);
+    sendConnectionStatus('error'); // Update status: Error
   });
 
   // Optional: Listen for server acknowledgements or errors
@@ -97,6 +115,7 @@ export function disconnectFromServer(): void {
     logger.info(MODULE_NAME, 'Disconnecting from server...');
     socket.disconnect();
     socket = null;
+    sendConnectionStatus('disconnected'); // Ensure status is updated on manual disconnect
   }
 }
 

@@ -14,9 +14,17 @@ const MODULE_NAME = 'Main'; // Define module name for logger
 // Note: __dirname in ESM corresponds to the directory of the current file.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-process.env.APP_ROOT = path.join(__dirname, '..'); // Set APP_ROOT relative to main.ts in electron dir
+// process.env.APP_ROOT = path.join(__dirname, '..'); // REMOVED: Will be set later using app.getAppPath()
 
-logger.info(MODULE_NAME, `Application starting... APP_ROOT set to: ${process.env.APP_ROOT}`);
+logger.info(MODULE_NAME, `Application starting... APP_ROOT will be set after app is ready.`);
+
+// --- Environment Setup (Centralized) ---
+// REMOVED: Path calculations moved to app-lifecycle.ts after app is ready
+// export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+// export const MAIN_DIST = path.join(appRoot || '', 'dist-electron');
+// process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(appRoot || '', 'public') : path.join(appRoot || '', 'dist');
+// logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
+// logger.info(MODULE_NAME, `MAIN_DIST set to: ${MAIN_DIST}`);
 
 // Disable hardware acceleration to potentially mitigate rendering issues
 // app.disableHardwareAcceleration(); // Uncomment if needed

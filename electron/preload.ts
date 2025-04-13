@@ -81,8 +81,9 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   setSoundEffects: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-sound-effects', value),
   
   // API/CSV Settings - Add these back if they were removed
-  getApiSettings: (): Promise<{ apiUrl: string; apiKey: string; offlineMode: boolean }> => ipcRenderer.invoke('get-api-settings'),
-  setApiSettings: (settings: { apiUrl: string; apiKey: string; offlineMode: boolean }): Promise<boolean> => ipcRenderer.invoke('set-api-settings', settings),
+  // Updated: Only offlineMode is relevant now
+  getApiSettings: (): Promise<{ offlineMode: boolean }> => ipcRenderer.invoke('get-api-settings'),
+  setApiSettings: (settings: { offlineMode: boolean }): Promise<boolean> => ipcRenderer.invoke('set-api-settings', settings),
   getCsvLogPath: (): Promise<string> => ipcRenderer.invoke('get-csv-log-path'),
   setCsvLogPath: (newPath: string): Promise<boolean> => ipcRenderer.invoke('set-csv-log-path', newPath),
   
@@ -102,6 +103,9 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authLogin: (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:login', identifier, password),
   authLogout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout'),
   authGetStatus: (): Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }> => ipcRenderer.invoke('auth:getStatus'),
+
+  // Resource Path
+  getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
 
   // Main to Renderer (Receive)
   onLogUpdate: (callback: (event: Electron.IpcRendererEvent, content: string) => void) => {
@@ -130,6 +134,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('auth-status-changed', callback);
     return () => ipcRenderer.removeListener('auth-status-changed', callback);
   },
+  // Listener for server connection status changes
+  onConnectionStatusChanged: (callback: (event: Electron.IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
+    ipcRenderer.on('connection-status-changed', callback);
+    return () => ipcRenderer.removeListener('connection-status-changed', callback);
+  },
 
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
@@ -139,6 +148,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.removeAllListeners('log-path-updated')
     ipcRenderer.removeAllListeners('kill-feed-event')
     ipcRenderer.removeAllListeners('auth-status-changed') // Clean up new listener
+    ipcRenderer.removeAllListeners('connection-status-changed') // Clean up connection status listener
   }
 })
 

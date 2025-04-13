@@ -10,8 +10,12 @@ const globalKillEvents = ref<KillEvent[]>([]); // All events including non-playe
 // const feedMode = ref<'player' | 'global'>('player'); // Removed feed mode toggle
 const isAuthenticated = ref<boolean>(false); // Track auth status
 const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
+const isOffline = ref<boolean>(false); // Track offline mode setting
+type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+const connectionStatus = ref<ConnectionStatus>('disconnected'); // Track server connection status
 // Use a relative path that will work with Electron
-const killSound = new Audio(); // Create an empty Audio object for now
+// const killSound = new Audio(); // Removed - will create dynamically
+const resourcePath = ref<string>(''); // To store the path provided by main process
 
 // Function to open the event details window
 const openEventDetails = async (event: KillEvent) => {
@@ -84,7 +88,7 @@ const openEventDetails = async (event: KillEvent) => {
   }
 };
 const searchQuery = ref('');
-const logStatus = ref<string>('Initializing...');
+const logStatus = ref<string>('Initializing...'); // Log file monitoring status
 const currentPlayerShip = ref<string>('');
 const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
 const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
@@ -124,6 +128,27 @@ const sortedFilteredEvents = computed(() => {
     })
     // Sort newest first (reverse chronological)
     .sort((a: KillEvent, b: KillEvent) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Add type annotations
+
+// Computed property for status indicator class
+const statusIndicatorClass = computed(() => {
+  const logActive = logStatus.value.includes('active') || logStatus.value.includes('Monitoring started');
+
+  if (isOffline.value) {
+    return logActive ? 'status-orange' : 'status-grey'; // Orange if monitoring, grey otherwise in offline mode
+  } else {
+    // Online mode
+    if (connectionStatus.value === 'connected' && logActive) {
+      return 'status-green'; // Green only if connected AND monitoring
+    } else if (connectionStatus.value === 'connecting') {
+      return 'status-orange'; // Orange while connecting
+    } else if (connectionStatus.value === 'error') {
+      return 'status-red'; // Red on connection error
+    } else {
+      // Disconnected or log not active
+      return logActive ? 'status-orange' : 'status-grey'; // Orange if monitoring but disconnected, grey otherwise
+    }
+  }
+});
 });
 
 // Format time from ISO string to appropriate format based on age
@@ -238,24 +263,24 @@ const getSeparator = (deathType: KillEvent['deathType']): string => {
 
 // Function to play sound effect for new kill events
 const playKillSound = () => {
-  if (playSoundEffects.value) {
+  if (playSoundEffects.value && resourcePath.value) { // Check if path is loaded
     try {
-      // Create a new Audio instance each time to avoid issues with replaying
-      const sound = new Audio();
-      
-      // Try to load from assets folder if available
-      // This path works in development; for production you might need to adjust
-      sound.src = './assets/kill-sound.mp3';
-      
+      const soundFilePath = `file://${resourcePath.value}/sounds/kill-event.m4a`; // Construct full file path
+      console.debug(`Attempting to play sound: ${soundFilePath}`); // Use console.debug in renderer
+
+      // Create a new Audio instance each time
+      const sound = new Audio(soundFilePath);
+
       // Play with error handling
       sound.play().catch(err => {
-        console.log('Non-critical: Sound play failed (possibly user has not interacted with page yet)');
-        // Browsers require user interaction before playing audio
+        console.warn(`Sound play failed for ${soundFilePath}:`, err);
+        // Common reasons: User hasn't interacted, file not found, format unsupported
       });
     } catch (err) {
-      console.error('Error with sound playback:', err);
-      // Non-critical error, app continues
+      console.error(`Error initializing or playing sound from ${resourcePath.value}:`, err);
     }
+  } else if (!resourcePath.value) {
+      console.warn("Cannot play sound: Resource path not yet loaded.");
   }
 };
 
@@ -294,10 +319,42 @@ const checkAuthStatus = async () => {
 };
 
 
+// Function to get initial offline mode status
+const checkOfflineMode = async () => {
+  try {
+    if (window.logMonitorApi?.getApiSettings) {
+      const settings = await window.logMonitorApi.getApiSettings();
+      isOffline.value = settings.offlineMode;
+      console.log(`[KillFeed] Offline mode status checked: ${isOffline.value}`);
+    } else {
+      console.warn('[KillFeed] getApiSettings API not available.');
+      isOffline.value = false; // Assume online if API is missing
+    }
+  } catch (error) {
+    console.error('[KillFeed] Error checking offline mode status:', error);
+    isOffline.value = false; // Assume online on error
+  }
+};
+
+
 onMounted(() => {
-  // Check auth status, load sound settings, then load events
+  // Check initial states, load sound settings, then load events
   Promise.all([
     checkAuthStatus(),
+    checkOfflineMode(), // Check offline mode
+    // Fetch resource path
+    (async () => {
+        try {
+            if (window.logMonitorApi?.getResourcePath) {
+                resourcePath.value = await window.logMonitorApi.getResourcePath();
+                console.log(`[KillFeed] Resource path loaded: ${resourcePath.value}`);
+            } else {
+                 console.warn('[KillFeed] getResourcePath API not available.');
+            }
+        } catch (error) {
+             console.error('[KillFeed] Error getting resource path:', error);
+        }
+    })(),
     loadSoundEffectsSetting(),
     // Add listener for auth status changes
     (() => {
@@ -305,14 +362,25 @@ onMounted(() => {
         const cleanup = window.logMonitorApi.onAuthStatusChanged((_event, status) => {
           console.log('[KillFeed] Received auth status update:', status);
           isAuthenticated.value = status.isAuthenticated;
-          // Optionally, trigger event reload or other actions based on status change
         });
-        cleanupFunctions.push(cleanup); // Add to cleanup array
+        cleanupFunctions.push(cleanup);
       } else {
         console.warn('[KillFeed] onAuthStatusChanged API not available.');
       }
+    })(),
+    // Add listener for connection status changes
+    (() => {
+      if (window.logMonitorApi?.onConnectionStatusChanged) {
+        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status) => {
+          console.log('[KillFeed] Received connection status update:', status);
+          connectionStatus.value = status;
+        });
+        cleanupFunctions.push(cleanup);
+      } else {
+        console.warn('[KillFeed] onConnectionStatusChanged API not available.');
+      }
     })()
-  ]).then(() => loadKillEvents()); // Load events after checking auth and settings
+  ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
   
   // Listen for new/updated spacecraft events
   cleanupFunctions.push(

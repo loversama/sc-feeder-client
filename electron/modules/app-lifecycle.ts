@@ -10,6 +10,7 @@ import { resetParserState } from './log-parser.ts'; // Import reset function - A
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
 import { registerAuthIpcHandlers, initializeAuth } from './auth-manager'; // Import initializeAuth
+import { getOfflineMode } from './config-manager'; // Import offline mode getter
 
 const MODULE_NAME = 'AppLifecycle'; // Define module name for logger
 
@@ -19,24 +20,49 @@ export let isQuitting = false; // Export flag
 
 // --- Event Handlers ---
 
+import path from 'node:path'; // Ensure path is imported
+
 async function onReady() {
     logger.info(MODULE_NAME, "App ready.");
 
-    // Register IPC handlers first
+    // --- Environment Setup (Moved here for app.getAppPath()) ---
+    process.env.APP_ROOT = app.getAppPath();
+    logger.info(MODULE_NAME, `APP_ROOT set using app.getAppPath(): ${process.env.APP_ROOT}`);
+
+    if (typeof process.env.APP_ROOT !== 'string' || !process.env.APP_ROOT) {
+        logger.error(MODULE_NAME, `FATAL: process.env.APP_ROOT is not a valid string after app.getAppPath()! Value: ${process.env.APP_ROOT}. Cannot proceed.`);
+        // Consider quitting: app.quit();
+        return; // Stop further execution in onReady if APP_ROOT is invalid
+    }
+
+    const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+    // MAIN_DIST is not exported/used globally, calculate locally if needed or remove if unused
+    // const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
+    process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist');
+    logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
+    // logger.info(MODULE_NAME, `MAIN_DIST calculated as: ${MAIN_DIST}`); // Log if MAIN_DIST is kept
+
+    // Register IPC handlers first (can now potentially use paths if needed)
     registerIpcHandlers(); // Register general handlers
     registerAuthIpcHandlers(); // Register auth handlers
 
-    // Initialize authentication state and wait for it to resolve
-    logger.info(MODULE_NAME, "Initializing authentication...");
-    const canConnect = await initializeAuth(); // Wait and check if we have a token
+    // Initialize authentication and connect to server only if NOT in offline mode
+    if (!getOfflineMode()) {
+        logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
+        const canConnect = await initializeAuth(); // Wait and check if we have a token
 
-    // Connect to backend server only if initial auth state allows
-    if (canConnect) {
-        logger.info(MODULE_NAME, "Auth initialized with a token. Attempting server connection...");
-        connectToServer();
+        // Connect to backend server only if initial auth state allows
+        if (canConnect) {
+            logger.info(MODULE_NAME, "Auth initialized with a token. Attempting server connection...");
+            connectToServer();
+        } else {
+            logger.warn(MODULE_NAME, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
+            // No initial connection attempt if no token
+        }
     } else {
-        logger.warn(MODULE_NAME, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
-        // No initial connection attempt if no token
+        logger.info(MODULE_NAME, "Offline mode enabled. Skipping initial authentication and server connection.");
+        // Ensure server is disconnected if previously connected (e.g., mode changed while running)
+        disconnectFromServer();
     }
 
     // Create UI components
@@ -139,7 +165,7 @@ async function performCleanup() {
     // Stop watching log file
     await stopWatchingLogFile(); // This now also calls endCurrentSession
 
-    // Disconnect from server
+    // Disconnect from server (always attempt during cleanup)
     disconnectFromServer();
 
     // Destroy tray icon

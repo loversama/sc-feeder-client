@@ -11477,6 +11477,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getSoundEffects: () => require$$0.ipcRenderer.invoke("get-sound-effects"),
   setSoundEffects: (value) => require$$0.ipcRenderer.invoke("set-sound-effects", value),
   // API/CSV Settings - Add these back if they were removed
+  // Updated: Only offlineMode is relevant now
   getApiSettings: () => require$$0.ipcRenderer.invoke("get-api-settings"),
   setApiSettings: (settings) => require$$0.ipcRenderer.invoke("set-api-settings", settings),
   getCsvLogPath: () => require$$0.ipcRenderer.invoke("get-csv-log-path"),
@@ -11495,6 +11496,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authLogin: (identifier, password) => require$$0.ipcRenderer.invoke("auth:login", identifier, password),
   authLogout: () => require$$0.ipcRenderer.invoke("auth:logout"),
   authGetStatus: () => require$$0.ipcRenderer.invoke("auth:getStatus"),
+  // Resource Path
+  getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
   // Main to Renderer (Receive)
   onLogUpdate: (callback) => {
     require$$0.ipcRenderer.on("log-update", callback);
@@ -11521,6 +11524,11 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.on("auth-status-changed", callback);
     return () => require$$0.ipcRenderer.removeListener("auth-status-changed", callback);
   },
+  // Listener for server connection status changes
+  onConnectionStatusChanged: (callback) => {
+    require$$0.ipcRenderer.on("connection-status-changed", callback);
+    return () => require$$0.ipcRenderer.removeListener("connection-status-changed", callback);
+  },
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
     require$$0.ipcRenderer.removeAllListeners("log-update");
@@ -11529,14 +11537,13 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.removeAllListeners("log-path-updated");
     require$$0.ipcRenderer.removeAllListeners("kill-feed-event");
     require$$0.ipcRenderer.removeAllListeners("auth-status-changed");
+    require$$0.ipcRenderer.removeAllListeners("connection-status-changed");
   }
 });
 window.addEventListener("DOMContentLoaded", () => {
   new customElectronTitlebarExports.Titlebar({
     iconSize: 60,
-    overflow: "auto",
     enableMnemonics: true,
-    backgroundColor: customElectronTitlebarExports.TitlebarColor.TRANSPARENT,
-    removeMenuBar: true
+    backgroundColor: customElectronTitlebarExports.TitlebarColor.TRANSPARENT
   });
 });

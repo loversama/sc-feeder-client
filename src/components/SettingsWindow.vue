@@ -23,8 +23,8 @@ const lastLoggedInUser = ref<string>('None');
 const showNotifications = ref<boolean>(true);
 const playSoundEffects = ref<boolean>(true);
 const statusMessage = ref<string>('');
-const apiUrl = ref<string>('');
-const apiKey = ref<string>('');
+// const apiUrl = ref<string>(''); // Removed
+// const apiKey = ref<string>(''); // Removed
 const offlineMode = ref<boolean>(false);
 const csvLogPath = ref<string>('');
 const fetchProfileData = ref<boolean>(true);
@@ -124,8 +124,8 @@ onMounted(async () => {
   try {
     if (window.logMonitorApi?.getApiSettings) {
         const apiSettings = await window.logMonitorApi.getApiSettings();
-        apiUrl.value = apiSettings.apiUrl;
-        apiKey.value = apiSettings.apiKey;
+        // apiUrl.value = apiSettings.apiUrl; // Removed
+        // apiKey.value = apiSettings.apiKey; // Removed
         offlineMode.value = apiSettings.offlineMode;
     }
   } catch (error) {
@@ -240,9 +240,10 @@ const saveApiSettings = async () => {
   if (!window.logMonitorApi?.setApiSettings) return;
   try {
     // Update offlineMode based on checkbox before saving
+    // Only save offlineMode now
     const success = await window.logMonitorApi.setApiSettings({
-      apiUrl: apiUrl.value,
-      apiKey: apiKey.value,
+      // apiUrl: apiUrl.value, // Removed
+      // apiKey: apiKey.value, // Removed
       offlineMode: offlineMode.value
     })
     setStatus(success ? 'API settings saved.' : 'Failed to save API settings.')
@@ -419,21 +420,8 @@ const setStatus = (msg: string, duration = 3000) => {
       <section v-if="activeCategory === 'data_api'">
         <h3 class="content-title">DATA & API</h3>
 
-        <!-- API URL -->
-        <div class="setting-item">
-          <label class="setting-name" for="apiUrl">API URL</label>
-          <div class="setting-control">
-            <input type="text" id="apiUrl" v-model="apiUrl" class="text-input" placeholder="Optional: API endpoint URL">
-          </div>
-        </div>
-
-        <!-- API Key -->
-        <div class="setting-item">
-          <label class="setting-name" for="apiKey">API Key</label>
-          <div class="setting-control">
-            <input type="password" id="apiKey" v-model="apiKey" class="text-input" placeholder="Optional: API key">
-          </div>
-        </div>
+        <!-- API URL Removed -->
+        <!-- API Key Removed -->
 
         <!-- Offline Mode -->
         <div class="setting-item">
@@ -446,13 +434,10 @@ const setStatus = (msg: string, duration = 3000) => {
           </div>
         </div>
         <div class="setting-description">
-          Disables sending any data to the API URL specified above.
+          Disables authentication and connection to the backend server.
         </div>
 
-        <!-- Save API Button -->
-        <div class="setting-item action-item">
-          <button @click="saveApiSettings" class="action-button">Save API Settings</button>
-        </div>
+        <!-- Save API Button Removed (saving happens on toggle change) -->
 
         <!-- CSV Log Path -->
         <div class="setting-item">

@@ -35,8 +35,8 @@ async function scrapeSingleProfile(username: string, isAttacker: boolean = false
     const profileUrl = `https://robertsspaceindustries.com/citizens/${username}`;
     // Start with defaults, ensuring all fields are present even if scraping fails
     const extractedData: ProfileData = isAttacker
-        ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerPfpUrl: defaultProfileData.attackerPfpUrl }
-        : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimPfpUrl: defaultProfileData.victimPfpUrl };
+        ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerOrgSid: '-', attackerOrgLogoUrl: '', attackerAffiliatedOrgs: [], attackerPfpUrl: defaultProfileData.attackerPfpUrl }
+        : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimOrgSid: '-', victimOrgLogoUrl: '', victimAffiliatedOrgs: [], victimPfpUrl: defaultProfileData.victimPfpUrl };
 
     try {
         logger.info(MODULE_NAME, `Scraping RSI profile for ${isAttacker ? 'attacker' : 'victim'}: ${username} at ${profileUrl}`);
@@ -75,15 +75,75 @@ async function scrapeSingleProfile(username: string, isAttacker: boolean = false
             // logger.debug(MODULE_NAME, `  - UEE Record: ${record}`);
         }
 
-        // Extract Organization (using Cheerio selector)
-        const orgElement = $('.profile.overview .info .value a[href*="/orgs/"]');
-        if (orgElement.length > 0) {
-            const org = orgElement.first().text().trim(); // Use first() for safety
-            if (org) { // Ensure org name is not empty
-                 if (isAttacker) extractedData.attackerOrg = org;
-                 else extractedData.victimOrg = org;
-                 // logger.debug(MODULE_NAME, `  - Org: ${org}`);
+        // Extract Organizations (Main and Affiliated)
+        let mainOrgName = '-';
+        let mainOrgSid = '-';
+        let mainOrgLogoUrl = ''; // Default to empty string
+        const affiliatedOrgs: string[] = [];
+
+        // Find the main organization block first (usually the first one)
+        // Selector targets the link within the 'info' block specifically
+        const mainOrgLinkElement = $('.profile.overview .info > .value > a[href*="/orgs/"]').first();
+
+        if (mainOrgLinkElement.length > 0) {
+            const orgName = mainOrgLinkElement.text().trim();
+            const orgHref = mainOrgLinkElement.attr('href');
+
+            if (orgName) {
+                mainOrgName = orgName;
+                // logger.debug(MODULE_NAME, `  - Main Org Name: ${mainOrgName}`);
             }
+
+            // Extract SID from href (e.g., /orgs/THESID)
+            if (orgHref) {
+                const sidMatch = orgHref.match(/\/orgs\/([^\/]+)/);
+                if (sidMatch?.[1]) {
+                    mainOrgSid = sidMatch[1];
+                    // logger.debug(MODULE_NAME, `  - Main Org SID: ${mainOrgSid}`);
+                }
+            }
+
+            // Find the logo image, often preceding the link or within a shared parent
+            // This selector might need adjustment based on actual HTML structure
+            const logoElement = mainOrgLinkElement.prev('img.logo'); // Check immediate sibling img.logo
+            let logoSrc = logoElement.attr('src');
+
+            if (!logoSrc) {
+                 // Try finding img within the parent '.value' if not found as sibling
+                 const logoInParent = mainOrgLinkElement.parent('.value').find('img.logo').first();
+                 logoSrc = logoInParent.attr('src');
+            }
+
+            if (logoSrc) {
+                 // Handle relative URLs
+                 mainOrgLogoUrl = logoSrc.startsWith('/')
+                     ? `https://robertsspaceindustries.com${logoSrc}`
+                     : logoSrc;
+                 // logger.debug(MODULE_NAME, `  - Main Org Logo: ${mainOrgLogoUrl}`);
+            }
+        }
+
+        // Find affiliated organizations (often in a separate 'affiliation' block)
+        $('.info.affiliation .value a[href*="/orgs/"]').each((index, element) => {
+            const affiliatedOrgName = $(element).text().trim();
+            // Add to list only if it's not the same as the main org and not empty
+            if (affiliatedOrgName && affiliatedOrgName !== mainOrgName) {
+                affiliatedOrgs.push(affiliatedOrgName);
+            }
+        });
+        // logger.debug(MODULE_NAME, `  - Affiliated Orgs: ${affiliatedOrgs.join(', ')}`);
+
+        // Assign to the correct fields based on role
+        if (isAttacker) {
+            extractedData.attackerOrg = mainOrgName;
+            extractedData.attackerOrgSid = mainOrgSid;
+            extractedData.attackerOrgLogoUrl = mainOrgLogoUrl;
+            extractedData.attackerAffiliatedOrgs = affiliatedOrgs;
+        } else {
+            extractedData.victimOrg = mainOrgName;
+            extractedData.victimOrgSid = mainOrgSid;
+            extractedData.victimOrgLogoUrl = mainOrgLogoUrl;
+            extractedData.victimAffiliatedOrgs = affiliatedOrgs;
         }
 
         // Extract Profile Picture (using Cheerio selector)
@@ -149,8 +209,8 @@ export async function fetchRsiProfileData(
             // Ensure defaults are correctly structured for the role if no cache exists
              if (!cachedEntry) {
                  results[username] = isAttacker
-                     ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerPfpUrl: defaultProfileData.attackerPfpUrl }
-                     : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimPfpUrl: defaultProfileData.victimPfpUrl };
+                     ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerOrgSid: '-', attackerOrgLogoUrl: '', attackerAffiliatedOrgs: [], attackerPfpUrl: defaultProfileData.attackerPfpUrl }
+                     : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimOrgSid: '-', victimOrgLogoUrl: '', victimAffiliatedOrgs: [], victimPfpUrl: defaultProfileData.victimPfpUrl };
              } else {
                  results[username] = cachedEntry.data; // Use stale data
              }
@@ -173,8 +233,8 @@ export async function fetchRsiProfileData(
                  results[username] = cachedEntry.data;
              } else {
                  results[username] = isAttacker
-                     ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerPfpUrl: defaultProfileData.attackerPfpUrl }
-                     : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimPfpUrl: defaultProfileData.victimPfpUrl };
+                     ? { attackerEnlisted: '-', attackerRsiRecord: '-', attackerOrg: '-', attackerOrgSid: '-', attackerOrgLogoUrl: '', attackerAffiliatedOrgs: [], attackerPfpUrl: defaultProfileData.attackerPfpUrl }
+                     : { victimEnlisted: '-', victimRsiRecord: '-', victimOrg: '-', victimOrgSid: '-', victimOrgLogoUrl: '', victimAffiliatedOrgs: [], victimPfpUrl: defaultProfileData.victimPfpUrl };
              }
         }
     }

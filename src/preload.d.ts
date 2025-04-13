@@ -32,8 +32,9 @@ export interface LogMonitorApi {
   setFetchProfileData: (value: boolean) => Promise<boolean>;
   getSoundEffects: () => Promise<boolean>;
   setSoundEffects: (value: boolean) => Promise<boolean>;
-  getApiSettings: () => Promise<{ apiUrl: string; apiKey: string; offlineMode: boolean }>;
-  setApiSettings: (settings: { apiUrl: string; apiKey: string; offlineMode: boolean }) => Promise<boolean>;
+  // Updated: Only offlineMode is relevant now
+  getApiSettings: () => Promise<{ offlineMode: boolean }>;
+  setApiSettings: (settings: { offlineMode: boolean }) => Promise<boolean>;
   getCsvLogPath: () => Promise<string>;
   setCsvLogPath: (newPath: string) => Promise<boolean>;
 
@@ -53,13 +54,18 @@ export interface LogMonitorApi {
   authLogout: () => Promise<boolean>;
   authGetStatus: () => Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }>;
 
+  // Resource Path
+  getResourcePath: () => Promise<string>;
+
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;
   onLogReset: (callback: (event: IpcRendererEvent) => void) => () => void;
   onLogStatus: (callback: (event: IpcRendererEvent, status: string) => void) => () => void;
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void) => () => void;
-  onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void; // Add this line
+  onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
+  // Add listener for connection status
+  onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   // Cleanup
   removeAllListeners: () => void;
 }
