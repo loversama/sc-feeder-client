@@ -95,9 +95,9 @@ export function getIconPath(): string {
 
     let basePath = '';
     if (isProd) {
-        // In production, assume icons are copied to the app root by the builder
-        basePath = appPath;
-        logger.info(MODULE_NAME, `Production mode detected. Using appPath as base for icons: ${basePath}`);
+        // In production, resources (like icons from 'public') are usually in process.resourcesPath
+        basePath = process.resourcesPath;
+        logger.info(MODULE_NAME, `Production mode detected. Using process.resourcesPath as base for icons: ${basePath}`);
     } else {
         // In development, use VITE_PUBLIC which points to the 'public' source folder
         basePath = vitePublic || ''; // Use vitePublic, fallback to empty string

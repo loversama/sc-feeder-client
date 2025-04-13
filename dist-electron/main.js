@@ -31564,8 +31564,8 @@ function getIconPath() {
   const preferredIconFilename = isWindows2 ? "electron-vite.ico" : "electron-vite.svg";
   let basePath = "";
   if (isProd) {
-    basePath = appPath;
-    info(MODULE_NAME$e, `Production mode detected. Using appPath as base for icons: ${basePath}`);
+    basePath = process.resourcesPath;
+    info(MODULE_NAME$e, `Production mode detected. Using process.resourcesPath as base for icons: ${basePath}`);
   } else {
     basePath = vitePublic || "";
     info(MODULE_NAME$e, `Development mode detected. Using VITE_PUBLIC as base for icons: ${basePath}`);

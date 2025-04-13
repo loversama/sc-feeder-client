@@ -589,7 +589,13 @@ onUnmounted(() => {
           <div class="event-header">
           <!-- <span class="event-icon">{{ getEventIcon(event.deathType) }}</span> -->
           <span class="event-icon-blank"></span>
-          <span class="event-death-type">{{ event.deathType }} Death</span>
+          <span class="event-death-type">
+            {{ event.deathType }} Death
+            <!-- Display secondary death type if merged -->
+            <span v-if="event.data?.secondaryDeathType" class="secondary-death-type">
+              + {{ event.data.secondaryDeathType }}
+            </span>
+          </span>
           <!-- Game Mode Pill -->
           <span v-if="event.gameMode && event.gameMode !== 'Unknown'" class="event-mode-pill">{{ event.gameMode }}</span>
           <!-- Player Involved Badge -->

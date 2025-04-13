@@ -89,6 +89,8 @@ export interface KillEvent {
 
   // Added for event details window
   playerName?: string; // Current player's name for comparison
+  // Optional field for additional/merged data from server
+  data?: Record<string, any>;
 }
 
 // Interface for tracking pending vehicle destruction events (used internally by parser/processor)

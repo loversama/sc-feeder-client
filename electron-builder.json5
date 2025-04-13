@@ -27,6 +27,7 @@
     "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
   },
   "win": {
+    "icon": "public/electron-vite.ico", // Specify the icon for Windows build
     "target": [
       {
         "target": "nsis",
