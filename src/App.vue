@@ -74,7 +74,7 @@ onUnmounted(() => {
   <div class="app-container bg-theme-bg-dark text-theme-text-light">
 
       <!-- Center Section (Navigation) -->
-      <div class="flex-grow flex justify-center">
+      <div class="flex-grow flex justify-center top-nav">
         <Navigation :activePage="activePage" @change-page="changePage" />
       </div>
 
@@ -93,9 +93,9 @@ onUnmounted(() => {
 <style>
 /* Make the title bar draggable */
 
-.nav-container[data-v-578fcad0] {
+.nav-container {
 
-    height: 75px;
+    height: 75px !important;
 
 }
 
@@ -103,6 +103,7 @@ onUnmounted(() => {
   top: 15px;
   left:8px;
   margin-bottom:20px;
+  height:75px;
 }
 
 .cet-container {
