@@ -16827,9 +16827,9 @@ function commentKeyword$1({ gen, schemaEnv, schema: schema2, errSchemaPath, opts
   }
 }
 function returnResults$1(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError2}(${names_1$d.default.vErrors})`));
+    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError3}(${names_1$d.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$X._)`${validateName2}.errors`, names_1$d.default.vErrors);
     if (opts.unevaluated)
@@ -17174,14 +17174,14 @@ function getData$1($data, { dataLevel, dataNames, dataPathArr }) {
 validate$1.getData = getData$1;
 var validation_error$1 = {};
 Object.defineProperty(validation_error$1, "__esModule", { value: true });
-class ValidationError extends Error {
+let ValidationError$1 = class ValidationError extends Error {
   constructor(errors2) {
     super("validation failed");
     this.errors = errors2;
     this.ajv = this.validation = true;
   }
-}
-validation_error$1.default = ValidationError;
+};
+validation_error$1.default = ValidationError$1;
 var ref_error$1 = {};
 Object.defineProperty(ref_error$1, "__esModule", { value: true });
 const resolve_1$4 = resolve$4;
@@ -23653,9 +23653,9 @@ function commentKeyword({ gen, schemaEnv, schema: schema2, errSchemaPath, opts }
   }
 }
 function returnResults(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError2}(${names_1$3.default.vErrors})`));
+    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError3}(${names_1$3.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$n._)`${validateName2}.errors`, names_1$3.default.vErrors);
     if (opts.unevaluated)
@@ -23999,21 +23999,15 @@ function getData($data, { dataLevel, dataNames, dataPathArr }) {
 }
 validate.getData = getData;
 var validation_error = {};
-var hasRequiredValidation_error;
-function requireValidation_error() {
-  if (hasRequiredValidation_error) return validation_error;
-  hasRequiredValidation_error = 1;
-  Object.defineProperty(validation_error, "__esModule", { value: true });
-  class ValidationError2 extends Error {
-    constructor(errors2) {
-      super("validation failed");
-      this.errors = errors2;
-      this.ajv = this.validation = true;
-    }
+Object.defineProperty(validation_error, "__esModule", { value: true });
+class ValidationError2 extends Error {
+  constructor(errors2) {
+    super("validation failed");
+    this.errors = errors2;
+    this.ajv = this.validation = true;
   }
-  validation_error.default = ValidationError2;
-  return validation_error;
 }
+validation_error.default = ValidationError2;
 var ref_error = {};
 Object.defineProperty(ref_error, "__esModule", { value: true });
 const resolve_1$1 = resolve$1;
@@ -24029,7 +24023,7 @@ var compile$1 = {};
 Object.defineProperty(compile$1, "__esModule", { value: true });
 compile$1.resolveSchema = compile$1.getCompilingSchema = compile$1.resolveRef = compile$1.compileSchema = compile$1.SchemaEnv = void 0;
 const codegen_1$m = codegen;
-const validation_error_1 = requireValidation_error();
+const validation_error_1 = validation_error;
 const names_1$2 = names$1;
 const resolve_1 = resolve$1;
 const util_1$k = util$n;
@@ -24302,7 +24296,7 @@ uri$1.default = uri;
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  const validation_error_12 = requireValidation_error();
+  const validation_error_12 = validation_error;
   const ref_error_12 = ref_error;
   const rules_12 = rules;
   const compile_12 = compile$1;
@@ -26755,7 +26749,7 @@ const require$$3$1 = {
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  var validation_error_12 = requireValidation_error();
+  var validation_error_12 = validation_error;
   Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function() {
     return validation_error_12.default;
   } });
@@ -31527,7 +31521,7 @@ var setupTitlebarExports = setupTitlebar.exports;
   }
 })(main, main.exports);
 var mainExports = main.exports;
-const MODULE_NAME$f = "WindowManager";
+const MODULE_NAME$e = "WindowManager";
 const __filename$3 = fileURLToPath(import.meta.url);
 const __dirname$2 = path$m.dirname(__filename$3);
 let mainWindow = null;
@@ -31556,7 +31550,7 @@ function createSaveBoundsHandler(window2, storeKey) {
   return debounce(() => {
     if (window2 && !window2.isDestroyed() && !window2.isMinimized()) {
       const bounds = window2.getBounds();
-      debug$b(MODULE_NAME$f, `Saving bounds for ${String(storeKey)}:`, bounds);
+      debug$b(MODULE_NAME$e, `Saving bounds for ${String(storeKey)}:`, bounds);
       store$2.set(storeKey, bounds);
     }
   }, 500);
@@ -31564,42 +31558,43 @@ function createSaveBoundsHandler(window2, storeKey) {
 function getIconPath() {
   const isProd = app$1.isPackaged;
   const vitePublic = process.env.VITE_PUBLIC;
-  const resourcesPath = process.resourcesPath;
+  process.resourcesPath;
   let iconPath = "";
-  const basePath = isProd ? resourcesPath : vitePublic;
-  debug$b(MODULE_NAME$f, `Icon Path Check: isProd=${isProd}, basePath=${basePath}`);
+  const appPath = app$1.getAppPath();
+  const basePath = isProd ? appPath : vitePublic;
+  debug$b(MODULE_NAME$e, `Icon Path Check: isProd=${isProd}, basePath=${basePath}`);
   if (basePath && typeof basePath === "string") {
     const isWindows2 = process.platform === "win32";
     const preferredIconFilename = isWindows2 ? "electron-vite.ico" : "electron-vite.svg";
     const iconFullPath = path$m.join(basePath, preferredIconFilename);
-    debug$b(MODULE_NAME$f, `Checking for platform preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
+    debug$b(MODULE_NAME$e, `Checking for platform preferred icon (${preferredIconFilename}) at: ${iconFullPath}`);
     try {
       if (fs$k.existsSync(iconFullPath)) {
         iconPath = iconFullPath;
       } else {
-        error(MODULE_NAME$f, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
+        error(MODULE_NAME$e, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
       }
     } catch (err) {
-      error(MODULE_NAME$f, `Error checking icon path ${iconFullPath}: ${err.message}`);
+      error(MODULE_NAME$e, `Error checking icon path ${iconFullPath}: ${err.message}`);
     }
   } else {
-    error(MODULE_NAME$f, `Base path for icon is invalid or not a string: ${basePath}`);
+    error(MODULE_NAME$e, `Base path for icon is invalid or not a string: ${basePath}`);
   }
   if (iconPath) {
-    info(MODULE_NAME$f, `Using icon path: ${iconPath}`);
+    info(MODULE_NAME$e, `Using icon path: ${iconPath}`);
   } else {
-    warn(MODULE_NAME$f, "Could not find a valid icon path. Windows/Tray might lack an icon.");
+    warn(MODULE_NAME$e, "Could not find a valid icon path. Windows/Tray might lack an icon.");
   }
   return iconPath;
 }
 function getPreloadPath(filename = "preload.mjs") {
   const appRoot = process.env.APP_ROOT;
   if (!appRoot) {
-    error(MODULE_NAME$f, "APP_ROOT not set when trying to get preload path. Cannot proceed.");
+    error(MODULE_NAME$e, "APP_ROOT not set when trying to get preload path. Cannot proceed.");
     return "";
   }
   const mainDist = path$m.join(appRoot, "dist-electron");
-  debug$b(MODULE_NAME$f, `Calculated mainDist for preload: ${mainDist}`);
+  debug$b(MODULE_NAME$e, `Calculated mainDist for preload: ${mainDist}`);
   let preloadPath;
   const possiblePaths = [
     path$m.join(__dirname$2, "..", filename),
@@ -31621,10 +31616,10 @@ function getPreloadPath(filename = "preload.mjs") {
     }
   }
   if (!preloadPath || !fs$k.existsSync(preloadPath)) {
-    warn(MODULE_NAME$f, `Preload script '${filename}' not found at expected locations. Using default path: ${possiblePaths[1]}`);
+    warn(MODULE_NAME$e, `Preload script '${filename}' not found at expected locations. Using default path: ${possiblePaths[1]}`);
     preloadPath = possiblePaths[1];
   }
-  info(MODULE_NAME$f, `Resolved preload path for ${filename}: ${preloadPath}`);
+  info(MODULE_NAME$e, `Resolved preload path for ${filename}: ${preloadPath}`);
   return preloadPath;
 }
 function createMainWindow(onFinishLoad) {
@@ -31676,17 +31671,17 @@ function createMainWindow(onFinishLoad) {
       return savedBounds.x < displayBounds.x + displayBounds.width && savedBounds.x + savedBounds.width > displayBounds.x && savedBounds.y < displayBounds.y + displayBounds.height && savedBounds.y + savedBounds.height > displayBounds.y;
     });
     if (isVisible) {
-      info(MODULE_NAME$f, "Applying saved window bounds:", savedBounds);
+      info(MODULE_NAME$e, "Applying saved window bounds:", savedBounds);
       windowOptions.x = savedBounds.x;
       windowOptions.y = savedBounds.y;
       windowOptions.width = savedBounds.width;
       windowOptions.height = savedBounds.height;
     } else {
-      warn(MODULE_NAME$f, "Saved window bounds are outside visible screen area. Using defaults.");
+      warn(MODULE_NAME$e, "Saved window bounds are outside visible screen area. Using defaults.");
       store$2.delete("windowBounds");
     }
   } else {
-    info(MODULE_NAME$f, `No saved bounds found. Using default size: ${defaultWidth}x${defaultHeight}`);
+    info(MODULE_NAME$e, `No saved bounds found. Using default size: ${defaultWidth}x${defaultHeight}`);
   }
   mainWindow = new BrowserWindow(windowOptions);
   mainExports.attachTitlebarToWindow(mainWindow);
@@ -31698,7 +31693,7 @@ function createMainWindow(onFinishLoad) {
     mainWindow == null ? void 0 : mainWindow.show();
     mainWindow == null ? void 0 : mainWindow.webContents.insertCSS(`
           html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
-        `).catch((err) => error(MODULE_NAME$f, "Failed to insert CSS:", err));
+        `).catch((err) => error(MODULE_NAME$e, "Failed to insert CSS:", err));
   });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow == null ? void 0 : mainWindow.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`);
@@ -31706,8 +31701,8 @@ function createMainWindow(onFinishLoad) {
   });
   const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrl) {
-    info(MODULE_NAME$f, `Loading main window from dev server: ${devServerUrl}`);
-    mainWindow.loadURL(devServerUrl).catch((err) => error(MODULE_NAME$f, "Failed to load main window from dev server:", err));
+    info(MODULE_NAME$e, `Loading main window from dev server: ${devServerUrl}`);
+    mainWindow.loadURL(devServerUrl).catch((err) => error(MODULE_NAME$e, "Failed to load main window from dev server:", err));
   } else {
     const productionIndexUrl = url$1.format({
       pathname: path$m.join(__dirname$2, "..", "dist", "index.html"),
@@ -31715,9 +31710,9 @@ function createMainWindow(onFinishLoad) {
       protocol: "file:",
       slashes: true
     });
-    info(MODULE_NAME$f, `Loading main window from URL: ${productionIndexUrl}`);
+    info(MODULE_NAME$e, `Loading main window from URL: ${productionIndexUrl}`);
     mainWindow.loadURL(productionIndexUrl).catch((err) => {
-      error(MODULE_NAME$f, `Failed to load index.html from ${productionIndexUrl}:`, err);
+      error(MODULE_NAME$e, `Failed to load index.html from ${productionIndexUrl}:`, err);
       if (mainWindow) {
         mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${productionIndexUrl}. Please check application integrity and logs.</p><p>${err}</p>`)}`);
       }
@@ -31725,7 +31720,7 @@ function createMainWindow(onFinishLoad) {
   }
   mainWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
-      info(MODULE_NAME$f, `Opening external link from main window: ${url2}`);
+      info(MODULE_NAME$e, `Opening external link from main window: ${url2}`);
       shell$1.openExternal(url2);
       return { action: "deny" };
     }
@@ -31733,11 +31728,11 @@ function createMainWindow(onFinishLoad) {
   });
   mainWindow.on("close", (event) => {
     if (!isQuitting) {
-      info(MODULE_NAME$f, "Main window close intercepted: Hiding window.");
+      info(MODULE_NAME$e, "Main window close intercepted: Hiding window.");
       event.preventDefault();
       mainWindow == null ? void 0 : mainWindow.hide();
     } else {
-      info(MODULE_NAME$f, "Main window close allowed during quit sequence.");
+      info(MODULE_NAME$e, "Main window close allowed during quit sequence.");
     }
   });
   mainWindow.on("closed", () => {
@@ -31786,34 +31781,34 @@ function createSettingsWindow() {
       return savedSettingsBounds.x < displayBounds.x + displayBounds.width && savedSettingsBounds.x + savedSettingsBounds.width > displayBounds.x && savedSettingsBounds.y < displayBounds.y + displayBounds.height && savedSettingsBounds.y + savedSettingsBounds.height > displayBounds.y;
     });
     if (isVisible) {
-      info(MODULE_NAME$f, "Applying saved settings window bounds:", savedSettingsBounds);
+      info(MODULE_NAME$e, "Applying saved settings window bounds:", savedSettingsBounds);
       settingsWindowOptions.x = savedSettingsBounds.x;
       settingsWindowOptions.y = savedSettingsBounds.y;
       settingsWindowOptions.width = savedSettingsBounds.width;
       settingsWindowOptions.height = savedSettingsBounds.height;
     } else {
-      warn(MODULE_NAME$f, "Saved settings window bounds are outside visible screen area. Using defaults.");
+      warn(MODULE_NAME$e, "Saved settings window bounds are outside visible screen area. Using defaults.");
       store$2.delete("settingsWindowBounds");
     }
   } else {
-    info(MODULE_NAME$f, `No saved settings bounds found. Using default size: ${settingsWindowOptions.width}x${settingsWindowOptions.height}`);
+    info(MODULE_NAME$e, `No saved settings bounds found. Using default size: ${settingsWindowOptions.width}x${settingsWindowOptions.height}`);
   }
   settingsWindow = new BrowserWindow(settingsWindowOptions);
   mainExports.attachTitlebarToWindow(settingsWindow);
   const devServerUrlForSettings = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrlForSettings) {
     const settingsUrl = `${devServerUrlForSettings}/settings.html`;
-    info(MODULE_NAME$f, `Loading settings window from dev server: ${settingsUrl}`);
-    settingsWindow.loadURL(settingsUrl).catch((err) => error(MODULE_NAME$f, "Failed to load settings.html from dev server:", err));
+    info(MODULE_NAME$e, `Loading settings window from dev server: ${settingsUrl}`);
+    settingsWindow.loadURL(settingsUrl).catch((err) => error(MODULE_NAME$e, "Failed to load settings.html from dev server:", err));
   } else {
     const productionSettingsUrl = url$1.format({
       pathname: path$m.join(__dirname$2, "..", "dist", "settings.html"),
       protocol: "file:",
       slashes: true
     });
-    info(MODULE_NAME$f, `Loading settings window from URL: ${productionSettingsUrl}`);
+    info(MODULE_NAME$e, `Loading settings window from URL: ${productionSettingsUrl}`);
     settingsWindow.loadURL(productionSettingsUrl).catch((err) => {
-      error(MODULE_NAME$f, `Failed to load settings.html from ${productionSettingsUrl}:`, err);
+      error(MODULE_NAME$e, `Failed to load settings.html from ${productionSettingsUrl}:`, err);
       if (settingsWindow) {
         settingsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load settings page from ${productionSettingsUrl}.</p><p>${err}</p>`)}`);
       }
@@ -31833,7 +31828,7 @@ function createSettingsWindow() {
   settingsWindow.on("move", saveSettingsBounds);
   settingsWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
-      info(MODULE_NAME$f, `Opening external link from settings window: ${url2}`);
+      info(MODULE_NAME$e, `Opening external link from settings window: ${url2}`);
       shell$1.openExternal(url2);
       return { action: "deny" };
     }
@@ -31842,7 +31837,7 @@ function createSettingsWindow() {
   return settingsWindow;
 }
 function createEventDetailsWindow(eventData, currentUsername2) {
-  info(MODULE_NAME$f, "Request received to create event details window for event:", eventData == null ? void 0 : eventData.id);
+  info(MODULE_NAME$e, "Request received to create event details window for event:", eventData == null ? void 0 : eventData.id);
   const enhancedEventData = {
     ...eventData,
     playerName: currentUsername2 || ""
@@ -31884,48 +31879,48 @@ function createEventDetailsWindow(eventData, currentUsername2) {
       return savedEventDetailsBounds.x < displayBounds.x + displayBounds.width && savedEventDetailsBounds.x + savedEventDetailsBounds.width > displayBounds.x && savedEventDetailsBounds.y < displayBounds.y + displayBounds.height && savedEventDetailsBounds.y + savedEventDetailsBounds.height > displayBounds.y;
     });
     if (isVisible) {
-      info(MODULE_NAME$f, "Applying saved event details window bounds:", savedEventDetailsBounds);
+      info(MODULE_NAME$e, "Applying saved event details window bounds:", savedEventDetailsBounds);
       detailsWindowOptions.x = savedEventDetailsBounds.x;
       detailsWindowOptions.y = savedEventDetailsBounds.y;
       detailsWindowOptions.width = savedEventDetailsBounds.width;
       detailsWindowOptions.height = savedEventDetailsBounds.height;
     } else {
-      warn(MODULE_NAME$f, "Saved event details window bounds are outside visible screen area. Using defaults.");
+      warn(MODULE_NAME$e, "Saved event details window bounds are outside visible screen area. Using defaults.");
       store$2.delete("eventDetailsWindowBounds");
     }
   } else {
-    info(MODULE_NAME$f, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
+    info(MODULE_NAME$e, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
   }
   const detailsWindow = new BrowserWindow(detailsWindowOptions);
   mainExports.attachTitlebarToWindow(detailsWindow);
   detailsWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
-      info(MODULE_NAME$f, `Opening external link from details window: ${url2}`);
+      info(MODULE_NAME$e, `Opening external link from details window: ${url2}`);
       shell$1.openExternal(url2);
       return { action: "deny" };
     }
-    warn(MODULE_NAME$f, `Denying window open request for non-external URL: ${url2}`);
+    warn(MODULE_NAME$e, `Denying window open request for non-external URL: ${url2}`);
     return { action: "deny" };
   });
   const devServerUrlForDetails = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrlForDetails) {
     const detailsUrl = `${devServerUrlForDetails}/event-details.html`;
-    info(MODULE_NAME$f, `Loading event details window from dev server: ${detailsUrl}`);
-    detailsWindow.loadURL(detailsUrl).catch((err) => error(MODULE_NAME$f, "Failed to load event-details.html from dev server:", err));
+    info(MODULE_NAME$e, `Loading event details window from dev server: ${detailsUrl}`);
+    detailsWindow.loadURL(detailsUrl).catch((err) => error(MODULE_NAME$e, "Failed to load event-details.html from dev server:", err));
   } else {
     const productionDetailsUrl = url$1.format({
       pathname: path$m.join(__dirname$2, "..", "dist", "event-details.html"),
       protocol: "file:",
       slashes: true
     });
-    info(MODULE_NAME$f, `Loading event details window from URL: ${productionDetailsUrl}`);
+    info(MODULE_NAME$e, `Loading event details window from URL: ${productionDetailsUrl}`);
     detailsWindow.loadURL(productionDetailsUrl).catch((err) => {
-      error(MODULE_NAME$f, `Failed to load event-details.html from ${productionDetailsUrl}:`, err);
+      error(MODULE_NAME$e, `Failed to load event-details.html from ${productionDetailsUrl}:`, err);
       detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${productionDetailsUrl}.</p><p>${err}</p>`)}`);
     });
   }
   detailsWindow.once("ready-to-show", () => {
-    info(MODULE_NAME$f, "Event details window ready-to-show");
+    info(MODULE_NAME$e, "Event details window ready-to-show");
     detailsWindow.show();
     detailsWindow.focus();
     detailsWindow.webContents.openDevTools();
@@ -31933,7 +31928,7 @@ function createEventDetailsWindow(eventData, currentUsername2) {
   detailsWindow.on("closed", () => {
     if ((activeEventDataForWindow == null ? void 0 : activeEventDataForWindow.id) === eventData.id) {
       activeEventDataForWindow = null;
-      debug$b(MODULE_NAME$f, `Cleared activeEventDataForWindow for event ${eventData.id}`);
+      debug$b(MODULE_NAME$e, `Cleared activeEventDataForWindow for event ${eventData.id}`);
     }
   });
   const saveEventDetailsBounds = createSaveBoundsHandler(detailsWindow, "eventDetailsWindowBounds");
@@ -31946,7 +31941,7 @@ function getMainWindow() {
 }
 function getActiveEventDataForWindow() {
   const dataToReturn = activeEventDataForWindow;
-  debug$b(MODULE_NAME$f, "Providing activeEventDataForWindow:", dataToReturn == null ? void 0 : dataToReturn.id);
+  debug$b(MODULE_NAME$e, "Providing activeEventDataForWindow:", dataToReturn == null ? void 0 : dataToReturn.id);
   return dataToReturn;
 }
 function closeAllWindows() {
@@ -31959,7 +31954,7 @@ function closeAllWindows() {
   settingsWindow = null;
   activeEventDataForWindow = null;
 }
-const MODULE_NAME$e = "TrayManager";
+const MODULE_NAME$d = "TrayManager";
 const __filename$2 = fileURLToPath(import.meta.url);
 path$m.dirname(__filename$2);
 let tray = null;
@@ -31968,38 +31963,38 @@ function createTrayMenu() {
   let image = null;
   if (iconPath) {
     try {
-      info(MODULE_NAME$e, `Attempting to create NativeImage from: ${iconPath}`);
+      info(MODULE_NAME$d, `Attempting to create NativeImage from: ${iconPath}`);
       image = nativeImage.createFromPath(iconPath);
       if (image.isEmpty()) {
-        error(MODULE_NAME$e, `NativeImage created from ${iconPath} is empty.`);
+        error(MODULE_NAME$d, `NativeImage created from ${iconPath} is empty.`);
         image = null;
       } else {
-        info(MODULE_NAME$e, `Successfully created NativeImage from: ${iconPath}`);
+        info(MODULE_NAME$d, `Successfully created NativeImage from: ${iconPath}`);
       }
     } catch (imgErr) {
-      error(MODULE_NAME$e, `Error creating NativeImage from path "${iconPath}": ${imgErr.message}`);
+      error(MODULE_NAME$d, `Error creating NativeImage from path "${iconPath}": ${imgErr.message}`);
       image = null;
     }
   } else {
-    warn(MODULE_NAME$e, "No valid icon path found to create NativeImage.");
+    warn(MODULE_NAME$d, "No valid icon path found to create NativeImage.");
   }
   try {
     if (image) {
-      info(MODULE_NAME$e, "Attempting to create tray with NativeImage.");
+      info(MODULE_NAME$d, "Attempting to create tray with NativeImage.");
       tray = new Tray(image);
-      info(MODULE_NAME$e, "Successfully created tray with NativeImage.");
+      info(MODULE_NAME$d, "Successfully created tray with NativeImage.");
     } else {
-      warn(MODULE_NAME$e, "NativeImage is invalid or was not created. Creating empty tray.");
+      warn(MODULE_NAME$d, "NativeImage is invalid or was not created. Creating empty tray.");
       tray = new Tray(nativeImage.createEmpty());
-      info(MODULE_NAME$e, "Successfully created empty tray.");
+      info(MODULE_NAME$d, "Successfully created empty tray.");
     }
   } catch (trayErr) {
-    error(MODULE_NAME$e, `Error during new Tray() constructor: ${trayErr.message}. Falling back to final empty tray attempt.`);
+    error(MODULE_NAME$d, `Error during new Tray() constructor: ${trayErr.message}. Falling back to final empty tray attempt.`);
     try {
       tray = new Tray(nativeImage.createEmpty());
-      warn(MODULE_NAME$e, "Successfully created empty tray as final fallback.");
+      warn(MODULE_NAME$d, "Successfully created empty tray as final fallback.");
     } catch (fallbackErr) {
-      error(MODULE_NAME$e, `FATAL: Failed to create tray even with empty icon as final fallback: ${fallbackErr.message}`);
+      error(MODULE_NAME$d, `FATAL: Failed to create tray even with empty icon as final fallback: ${fallbackErr.message}`);
       return;
     }
   }
@@ -32050,7 +32045,7 @@ function createTrayMenu() {
     {
       label: "Quit",
       click: () => {
-        info(MODULE_NAME$e, "Quit clicked.");
+        info(MODULE_NAME$d, "Quit clicked.");
         setIsQuitting(true);
         app$1.quit();
       }
@@ -32071,15 +32066,15 @@ function createTrayMenu() {
         createMainWindow();
       }
     });
-    success(MODULE_NAME$e, "System tray icon created and configured successfully.");
+    success(MODULE_NAME$d, "System tray icon created and configured successfully.");
   } else {
-    error(MODULE_NAME$e, "Tray icon could not be created after all attempts.");
+    error(MODULE_NAME$d, "Tray icon could not be created after all attempts.");
   }
 }
 function destroyTray() {
   if (tray && !tray.isDestroyed()) {
     tray.destroy();
-    info(MODULE_NAME$e, "System tray icon destroyed.");
+    info(MODULE_NAME$d, "System tray icon destroyed.");
   }
   tray = null;
 }
@@ -33755,7 +33750,7 @@ function watch(paths, options = {}) {
   return watcher2;
 }
 const chokidar = { watch, FSWatcher };
-const MODULE_NAME$d = "ConfigManager";
+const MODULE_NAME$c = "ConfigManager";
 const schema = {
   logFilePath: {
     type: "string",
@@ -33779,14 +33774,14 @@ const schema = {
     type: "string",
     default: "kill-feed"
   },
-  apiUrl: {
-    type: "string",
-    default: ""
-  },
-  apiKey: {
-    type: "string",
-    default: ""
-  },
+  // apiUrl: { // Removed
+  //   type: 'string',
+  //   default: ''
+  // },
+  // apiKey: { // Removed
+  //   type: 'string',
+  //   default: ''
+  // },
   offlineMode: {
     type: "boolean",
     default: false
@@ -33824,14 +33819,14 @@ function getCurrentLogPath() {
 function setLogPath(newPath) {
   const currentPath = getCurrentLogPath();
   if (typeof newPath === "string" && newPath && newPath !== currentPath) {
-    info(MODULE_NAME$d, `Setting log file path to: ${newPath}`);
+    info(MODULE_NAME$c, `Setting log file path to: ${newPath}`);
     store$1.set("logFilePath", newPath);
     return true;
   } else if (newPath === currentPath) {
-    debug$b(MODULE_NAME$d, `Path is already set to: ${newPath}. No change needed.`);
+    debug$b(MODULE_NAME$c, `Path is already set to: ${newPath}. No change needed.`);
     return false;
   }
-  warn(MODULE_NAME$d, `Invalid path provided: ${newPath}`);
+  warn(MODULE_NAME$c, `Invalid path provided: ${newPath}`);
   return false;
 }
 function getShowNotifications() {
@@ -33840,14 +33835,12 @@ function getShowNotifications() {
 function setShowNotifications(value2) {
   store$1.set("showNotifications", value2);
 }
-function getApiUrl() {
-  return store$1.get("apiUrl");
-}
-function getApiKey() {
-  return store$1.get("apiKey");
-}
 function getOfflineMode() {
   return store$1.get("offlineMode");
+}
+function setOfflineMode(offlineMode) {
+  store$1.set("offlineMode", !!offlineMode);
+  info(MODULE_NAME$c, `Offline Mode Updated: ${!!offlineMode}`);
 }
 function getCsvLogPath() {
   return store$1.get("csvLogPath");
@@ -33855,7 +33848,7 @@ function getCsvLogPath() {
 function setCsvLogPath(newPath) {
   if (typeof newPath === "string") {
     store$1.set("csvLogPath", newPath);
-    info(MODULE_NAME$d, "CSV Log Path Updated:", newPath);
+    info(MODULE_NAME$c, "CSV Log Path Updated:", newPath);
     return true;
   }
   return false;
@@ -33907,20 +33900,20 @@ function setFeedMode(mode) {
   if (mode === "player" || mode === "global") {
     store$1.set("feedMode", mode);
   } else {
-    warn(MODULE_NAME$d, `Invalid feed mode specified: ${mode}. Defaulting to 'player'.`);
+    warn(MODULE_NAME$c, `Invalid feed mode specified: ${mode}. Defaulting to 'player'.`);
     store$1.set("feedMode", "player");
   }
 }
 const __filename$1 = fileURLToPath(import.meta.url);
 const __dirname$1 = path$m.dirname(__filename$1);
-const MODULE_NAME$c = "NotificationManager";
+const MODULE_NAME$b = "NotificationManager";
 const VITE_PUBLIC = process.env.VITE_PUBLIC || path$m.join(process.env.APP_ROOT || path$m.join(__dirname$1, "..", ".."), "public");
 const ICON_PATH = path$m.join(VITE_PUBLIC, "electron-vite.svg");
 function showNotification(title2, body2) {
   const shouldShow = getShowNotifications();
   const win = getMainWindow();
   if (!shouldShow) {
-    info(MODULE_NAME$c, `Notification suppressed by user setting: "${title2} - ${body2}"`);
+    info(MODULE_NAME$b, `Notification suppressed by user setting: "${title2} - ${body2}"`);
     win == null ? void 0 : win.webContents.send("log-status", `Notification (Suppressed): ${title2} - ${body2}`);
     return;
   }
@@ -33934,9 +33927,9 @@ function showNotification(title2, body2) {
       // Make noise unless configured otherwise
     });
     notification.show();
-    info(MODULE_NAME$c, `Shown: "${title2} - ${body2}"`);
+    info(MODULE_NAME$b, `Shown: "${title2} - ${body2}"`);
   } else {
-    warn(MODULE_NAME$c, "Notifications not supported on this system.");
+    warn(MODULE_NAME$b, "Notifications not supported on this system.");
     win == null ? void 0 : win.webContents.send("log-status", `Notification (Not Supported): ${title2} - ${body2}`);
   }
 }
@@ -155760,7 +155753,7 @@ makeDispatcher(api.pipeline);
 makeDispatcher(api.connect);
 makeDispatcher(api.upgrade);
 const { EventSource } = requireEventsource();
-const MODULE_NAME$b = "RSIScraper";
+const MODULE_NAME$a = "RSIScraper";
 const defaultProfileData = {
   // Victim defaults
   victimEnlisted: "-",
@@ -155780,7 +155773,7 @@ async function scrapeSingleProfile(username, isAttacker = false) {
   const profileUrl = `https://robertsspaceindustries.com/citizens/${username}`;
   const extractedData = isAttacker ? { attackerEnlisted: "-", attackerRsiRecord: "-", attackerOrg: "-", attackerOrgSid: "-", attackerOrgLogoUrl: "", attackerAffiliatedOrgs: [], attackerPfpUrl: defaultProfileData.attackerPfpUrl } : { victimEnlisted: "-", victimRsiRecord: "-", victimOrg: "-", victimOrgSid: "-", victimOrgLogoUrl: "", victimAffiliatedOrgs: [], victimPfpUrl: defaultProfileData.victimPfpUrl };
   try {
-    info(MODULE_NAME$b, `Scraping RSI profile for ${isAttacker ? "attacker" : "victim"}: ${username} at ${profileUrl}`);
+    info(MODULE_NAME$a, `Scraping RSI profile for ${isAttacker ? "attacker" : "victim"}: ${username} at ${profileUrl}`);
     const response2 = await fetch$2(profileUrl, {
       headers: {
         // Use a realistic User-Agent
@@ -155790,7 +155783,7 @@ async function scrapeSingleProfile(username, isAttacker = false) {
       // 15 second timeout
     });
     if (!response2.ok) {
-      error(MODULE_NAME$b, `Failed to fetch RSI profile for ${username}: Status ${response2.status}`);
+      error(MODULE_NAME$a, `Failed to fetch RSI profile for ${username}: Status ${response2.status}`);
       return extractedData;
     }
     const html2 = await response2.text();
@@ -155862,7 +155855,7 @@ async function scrapeSingleProfile(username, isAttacker = false) {
       else extractedData.victimPfpUrl = pfpUrl;
     }
   } catch (error$12) {
-    error(MODULE_NAME$b, `Error scraping RSI profile for ${username}:`, error$12.message);
+    error(MODULE_NAME$a, `Error scraping RSI profile for ${username}:`, error$12.message);
     return extractedData;
   }
   return extractedData;
@@ -155880,12 +155873,12 @@ async function fetchRsiProfileData(usernames, attackers = []) {
     const isAttacker = attackerSet.has(username);
     const role = isAttacker ? "attacker" : "victim";
     if (cachedEntry && cachedEntry.lastFetched > cacheExpiryTime) {
-      debug$b(MODULE_NAME$b, `Using cached profile data for ${role}: ${username}`);
+      debug$b(MODULE_NAME$a, `Using cached profile data for ${role}: ${username}`);
       results[username] = cachedEntry.data;
       continue;
     }
     if (!fetchEnabled) {
-      info(MODULE_NAME$b, `Profile data fetching disabled. Using ${cachedEntry ? "stale cached" : "default"} data for ${role}: ${username}`);
+      info(MODULE_NAME$a, `Profile data fetching disabled. Using ${cachedEntry ? "stale cached" : "default"} data for ${role}: ${username}`);
       results[username] = cachedEntry ? cachedEntry.data : isAttacker ? { ...defaultProfileData } : { ...defaultProfileData };
       if (!cachedEntry) {
         results[username] = isAttacker ? { attackerEnlisted: "-", attackerRsiRecord: "-", attackerOrg: "-", attackerOrgSid: "-", attackerOrgLogoUrl: "", attackerAffiliatedOrgs: [], attackerPfpUrl: defaultProfileData.attackerPfpUrl } : { victimEnlisted: "-", victimRsiRecord: "-", victimOrg: "-", victimOrgSid: "-", victimOrgLogoUrl: "", victimAffiliatedOrgs: [], victimPfpUrl: defaultProfileData.victimPfpUrl };
@@ -155894,15 +155887,15 @@ async function fetchRsiProfileData(usernames, attackers = []) {
       }
       continue;
     }
-    info(MODULE_NAME$b, `Fetching fresh profile data for ${role}: ${username} (Cache ${cachedEntry ? "expired" : "miss"})`);
+    info(MODULE_NAME$a, `Fetching fresh profile data for ${role}: ${username} (Cache ${cachedEntry ? "expired" : "miss"})`);
     try {
       const scrapedData = await scrapeSingleProfile(username, isAttacker);
       results[username] = scrapedData;
       profileCache[username] = { data: scrapedData, lastFetched: Date.now() };
       cacheNeedsUpdate = true;
-      success(MODULE_NAME$b, `Successfully fetched and cached data for ${username}`);
+      success(MODULE_NAME$a, `Successfully fetched and cached data for ${username}`);
     } catch (error$12) {
-      error(MODULE_NAME$b, `Failed to fetch profile for ${role} ${username}, using ${cachedEntry ? "stale cached" : "default"} data. Error: ${error$12.message}`);
+      error(MODULE_NAME$a, `Failed to fetch profile for ${role} ${username}, using ${cachedEntry ? "stale cached" : "default"} data. Error: ${error$12.message}`);
       if (cachedEntry) {
         results[username] = cachedEntry.data;
       } else {
@@ -155912,74 +155905,9 @@ async function fetchRsiProfileData(usernames, attackers = []) {
   }
   if (cacheNeedsUpdate) {
     setProfileCache(profileCache);
-    info(MODULE_NAME$b, "Profile cache updated in store.");
+    info(MODULE_NAME$a, "Profile cache updated in store.");
   }
   return results;
-}
-const MODULE_NAME$a = "ApiClient";
-async function sendKillToApi(killEvent) {
-  var _a3;
-  if (!killEvent || !killEvent.timestamp) {
-    error(MODULE_NAME$a, "Invalid kill event passed - missing required properties");
-    return null;
-  }
-  const apiUrl = getApiUrl();
-  const apiKey = getApiKey();
-  const offlineMode = getOfflineMode();
-  if (offlineMode) {
-    info(MODULE_NAME$a, "API submission skipped (Offline mode enabled).");
-    return "Local";
-  }
-  if (!apiUrl || !apiKey) {
-    info(MODULE_NAME$a, "API submission skipped (API URL or Key not set).");
-    return "Local";
-  }
-  const data2 = {
-    victim_ship: killEvent.vehicleType === "Player" ? "Player" : killEvent.vehicleType || "Unknown",
-    victim: killEvent.victims[0] || "Unknown",
-    // Assuming single victim for now
-    enlisted: killEvent.victimEnlisted || "-",
-    rsi: (killEvent.victimRsiRecord || "-").replace("#", ""),
-    // Remove '#'
-    weapon: killEvent.weapon || "Unknown",
-    method: killEvent.damageType || "Unknown",
-    loadout_ship: killEvent.playerShip || "Unknown",
-    game_version: killEvent.gameVersion || "",
-    gamemode: ((_a3 = killEvent.gameMode) == null ? void 0 : _a3.toLowerCase()) || "unknown",
-    trackr_version: "2.06",
-    // Hardcoded version from original script - consider making configurable
-    location: killEvent.location || "NONE"
-  };
-  if (data2.rsi === "-") data2.rsi = "-1";
-  let finalApiUrl = apiUrl;
-  if (!finalApiUrl.endsWith("/register-kill")) {
-    finalApiUrl = finalApiUrl.endsWith("/") ? `${finalApiUrl}register-kill` : `${finalApiUrl}/register-kill`;
-  }
-  info(MODULE_NAME$a, `Sending kill data to API: ${finalApiUrl}`);
-  try {
-    const response2 = await fetch$2(finalApiUrl, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "User-Agent": "SC-KillFeeder-Client"
-        // Identify our app
-      },
-      body: JSON.stringify(data2),
-      timeout: 2e4
-      // 20 second timeout
-    });
-    if (!response2.ok) {
-      const errorBody = await response2.text();
-      error(MODULE_NAME$a, `API Error: ${response2.status} - ${errorBody}`);
-      return "Err-Local";
-    }
-    success(MODULE_NAME$a, `Kill data successfully sent to API for event ${killEvent.id}.`);
-    return "API";
-  } catch (error$12) {
-    error(MODULE_NAME$a, `Failed to send kill data to API for event ${killEvent.id}:`, error$12.message);
-    return "Err-Local";
-  }
 }
 const MODULE_NAME$9 = "CsvLogger";
 let killTallyInternal = 0;
@@ -155995,6 +155923,7 @@ const CSV_HEADERS = [
   "Ship",
   "Method",
   "Mode",
+  // Removed "Logged" header
   "GameVersion",
   "TrackRver",
   "Logged",
@@ -156009,14 +155938,10 @@ function escapeCsvValue(value2) {
   str2 = str2.replace(/,/g, "");
   return str2;
 }
-async function logKillToCsv(killEvent, logMode) {
+async function logKillToCsv(killEvent) {
   if (!killEvent || !killEvent.timestamp) {
     error(MODULE_NAME$9, "Invalid kill event passed - missing required properties");
     return;
-  }
-  if (!logMode) {
-    warn(MODULE_NAME$9, 'Invalid logMode passed, defaulting to "Local"');
-    logMode = "Local";
   }
   const csvPath = getCsvLogPath();
   if (!csvPath) {
@@ -156046,8 +155971,7 @@ async function logKillToCsv(killEvent, logMode) {
     Mode: killEvent.gameMode || "Unknown",
     GameVersion: killEvent.gameVersion || "",
     TrackRver: TRACKR_VERSION,
-    Logged: logMode,
-    // Status from API submission
+    // Logged: logMode, // Removed Logged status
     PFP: killEvent.victimPfpUrl || ""
   };
   const csvRow = CSV_HEADERS.map((header) => escapeCsvValue(killData[header])).join(",");
@@ -156253,11 +156177,7 @@ async function processKillEvent(partialEvent, silentMode, destructionLevel = 0) 
   const { isNew } = addOrUpdateEvent(fullEvent);
   const isSignificantEvent = ["Hard", "Combat", "Collision", "Crash", "BleedOut", "Suffocation"].includes(fullEvent.deathType);
   if (isSignificantEvent) {
-    sendKillToApi(fullEvent).then((logMode) => {
-      if (logMode) {
-        logKillToCsv(fullEvent, logMode);
-      }
-    }).catch((err) => error(MODULE_NAME$8, "Error in API/CSV logging chain for event", { id: fullEvent.id }, ":", err));
+    logKillToCsv(fullEvent).catch((err) => error(MODULE_NAME$8, "Error logging event to CSV", { id: fullEvent.id }, ":", err));
     if (!silentMode && fullEvent.isPlayerInvolved) {
       showNotification(
         `${fullEvent.deathType} Event`,
@@ -165577,6 +165497,15 @@ const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
 const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 let socket = null;
 let isAuthenticated = false;
+let currentStatus = "disconnected";
+function sendConnectionStatus(status) {
+  var _a3;
+  if (status !== currentStatus) {
+    info(MODULE_NAME$4, `Connection status changed: ${currentStatus} -> ${status}`);
+    currentStatus = status;
+    (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("connection-status-changed", status);
+  }
+}
 let logChunkBuffer = [];
 function connectToServer() {
   let tokenToUse = getAccessToken();
@@ -165598,6 +165527,7 @@ function connectToServer() {
     return;
   }
   info(MODULE_NAME$4, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
+  sendConnectionStatus("connecting");
   if (socket) {
     socket.disconnect();
     socket = null;
@@ -165625,14 +165555,17 @@ function connectToServer() {
   socket.on("authenticated", () => {
     info(MODULE_NAME$4, `Server confirmed authentication for socket: ${socket == null ? void 0 : socket.id}`);
     isAuthenticated = true;
+    sendConnectionStatus("connected");
     flushLogBuffer();
   });
   socket.on("disconnect", (reason) => {
     warn(MODULE_NAME$4, `Disconnected from server: ${reason}`);
     isAuthenticated = false;
+    sendConnectionStatus("disconnected");
   });
   socket.on("connect_error", (error$12) => {
     error(MODULE_NAME$4, `Connection error: ${error$12.message}`);
+    sendConnectionStatus("error");
   });
 }
 function disconnectFromServer() {
@@ -165640,6 +165573,7 @@ function disconnectFromServer() {
     info(MODULE_NAME$4, "Disconnecting from server...");
     socket.disconnect();
     socket = null;
+    sendConnectionStatus("disconnected");
   }
 }
 function sendLogChunk(chunk) {
@@ -166001,7 +165935,7 @@ function registerIpcHandlers() {
     };
   });
   ipcMain$1.handle("set-api-settings", (event, settings) => {
-    (void 0)(settings.offlineMode);
+    setOfflineMode(settings.offlineMode);
     return true;
   });
   ipcMain$1.handle("get-csv-log-path", () => {
@@ -166010,6 +165944,24 @@ function registerIpcHandlers() {
   ipcMain$1.handle("set-csv-log-path", (event, newPath) => {
     return setCsvLogPath(newPath);
   });
+  debug$b(MODULE_NAME$2, "Attempting to register handler for 'get-resource-path'...");
+  try {
+    ipcMain$1.handle("get-resource-path", () => {
+      const isProd = app$1.isPackaged;
+      const vitePublic = process.env.VITE_PUBLIC;
+      const resourcesPath = process.resourcesPath;
+      const basePath = isProd ? resourcesPath : vitePublic;
+      debug$b(MODULE_NAME$2, `Providing resource path: ${basePath} (isProd: ${isProd})`);
+      if (basePath && typeof basePath === "string") {
+        return basePath;
+      }
+      error(MODULE_NAME$2, `Could not determine valid resource path. isProd=${isProd}, resourcesPath=${resourcesPath}, vitePublic=${vitePublic}`);
+      return "";
+    });
+    info(MODULE_NAME$2, "Successfully registered handler for 'get-resource-path'.");
+  } catch (error$12) {
+    error(MODULE_NAME$2, `FATAL: Failed to register handler for 'get-resource-path': ${error$12.message}`, error$12.stack);
+  }
   ipcMain$1.handle("open-settings-window", () => {
     createSettingsWindow();
   });
@@ -166095,13 +166047,18 @@ async function onReady() {
   info(MODULE_NAME$1, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
   registerIpcHandlers();
   registerAuthIpcHandlers();
-  info(MODULE_NAME$1, "Initializing authentication...");
-  const canConnect = await initializeAuth();
-  if (canConnect) {
-    info(MODULE_NAME$1, "Auth initialized with a token. Attempting server connection...");
-    connectToServer();
+  if (!getOfflineMode()) {
+    info(MODULE_NAME$1, "Online mode: Initializing authentication...");
+    const canConnect = await initializeAuth();
+    if (canConnect) {
+      info(MODULE_NAME$1, "Auth initialized with a token. Attempting server connection...");
+      connectToServer();
+    } else {
+      warn(MODULE_NAME$1, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
+    }
   } else {
-    warn(MODULE_NAME$1, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
+    info(MODULE_NAME$1, "Offline mode enabled. Skipping initial authentication and server connection.");
+    disconnectFromServer();
   }
   createTrayMenu();
   createMainWindow(async () => {

@@ -89,8 +89,10 @@ export function getIconPath(): string {
     const resourcesPath = process.resourcesPath;
     let iconPath = '';
 
-    // Determine base path: resources in prod, VITE_PUBLIC in dev
-    const basePath = isProd ? resourcesPath : vitePublic;
+    // Determine base path: app root in prod, VITE_PUBLIC in dev
+    // app.getAppPath() usually points to the root of the packaged app (e.g., app.asar or unpacked dir)
+    const appPath = app.getAppPath();
+    const basePath = isProd ? appPath : vitePublic;
     logger.debug(MODULE_NAME, `Icon Path Check: isProd=${isProd}, basePath=${basePath}`);
 
     if (basePath && typeof basePath === 'string') {
