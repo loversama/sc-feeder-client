@@ -64,72 +64,24 @@ const formatTimestamp = (timestamp: string | undefined): string => {
 };
 
 const getHeroBannerImage = (event: KillEvent | null): string => {
-    // Define the fallback image map here
-    const images = {
-      default: 'https://robertsspaceindustries.com/media/yrkicvmlfj52dr/source/Vehicle-Concept-April-2023-Desktop.jpg',
-      combat: [
-        'https://robertsspaceindustries.com/media/b1stn86l5bbzhr/source/SCREDI_ALPHA35-1.png',
-        'https://robertsspaceindustries.com/media/z4rfrth52xgaor/source/MISC-Mining-Vehicle-MOLE-Piece-01-Showroom-V01.jpg',
-        'https://robertsspaceindustries.com/media/xg6evlhshm4xzr/source/CloudImperiumGames_GlaciusFighters.jpg'
-      ],
-      collision: [
-        'https://robertsspaceindustries.com/media/e6a3wocvcmglsr/source/SCREDI_ALPHA35-5.png',
-        'https://robertsspaceindustries.com/media/fky1fjwmif1ckr/source/Carrack-landing.jpg'
-      ],
-      crash: [
-        'https://robertsspaceindustries.com/media/79tgr7e4w0c12r/source/Death.png',
-        'https://robertsspaceindustries.com/media/tyhtes4sxyh4ir/source/JumpPoint_02-08_Aug-14_Area18LandingZone-8.jpg'
-      ],
-      space: [
-        'https://robertsspaceindustries.com/media/nfbxbzn9twfegr/source/Planets-Orison-Landing-Zone.jpg',
-        'https://robertsspaceindustries.com/media/ioco68educaurr/source/Squadron42_2022NewsletterHeader_EB07.jpg'
-      ],
-      bleedout: 'https://robertsspaceindustries.com/media/sz0mccvmljugdr/source/Medical_JumpPoint06.jpg',
-      suffocation: 'https://robertsspaceindustries.com/media/53f7bjlv4f0p9r/source/Anvil-Carrack-v3-Copy.jpg',
-      // Manufacturer specific images are removed as we now use CDN based on vehicleType
-    };
+    // Define the single default banner image
+    const defaultBanner = 'https://cdn.sinfulshadows.com/default.jpg';
 
-   const defaultBanner = images.default;
-   if (!event) return defaultBanner;
+    if (!event) {
+        return defaultBanner;
+    }
 
-   // --- NEW: Prioritize vehicle type from CDN ---
-   if (event.vehicleType && event.vehicleType !== 'Player') {
-       // Attempt to load PNG first. The browser will handle if it fails.
-       // We don't implement a complex JS-based check for PNG vs JPG here.
-       const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType}.png`;
-       // Consider adding .toLowerCase() if vehicleType casing is inconsistent
-       // const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType.toLowerCase()}.png`;
-       return vehicleImageUrl;
-   }
+    // Use CDN image if vehicleType is present and not 'Player'
+    if (event.vehicleType && event.vehicleType !== 'Player') {
+        // Construct the CDN URL. Using .png as requested.
+        // Consider adding .toLowerCase() if vehicleType casing might be inconsistent:
+        // const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType.toLowerCase()}.png`;
+        const vehicleImageUrl = `https://cdn.sinfulshadows.com/${event.vehicleType.toLowerCase()}.jpg`;
+        return vehicleImageUrl;
+    }
 
-   // --- Fallback Logic (if no vehicleType or it's 'Player') ---
-   const getRandomImage = (category: keyof typeof images) => {
-        // Ensure 'images' is accessible here or passed in if scope changes
-        const categoryImages = images[category] || images.default; // Fallback to default category
-        if (Array.isArray(categoryImages)) {
-            return categoryImages[Math.floor(Math.random() * categoryImages.length)];
-        }
-        // Ensure we return a string, even if the category doesn't exist or isn't an array
-        return typeof categoryImages === 'string' ? categoryImages : images.default;
-    };
-
-    const deathType = event.deathType?.toLowerCase();
-
-    // Handle specific death types first
-    if (deathType === 'bleedout') return images.bleedout || defaultBanner;
-    if (deathType === 'suffocation') return images.suffocation || defaultBanner;
-
-    // Handle categories that might have arrays (Combat, Collision, Crash)
-    if (deathType === 'combat') return getRandomImage('combat');
-    if (deathType === 'collision') return getRandomImage('collision');
-    if (deathType === 'crash') return getRandomImage('crash');
-
-    // Handle location
-    const location = event.location?.toLowerCase() || '';
-    if (location.includes('space') || location.includes('station')) return getRandomImage('space');
-
-    // Final fallback
-    return getRandomImage('default'); // Use the helper for the final default
+    // Otherwise, return the default banner
+    return defaultBanner;
 };
 
 
@@ -422,7 +374,7 @@ display: none !important;
 }
 .hero-image {
   position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  background-size: cover; background-position: center 30%; z-index: -1;
+  background-size: cover; background-position: center 30%; z-index: 0;
 }
 .hero-content-alignment {
   position: absolute; top: 0; left: 0; right: 0; bottom: 0;
