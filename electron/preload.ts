@@ -147,7 +147,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // Title bar implementation
   new Titlebar({
     iconSize: 60,
-    overflow: 'auto',
     enableMnemonics: true,
     backgroundColor: TitlebarColor.TRANSPARENT,
     removeMenuBar: true,
