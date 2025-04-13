@@ -13,7 +13,7 @@ const MODULE_NAME = 'NotificationManager'; // Define module name for logger
 
 // --- Constants ---
 const VITE_PUBLIC = process.env.VITE_PUBLIC || path.join(process.env.APP_ROOT || path.join(__dirname, '..', '..'), 'public');
-const ICON_PATH = path.join(VITE_PUBLIC, 'electron-vite.svg'); // Adjust if icon name/path changes
+const ICON_PATH = path.join(VITE_PUBLIC, 'voidlog-icon.png'); // Adjust if icon name/path changes
 
 // --- Function ---
 

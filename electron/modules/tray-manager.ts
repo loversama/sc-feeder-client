@@ -31,46 +31,25 @@ export function createTrayMenu() {
     // Get the icon path using the centralized function from window-manager
     const iconPath = getIconPath(); // This function now handles dev/prod paths
 
-    // Attempt to create NativeImage first
-    let image: Electron.NativeImage | null = null;
-    if (iconPath) {
-        try {
-            logger.info(MODULE_NAME, `Attempting to create NativeImage from: ${iconPath}`);
-            image = nativeImage.createFromPath(iconPath);
-            if (image.isEmpty()) {
-                logger.error(MODULE_NAME, `NativeImage created from ${iconPath} is empty.`);
-                image = null; // Treat as failure
-            } else {
-                 logger.info(MODULE_NAME, `Successfully created NativeImage from: ${iconPath}`);
-            }
-        } catch (imgErr: any) {
-            logger.error(MODULE_NAME, `Error creating NativeImage from path "${iconPath}": ${imgErr.message}`);
-            image = null; // Treat as failure
-        }
-    } else {
-         logger.warn(MODULE_NAME, "No valid icon path found to create NativeImage.");
-    }
-
-    // Create Tray with image or fallback to empty
+    // Create Tray directly using the icon path string
     try {
-        if (image) {
-            logger.info(MODULE_NAME, "Attempting to create tray with NativeImage.");
-            tray = new Tray(image);
-            logger.info(MODULE_NAME, "Successfully created tray with NativeImage.");
+        if (iconPath && fsSync.existsSync(iconPath)) { // Check if path is valid and exists
+            logger.info(MODULE_NAME, `Attempting to create tray directly with path: ${iconPath}`);
+            tray = new Tray(iconPath); // Pass the path string directly
+            logger.info(MODULE_NAME, "Successfully created tray with path.");
         } else {
-            logger.warn(MODULE_NAME, "NativeImage is invalid or was not created. Creating empty tray.");
-            tray = new Tray(nativeImage.createEmpty());
-            logger.info(MODULE_NAME, "Successfully created empty tray.");
+            logger.warn(MODULE_NAME, `Icon path "${iconPath}" is invalid or file does not exist. Creating empty tray.`);
+            tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+            logger.info(MODULE_NAME, "Successfully created empty tray as fallback.");
         }
     } catch (trayErr: any) {
-        // Catch errors from new Tray() constructor itself
-        logger.error(MODULE_NAME, `Error during new Tray() constructor: ${trayErr.message}. Falling back to final empty tray attempt.`);
+        logger.error(MODULE_NAME, `Error creating tray (even with path/fallback): ${trayErr.message}. Final attempt with empty.`);
         try {
-            tray = new Tray(nativeImage.createEmpty());
-            logger.warn(MODULE_NAME, "Successfully created empty tray as final fallback.");
-        } catch (fallbackErr: any) {
-            logger.error(MODULE_NAME, `FATAL: Failed to create tray even with empty icon as final fallback: ${fallbackErr.message}`);
-            return;
+             tray = new Tray(nativeImage.createEmpty()); // Final fallback
+             logger.warn(MODULE_NAME, "Successfully created empty tray as final fallback.");
+        } catch (finalErr: any) {
+             logger.error(MODULE_NAME, `FATAL: Failed to create tray even with empty icon as final fallback: ${finalErr.message}`);
+             return; // Cannot create tray
         }
     }
 

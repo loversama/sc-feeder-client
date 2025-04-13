@@ -11,7 +11,7 @@ var __privateAdd = (obj, member, value2) => member.has(obj) ? __typeError("Canno
 var __privateSet = (obj, member, value2, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value2) : member.set(obj, value2), value2);
 var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
 var _validator, _encryptionKey, _options, _defaultValues, _dispatcher, _dispatch, _a2;
-import require$$1$7, { screen, app as app$1, BrowserWindow, shell as shell$1, nativeImage, Tray, Menu, Notification, ipcMain as ipcMain$1, dialog, globalShortcut } from "electron";
+import require$$1$7, { screen, app as app$1, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, ipcMain as ipcMain$1, dialog, globalShortcut } from "electron";
 import require$$1$4, { unwatchFile, watchFile, watch as watch$1, stat as stat$7 } from "fs";
 import require$$0$2 from "constants";
 import Stream$1 from "stream";
@@ -31561,7 +31561,7 @@ function getIconPath() {
   const appPath = app$1.getAppPath();
   let iconPath = "";
   const isWindows2 = process.platform === "win32";
-  const preferredIconFilename = isWindows2 ? "electron-vite.ico" : "electron-vite.svg";
+  const preferredIconFilename = isWindows2 ? "voidlog-icon.ico" : "voidlog-icon.png";
   let basePath = "";
   if (isProd) {
     basePath = process.resourcesPath;
@@ -31580,13 +31580,13 @@ function getIconPath() {
       } else {
         error(MODULE_NAME$e, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
         if (isWindows2) {
-          const fallbackSvgPath = path$m.join(basePath, "electron-vite.svg");
-          warn(MODULE_NAME$e, `Windows ICO not found, checking for SVG fallback: ${fallbackSvgPath}`);
-          if (fs$k.existsSync(fallbackSvgPath)) {
-            iconPath = fallbackSvgPath;
-            info(MODULE_NAME$e, `Found fallback SVG icon at: ${iconPath}`);
+          const fallbackPngPath = path$m.join(basePath, "voidlog-icon.png");
+          warn(MODULE_NAME$e, `Windows ICO not found, checking for PNG fallback: ${fallbackPngPath}`);
+          if (fs$k.existsSync(fallbackPngPath)) {
+            iconPath = fallbackPngPath;
+            info(MODULE_NAME$e, `Found fallback PNG icon at: ${iconPath}`);
           } else {
-            error(MODULE_NAME$e, `Fallback SVG icon also not found at ${fallbackSvgPath}.`);
+            error(MODULE_NAME$e, `Fallback PNG icon also not found at ${fallbackPngPath}.`);
           }
         }
       }
@@ -31974,41 +31974,23 @@ path$m.dirname(__filename$2);
 let tray = null;
 function createTrayMenu() {
   const iconPath = getIconPath();
-  let image = null;
-  if (iconPath) {
-    try {
-      info(MODULE_NAME$d, `Attempting to create NativeImage from: ${iconPath}`);
-      image = nativeImage.createFromPath(iconPath);
-      if (image.isEmpty()) {
-        error(MODULE_NAME$d, `NativeImage created from ${iconPath} is empty.`);
-        image = null;
-      } else {
-        info(MODULE_NAME$d, `Successfully created NativeImage from: ${iconPath}`);
-      }
-    } catch (imgErr) {
-      error(MODULE_NAME$d, `Error creating NativeImage from path "${iconPath}": ${imgErr.message}`);
-      image = null;
-    }
-  } else {
-    warn(MODULE_NAME$d, "No valid icon path found to create NativeImage.");
-  }
   try {
-    if (image) {
-      info(MODULE_NAME$d, "Attempting to create tray with NativeImage.");
-      tray = new Tray(image);
-      info(MODULE_NAME$d, "Successfully created tray with NativeImage.");
+    if (iconPath && fs$k.existsSync(iconPath)) {
+      info(MODULE_NAME$d, `Attempting to create tray directly with path: ${iconPath}`);
+      tray = new Tray(iconPath);
+      info(MODULE_NAME$d, "Successfully created tray with path.");
     } else {
-      warn(MODULE_NAME$d, "NativeImage is invalid or was not created. Creating empty tray.");
+      warn(MODULE_NAME$d, `Icon path "${iconPath}" is invalid or file does not exist. Creating empty tray.`);
       tray = new Tray(nativeImage.createEmpty());
-      info(MODULE_NAME$d, "Successfully created empty tray.");
+      info(MODULE_NAME$d, "Successfully created empty tray as fallback.");
     }
   } catch (trayErr) {
-    error(MODULE_NAME$d, `Error during new Tray() constructor: ${trayErr.message}. Falling back to final empty tray attempt.`);
+    error(MODULE_NAME$d, `Error creating tray (even with path/fallback): ${trayErr.message}. Final attempt with empty.`);
     try {
       tray = new Tray(nativeImage.createEmpty());
       warn(MODULE_NAME$d, "Successfully created empty tray as final fallback.");
-    } catch (fallbackErr) {
-      error(MODULE_NAME$d, `FATAL: Failed to create tray even with empty icon as final fallback: ${fallbackErr.message}`);
+    } catch (finalErr) {
+      error(MODULE_NAME$d, `FATAL: Failed to create tray even with empty icon as final fallback: ${finalErr.message}`);
       return;
     }
   }
@@ -33922,7 +33904,7 @@ const __filename$1 = fileURLToPath(import.meta.url);
 const __dirname$1 = path$m.dirname(__filename$1);
 const MODULE_NAME$b = "NotificationManager";
 const VITE_PUBLIC = process.env.VITE_PUBLIC || path$m.join(process.env.APP_ROOT || path$m.join(__dirname$1, "..", ".."), "public");
-const ICON_PATH = path$m.join(VITE_PUBLIC, "electron-vite.svg");
+const ICON_PATH = path$m.join(VITE_PUBLIC, "voidlog-icon.png");
 function showNotification(title2, body2) {
   const shouldShow = getShowNotifications();
   const win = getMainWindow();
@@ -165505,9 +165487,10 @@ async function initializeAuth() {
   return connectionReady;
 }
 const MODULE_NAME$4 = "ServerConnection";
-process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production";
+const DEV_SERVER_URL = "ws://localhost:5324";
 const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
-const SERVER_URL = PROD_SERVER_URL;
+const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 let socket = null;
 let isAuthenticated = false;
 let currentStatus = "disconnected";

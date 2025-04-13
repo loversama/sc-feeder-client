@@ -91,7 +91,7 @@ export function getIconPath(): string {
 
     // Determine the platform-specific preferred icon filename
     const isWindows = process.platform === 'win32';
-    const preferredIconFilename = isWindows ? 'electron-vite.ico' : 'electron-vite.svg';
+    const preferredIconFilename = isWindows ? 'voidlog-icon.ico' : 'voidlog-icon.png';
 
     let basePath = '';
     if (isProd) {
@@ -115,13 +115,13 @@ export function getIconPath(): string {
                   logger.error(MODULE_NAME, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
                   // Optional: Check for fallback SVG on Windows if ICO failed?
                   if (isWindows) {
-                      const fallbackSvgPath = path.join(basePath, 'electron-vite.svg');
-                      logger.warn(MODULE_NAME, `Windows ICO not found, checking for SVG fallback: ${fallbackSvgPath}`);
-                      if (fsSync.existsSync(fallbackSvgPath)) {
-                          iconPath = fallbackSvgPath;
-                          logger.info(MODULE_NAME, `Found fallback SVG icon at: ${iconPath}`);
+                      const fallbackPngPath = path.join(basePath, 'voidlog-icon.png'); // Fallback to PNG
+                      logger.warn(MODULE_NAME, `Windows ICO not found, checking for PNG fallback: ${fallbackPngPath}`);
+                      if (fsSync.existsSync(fallbackPngPath)) {
+                          iconPath = fallbackPngPath;
+                          logger.info(MODULE_NAME, `Found fallback PNG icon at: ${iconPath}`);
                       } else {
-                           logger.error(MODULE_NAME, `Fallback SVG icon also not found at ${fallbackSvgPath}.`);
+                           logger.error(MODULE_NAME, `Fallback PNG icon also not found at ${fallbackPngPath}.`);
                       }
                   }
              }

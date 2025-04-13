@@ -10,8 +10,7 @@ const MODULE_NAME = 'ServerConnection';
 const isProduction = process.env.NODE_ENV === 'production';
 const DEV_SERVER_URL = 'ws://localhost:5324'; // Use ws:// for local dev
 const PROD_SERVER_URL = 'wss://server-killfeed.sinfulshadows.com'; // Use wss:// for production
-// Temporarily force DEV server for testing the built app locally
-const SERVER_URL = PROD_SERVER_URL; // isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
+const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 
 let socket: Socket | null = null;
 let isAuthenticated = false; // Track authentication status
