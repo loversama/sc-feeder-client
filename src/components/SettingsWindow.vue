@@ -687,6 +687,7 @@ display: none !important;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: calc(100% - 100px); /* Adjust based on button width */
+  min-width: 0; /* Allow shrinking in flexbox for ellipsis */
 }
 
 .action-button {

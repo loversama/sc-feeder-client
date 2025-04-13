@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
-import SettingsPage from './pages/SettingsPage.vue'
+// import SettingsPage from './pages/SettingsPage.vue' // Removed settings page import
 
 // --- Window Control Methods ---
 const minimizeWindow = () => {
@@ -20,7 +20,12 @@ const activePage = ref<string>('kill-feed') // Default page
 
 onMounted(async () => {
   try {
-    const lastPage = await window.logMonitorApi.getLastActivePage()
+    let lastPage = await window.logMonitorApi.getLastActivePage()
+    // Default to kill-feed if the last page was the removed settings page
+    if (lastPage === 'settings') {
+      lastPage = 'kill-feed';
+      window.logMonitorApi.setLastActivePage('kill-feed'); // Update stored preference
+    }
     if (lastPage) {
       activePage.value = lastPage
     }
@@ -30,6 +35,11 @@ onMounted(async () => {
 })
 
 const changePage = (page: string) => {
+  // Prevent changing to the removed settings page
+  if (page === 'settings') {
+    console.warn("Attempted to navigate to removed 'settings' page. Ignoring.");
+    return;
+  }
   activePage.value = page
   window.logMonitorApi.setLastActivePage(page)
     .catch(error => console.error('Failed to save active page preference:', error))
@@ -37,8 +47,11 @@ const changePage = (page: string) => {
 
 // Listener for page change requests from the main process (via tray menu)
 const handlePageChange = (_event: Electron.IpcRendererEvent, page: unknown) => {
-  if (page && typeof page === 'string') {
+  // Prevent changing to the removed settings page via IPC
+  if (page && typeof page === 'string' && page !== 'settings') {
     changePage(page);
+  } else if (page === 'settings') {
+     console.warn("Received request to change to removed 'settings' page via IPC. Ignoring.");
   }
 };
 
@@ -84,8 +97,8 @@ onUnmounted(() => {
     <!-- Page content -->
     <main class="content-container flex-1"> <!-- Removed overflow-auto and p-4 -->
       <KillFeedPage v-if="activePage === 'kill-feed'" />
-      <!-- <DebugPage v-else-if="activePage === 'debug'" /> --> <!-- Removed - Moved to Settings -->
-      <SettingsPage v-else-if="activePage === 'settings'" />
+      <!-- <DebugPage v-else-if="activePage === 'debug'" /> --> <!-- Debug page was previously removed -->
+      <!-- <SettingsPage v-else-if="activePage === 'settings'" /> --> <!-- Removed settings page rendering -->
     </main>
   </div>
 </template>

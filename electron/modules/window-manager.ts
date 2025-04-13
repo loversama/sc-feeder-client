@@ -355,8 +355,12 @@ export function createSettingsWindow(): BrowserWindow | null {
 
     // --- Settings Window Bounds ---
     const savedSettingsBounds = store.get('settingsWindowBounds');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const screenWidth = primaryDisplay.workAreaSize.width;
+    const defaultSettingsWidth = Math.floor(screenWidth * 0.38); // Calculate 38% of screen width
+
     const settingsWindowOptions: Electron.BrowserWindowConstructorOptions = {
-        width: 800,
+        width: defaultSettingsWidth, // Use calculated width
         height: 650,
         x: undefined,
         y: undefined,

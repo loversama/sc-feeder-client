@@ -2,7 +2,7 @@
   "name": "SC-Feeder-Client",
   "productName": "SC Feeder Client",
   "private": true,
-  "version": "0.0.21-alpha.0",
+  "version": "0.0.22-alpha.0",
   "type": "module",
   "scripts": {
     "dev": "cross-env FORCE_COLOR=1 vite",
