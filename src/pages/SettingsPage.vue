@@ -15,69 +15,20 @@ const openSettings = () => {
 </script>
 
 <template>
-  <div class="page-container placeholder-container">
-    <header class="page-header">
-      <h1>{{ pageTitle }}</h1>
-    </header>
-    <main class="page-content">
-      <p>Settings are now managed in a separate window.</p>
-      <button @click="openSettings" class="action-button">Open Settings Window</button>
-      <p>(You can also open Settings from the tray menu)</p>
+  <div class="flex flex-col h-screen w-full overflow-hidden bg-theme-bg-dark text-theme-text-light">
+    <!-- Mimic KillFeedPage structure: page-container -> page-content -->
+    <main class="flex-1 overflow-auto flex flex-col items-center justify-center text-center p-4">
+      <!-- Content is now centered within the main area -->
+      <div class="p-10"> <!-- Added a wrapper for padding -->
+        <h1 class="text-2xl font-semibold mb-6 text-theme-text-title">{{ pageTitle }}</h1>
+        <p class="mb-5 text-theme-text-muted">Settings are now managed in a separate window.</p>
+        <button @click="openSettings" class="bg-theme-accent hover:bg-theme-accent-hover text-white font-bold py-2 px-4 rounded transition duration-200 mb-4">
+          Open Settings Window
+        </button>
+        <p class="text-sm text-theme-text-muted">(You can also open Settings from the tray menu)</p>
+      </div>
     </main>
   </div>
 </template>
 
-<style scoped>
-.placeholder-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  align-items: center; /* Center content */
-  justify-content: center; /* Center content */
-  text-align: center;
-  background-color: #1e1e1e;
-  color: #ddd;
-}
-
-.page-header {
-  padding: 15px 20px;
-  background-color: #1a1a1a;
-  border-bottom: 1px solid #333;
-  width: 100%; /* Make header full width */
-  box-sizing: border-box; /* Include padding in width */
-  text-align: left; /* Align header text left */
-}
-
-.page-header h1 {
-  margin: 0;
-  color: #2ecc71;
-  font-size: 1.6em;
-  font-weight: 500;
-}
-
-.page-content {
-  padding: 40px;
-}
-
-.page-content p {
-  margin-bottom: 20px;
-  color: #bbb;
-}
-
-.action-button {
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 20px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 1em;
-  margin-bottom: 15px;
-}
-
-.action-button:hover {
-  background-color: #2980b9;
-}
-</style>
+<!-- Removed scoped styles, using Tailwind utilities now -->

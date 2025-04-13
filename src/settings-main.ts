@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 console.log('[settings-main.ts] Script executing...'); // Add early log
+import './style.css'; // Import global styles
 import SettingsWindow from './components/SettingsWindow.vue'
 
 // Create and mount the Settings Vue app

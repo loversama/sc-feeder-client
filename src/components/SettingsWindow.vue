@@ -11,7 +11,7 @@ const categories = ref([
   { id: 'general', name: 'GENERAL' },
   { id: 'killfeed', name: 'KILL FEED' },
   { id: 'notifications', name: 'NOTIFICATIONS' },
-  { id: 'data_api', name: 'DATA & API' },
+  { id: 'data_api', name: 'DATA &amp; API' },
   { id: 'account', name: 'ACCOUNT' },
   { id: 'debug', name: 'DEBUG' }, // Add Debug category
   { id: 'about', name: 'ABOUT' },
@@ -416,9 +416,9 @@ const setStatus = (msg: string, duration = 3000) => {
         </div>
       </section>
 
-      <!-- Data & API Settings -->
+      <!-- Data &amp; API Settings -->
       <section v-if="activeCategory === 'data_api'">
-        <h3 class="content-title">DATA & API</h3>
+        <h3 class="content-title">DATA &amp; API</h3>
 
         <!-- API URL Removed -->
         <!-- API Key Removed -->
@@ -531,6 +531,11 @@ const setStatus = (msg: string, duration = 3000) => {
 </template>
 
 <style>
+
+.cet-title.cet-title-center {
+display: none !important;
+}
+
 .cet-container {
   position: relative !important;
   top: 0px !important;
@@ -538,12 +543,6 @@ const setStatus = (msg: string, duration = 3000) => {
   overflow: auto;
   z-index: 1;
   }
-
-
-.cet-title.cet-title-center {
-display: none !important;
-}
-
 
 .cet-drag-region {
   /* padding-bottom: 80px; */
@@ -565,72 +564,303 @@ display: none !important;
   user-select: none; /* Prevent text selection */
 }
 
-.window-controls {
-  -webkit-app-region: no-drag; /* Prevent dragging on controls */
+/* Styles specific to the Settings Window */
+.settings-container {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 100%;
-  padding: 0 8px;
-
+  height: 100vh;
+  background-color: #1e1e1e; /* Dark background */
+  color: #e0e0e0; /* Light text */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  overflow: hidden; /* Prevent container scroll */
 }
 
-/* Make controls non-draggable */
-.window-controls
- button,
-.title-bar .flex-grow a /* Ensure nav links are clickable */ {
-  -webkit-app-region: no-drag;
-}
-
-/* Basic styling for window controls */
-.window-controls button {
-  background: none;
-  border: none;
-  padding: 4px 8px;
-  color: theme('colors.theme-text-light');
-  border-radius: 4px;
-  transition: background-color 0.2s ease;
-}
-
-.window-controls button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-.window-controls button.close-button:hover {
-  background-color: theme('colors.red.600'); /* Use Tailwind red for close hover */
-  color: theme('colors.theme-text-white');
-}
-
-/* Ensure app container fills the viewport */
-.app-container {
+.settings-sidebar {
+  width: 200px;
+  background-color: #1a1a1a; /* Slightly darker panel */
+  padding: 20px 0;
+  border-right: 1px solid #333;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden; /* Prevent body scrollbars */
+  flex-shrink: 0;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: theme('colors.theme-bg-dark');
-}
-
-::-webkit-scrollbar-thumb {
-  background: theme('colors.theme-bg-panel');
-  border-radius: 5px;
-  border: 1px solid theme('colors.theme-border');
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: theme('colors.theme-border');
-}
-
-/* Remove default body margin added by some browsers */
-body {
+.sidebar-title {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #aaa;
+  padding: 0 20px 10px 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   margin: 0;
 }
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-nav li {
+  padding: 10px 20px;
+  cursor: pointer;
+  font-size: 0.9em;
+  color: #ccc;
+  border-left: 3px solid transparent;
+  transition: background-color 0.2s ease, border-left-color 0.2s ease;
+}
+
+.sidebar-nav li:hover {
+  background-color: #2a2a2a;
+}
+
+.sidebar-nav li.active {
+  background-color: #50452c; /* Active item background */
+  color: #ffffff;
+  border-left-color: #db7134; /* Active item indicator */
+  font-weight: 500;
+}
+
+.settings-content {
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto; /* Allow content scrolling */
+}
+
+.content-title {
+  font-size: 1.4em;
+  font-weight: 500;
+  color: #ffffff;
+  margin-top: 0;
+  margin-bottom: 25px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #333;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #282828; /* Subtle separator */
+}
+.setting-item:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.setting-name {
+  width: 180px; /* Fixed width for labels */
+  flex-shrink: 0;
+  font-size: 0.9em;
+  color: #bbb;
+  padding-right: 20px;
+}
+
+.setting-control {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px; /* Space between elements in control area */
+}
+
+.setting-description {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: -10px; /* Pull description closer to item */
+  margin-bottom: 20px;
+  padding-left: 180px; /* Align with controls */
+}
+
+/* Specific Control Styles */
+.file-path-control {
+  justify-content: space-between;
+}
+.file-path {
+  background-color: #2a2a2a;
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85em;
+  color: #ccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: calc(100% - 100px); /* Adjust based on button width */
+}
+
+.action-button {
+  background-color: #db7134; /* Blue */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 15px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.action-button:hover {
+  background-color: #db5b34;
+}
+.action-button.danger-button {
+  background-color: #e74c3c; /* Red */
+}
+.action-button.danger-button:hover {
+  background-color: #c0392b;
+}
+.action-button:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+
+.radio-group label {
+  margin-right: 15px;
+  font-size: 0.9em;
+  display: inline-flex;
+  align-items: center;
+}
+.radio-group input[type="radio"] {
+  margin-right: 5px;
+}
+
+.select-control {
+  background-color: #2a2a2a;
+  padding: 8px 12px;
+  border-radius: 3px;
+  border: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: not-allowed; /* Indicate non-functional */
+  width: 150px; /* Example width */
+  color: #aaa;
+}
+.select-control .arrow {
+  font-size: 1.2em;
+}
+
+.text-input {
+  background-color: #2a2a2a;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  padding: 8px 10px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  width: 100%; /* Make inputs fill control area */
+  box-sizing: border-box;
+}
+.text-input:focus {
+  outline: none;
+  border-color: #db7134;
+}
+.text-input::placeholder {
+  color: #666;
+}
+
+/* Switch Toggle Styles */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px; /* Smaller width */
+  height: 20px; /* Smaller height */
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #444;
+  transition: .4s;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px; /* Smaller handle */
+  width: 16px;  /* Smaller handle */
+  left: 2px;    /* Adjust position */
+  bottom: 2px;  /* Adjust position */
+  background-color: white;
+  transition: .4s;
+}
+input:checked + .slider {
+  background-color: #db7134; /* Blue when checked */
+}
+input:focus + .slider {
+  box-shadow: 0 0 1px #db7134;
+}
+input:checked + .slider:before {
+  transform: translateX(20px); /* Adjust translation */
+}
+.slider.round {
+  border-radius: 20px; /* Adjust radius */
+}
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* Action Item - for buttons not directly editing a value */
+.setting-item.action-item {
+  justify-content: flex-end; /* Align button to the right */
+  padding-top: 10px;
+}
+.setting-item.action-item .setting-name {
+  /* Optionally hide label if button is self-explanatory */
+   /* display: none; */
+}
+.setting-item.action-item .setting-control {
+  flex: 0 0 auto; /* Don't let button container grow */
+}
+
+
+/* About Section */
+.about-content {
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: #ccc;
+}
+.about-content p {
+  margin-bottom: 8px;
+}
+
+/* Status Message */
+.status-message {
+  position: fixed;
+  bottom: 15px;
+  right: 20px;
+  background-color: rgba(219, 99, 52, 0.9); /* Blue with transparency */
+  color: white;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  z-index: 1000;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+/* Error Message */
+.error-message {
+    color: #e74c3c; /* Red */
+    font-size: 0.85em;
+    margin-top: 5px;
+    /* Align with input field if needed */
+    padding-left: 180px; /* Match setting-name width */
+}
+
+/* Loading State */
+.loading-state {
+    text-align: center;
+    color: #888;
+    padding: 20px;
+    font-style: italic;
+}
+
 </style>

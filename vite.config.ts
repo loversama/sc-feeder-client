@@ -2,21 +2,15 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
+import tailwindcss from 'tailwindcss' // Import the core tailwindcss plugin
 import autoprefixer from 'autoprefixer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  css: {
-    postcss: {
-      plugins: [
-        tailwindcss,
-        autoprefixer,
-      ],
-    },
-  },
+  // css.postcss configuration removed as it's handled by postcss.config.cjs
   plugins: [
     vue(),
+    // Note: @tailwindcss/vite plugin is removed as we configure PostCSS manually
     electron({
       main: {
         // Shortcut of `build.lib.entry`.
