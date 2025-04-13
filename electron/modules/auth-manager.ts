@@ -270,7 +270,7 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
     logger.info(MODULE_NAME, `Requesting guest token for clientId: ${currentClientId}, hostname: ${currentHostname}`);
 
     try {
-        const response = await fetch(`${SERVER_API_URL}/auth/register-guest`, {
+        const response = await fetch(`${SERVER_API_URL}/api/auth/register-guest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ clientId: currentClientId, hostname: currentHostname }),

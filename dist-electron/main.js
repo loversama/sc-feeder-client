@@ -165434,7 +165434,7 @@ async function requestAndStoreGuestToken() {
   const currentHostname = os$1.hostname();
   info(MODULE_NAME$5, `Requesting guest token for clientId: ${currentClientId}, hostname: ${currentHostname}`);
   try {
-    const response2 = await fetch(`${SERVER_API_URL}/auth/register-guest`, {
+    const response2 = await fetch(`${SERVER_API_URL}/api/auth/register-guest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId: currentClientId, hostname: currentHostname })
@@ -165505,10 +165505,9 @@ async function initializeAuth() {
   return connectionReady;
 }
 const MODULE_NAME$4 = "ServerConnection";
-const isProduction = process.env.NODE_ENV === "production";
-const DEV_SERVER_URL = "ws://localhost:5324";
+process.env.NODE_ENV === "production";
 const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
-const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
+const SERVER_URL = PROD_SERVER_URL;
 let socket = null;
 let isAuthenticated = false;
 let currentStatus = "disconnected";
