@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getCsvLogPath } from './config-manager.ts'; // Added .ts
 import { KillEvent } from '../../shared/types';
-import { LogMode } from './api-client.ts'; // Import LogMode type - Added .ts
+// import { LogMode } from './api-client.ts'; // Removed API client dependency
 import { getMainWindow } from './window-manager.ts'; // Added .ts
 import * as logger from './logger'; // Import the logger utility
 
@@ -14,7 +14,7 @@ let killTallyInternal = 0; // Internal tally, updated by loading function
 // --- Constants ---
 const CSV_HEADERS = [
     "KillTime", "EnemyPilot", "EnemyShip", "Enlisted", "RecordNumber",
-    "OrgAffiliation", "Player", "Weapon", "Ship", "Method", "Mode",
+    "OrgAffiliation", "Player", "Weapon", "Ship", "Method", "Mode", // Removed "Logged" header
     "GameVersion", "TrackRver", "Logged", "PFP"
 ];
 const TRACKR_VERSION = "2.06"; // Hardcoded from original script
@@ -39,16 +39,13 @@ function escapeCsvValue(value: string | number | undefined | null): string {
 // --- Public Functions ---
 
 // Logs a single kill event to the configured CSV file
-export async function logKillToCsv(killEvent: KillEvent, logMode: LogMode) {
+export async function logKillToCsv(killEvent: KillEvent) { // Removed logMode parameter
     // Validate parameters
     if (!killEvent || !killEvent.timestamp) {
         logger.error(MODULE_NAME, 'Invalid kill event passed - missing required properties');
         return;
     }
-    if (!logMode) {
-        logger.warn(MODULE_NAME, 'Invalid logMode passed, defaulting to "Local"');
-        logMode = 'Local';
-    }
+    // logMode logic removed
 
     const csvPath = getCsvLogPath();
     if (!csvPath) {
@@ -84,7 +81,7 @@ export async function logKillToCsv(killEvent: KillEvent, logMode: LogMode) {
         Mode: killEvent.gameMode || 'Unknown',
         GameVersion: killEvent.gameVersion || '',
         TrackRver: TRACKR_VERSION,
-        Logged: logMode, // Status from API submission
+        // Logged: logMode, // Removed Logged status
         PFP: killEvent.victimPfpUrl || ''
     };
 

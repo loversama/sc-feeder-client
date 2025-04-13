@@ -2,7 +2,7 @@ import { KillEvent, ProfileData } from '../../shared/types';
 import { store, getFeedMode, getLastLoggedInUser } from './config-manager'; // Import necessary config functions
 import { fetchRsiProfileData, defaultProfileData } from './rsi-scraper';
 import { showNotification } from './notification-manager';
-import { sendKillToApi, LogMode } from './api-client.ts'; // Add .ts and import LogMode
+// import { sendKillToApi, LogMode } from './api-client.ts'; // Removed API client dependency
 import { logKillToCsv } from './csv-logger.ts'; // Add .ts
 import { getMainWindow } from './window-manager';
 import { getCurrentUsername } from './log-parser.ts'; // To check involvement - Added .ts
@@ -182,12 +182,9 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     const isSignificantEvent = ['Hard', 'Combat', 'Collision', 'Crash', 'BleedOut', 'Suffocation'].includes(fullEvent.deathType);
 
     if (isSignificantEvent) {
-        // Log to API/CSV (async)
-        sendKillToApi(fullEvent).then((logMode: LogMode | null) => { // Add type for logMode
-            if (logMode) { // Only log to CSV if API call was attempted (even if failed) or in offline mode
-                logKillToCsv(fullEvent, logMode);
-            }
-        }).catch((err: any) => logger.error(MODULE_NAME, 'Error in API/CSV logging chain for event', { id: fullEvent.id }, ':', err)); // Add type for err
+        // Log to CSV directly (API call removed)
+        logKillToCsv(fullEvent)
+            .catch((err: any) => logger.error(MODULE_NAME, 'Error logging event to CSV', { id: fullEvent.id }, ':', err));
 
         // Show Notification (if not silent mode and player involved)
         if (!silentMode && fullEvent.isPlayerInvolved) {
