@@ -149,6 +149,5 @@ window.addEventListener('DOMContentLoaded', () => {
     iconSize: 60,
     enableMnemonics: true,
     backgroundColor: TitlebarColor.TRANSPARENT,
-    removeMenuBar: true,
   });
 });
