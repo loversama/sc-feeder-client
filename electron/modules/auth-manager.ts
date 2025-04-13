@@ -109,7 +109,7 @@ export async function login(identifier: string, password: string): Promise<{ suc
     logger.info(MODULE_NAME, `Attempting login for identifier: ${identifier}`); // Use info
     try {
         // Use fetch or a dedicated HTTP client library (like axios)
-        const response = await fetch(`${SERVER_API_URL}/auth/login`, {
+        const response = await fetch(`${SERVER_API_URL}/api/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ identifier, password }),
@@ -175,7 +175,7 @@ export async function logout(): Promise<boolean> {
     if (refreshToken) {
         try {
             // Call server to invalidate refresh token
-            const response = await fetch(`${SERVER_API_URL}/auth/logout`, {
+            const response = await fetch(`${SERVER_API_URL}/api/auth/logout`, {
                 method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
                  // Need to send refresh token for server to invalidate correct one
@@ -209,7 +209,7 @@ export async function refreshToken(): Promise<{ userId: string; username: string
      }
 
      try {
-         const response = await fetch(`${SERVER_API_URL}/auth/refresh`, {
+         const response = await fetch(`${SERVER_API_URL}/api/auth/refresh`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ refreshToken: currentRefreshToken }) // Send RT in body
