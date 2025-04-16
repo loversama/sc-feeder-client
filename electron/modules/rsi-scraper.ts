@@ -155,7 +155,7 @@ async function scrapeSingleProfile(username: string, isAttacker: boolean = false
             if (pfpSrc) {
                 // Handle relative URLs starting with /media/
                 pfpUrl = pfpSrc.startsWith('/media/')
-                    ? `https://robertsspaceindustries.com${pfpSrc}`
+                    ? `${pfpSrc}`
                     : pfpSrc; // Assume absolute URL otherwise
             }
             if (isAttacker) extractedData.attackerPfpUrl = pfpUrl;
