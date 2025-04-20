@@ -28,6 +28,7 @@ const statusMessage = ref<string>('');
 const offlineMode = ref<boolean>(false);
 const csvLogPath = ref<string>('');
 const fetchProfileData = ref<boolean>(true);
+const launchOnStartup = ref<boolean>(true); // Launch on startup toggle
 
 // --- Account State ---
 const loginIdentifier = ref<string>('');
@@ -145,6 +146,18 @@ onMounted(async () => {
 
   // Update auth status when component mounts
   await updateAuthStatus();
+
+  // Load launch on startup setting
+  try {
+    if (window.logMonitorApi?.getLaunchOnStartup) {
+      launchOnStartup.value = await window.logMonitorApi.getLaunchOnStartup();
+    } else {
+      launchOnStartup.value = true; // Default
+    }
+  } catch (error) {
+    console.error('Failed to get launch on startup setting:', error);
+    launchOnStartup.value = true; // Default
+  }
 });
 
 // --- Account Methods ---
@@ -301,6 +314,19 @@ const setStatus = (msg: string, duration = 3000) => {
   }, duration);
 };
 
+// Toggle launch on startup setting
+const toggleLaunchOnStartup = async () => {
+  if (!window.logMonitorApi?.setLaunchOnStartup) return;
+  try {
+    const result = await window.logMonitorApi.setLaunchOnStartup(launchOnStartup.value);
+    launchOnStartup.value = !!result;
+    setStatus(`Launch on startup ${launchOnStartup.value ? 'enabled' : 'disabled'}`);
+  } catch (error) {
+    console.error('Failed to update launch on startup setting:', error);
+    setStatus('Error updating launch on startup setting');
+  }
+};
+
 </script>
 
 <template>
@@ -361,6 +387,20 @@ const setStatus = (msg: string, duration = 3000) => {
           <div class="setting-control">
             <span>{{ lastLoggedInUser || 'None Detected' }}</span>
           </div>
+        </div>
+
+        <!-- Launch on Startup -->
+        <div class="setting-item">
+          <label class="setting-name">Launch on Startup</label>
+          <div class="setting-control">
+            <label class="switch">
+              <input type="checkbox" v-model="launchOnStartup" @change="toggleLaunchOnStartup">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+        <div class="setting-description">
+          Launch the application automatically when you log in. Will start minimized to tray.
         </div>
       </section>
 

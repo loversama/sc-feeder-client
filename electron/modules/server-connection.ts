@@ -1,17 +1,14 @@
 import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
-import { getAccessToken, getGuestToken, getPersistedClientId } from './auth-manager'; // Import token getters AND clientId getter
+// Import refreshToken along with other auth functions
+import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setGuestToken, clearGuestToken } from './auth-manager';
 import { getMainWindow } from './window-manager'; // Import window manager to send messages
 // Client ID logic moved to auth-manager
 
 const MODULE_NAME = 'ServerConnection';
 
 // Determine server URL based on environment
-const isProduction = process.env.NODE_ENV === 'production';
-const DEV_SERVER_URL = 'ws://localhost:5324'; // Use ws:// for local dev
-const PROD_SERVER_URL = 'wss://server-killfeed.sinfulshadows.com'; // Use wss:// for production
-const SERVER_URL = PROD_SERVER_URL; // Keep prod URL definition
-// const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL; // Use environment variable
+import { SERVER_URL } from './server-config';
 
 let socket: Socket | null = null;
 let isAuthenticated = false; // Track authentication status
@@ -28,34 +25,26 @@ function sendConnectionStatus(status: ConnectionStatus) {
 }
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
 export function connectToServer(): void {
-  // Determine which token to use for auth handshake (ONLY user access token)
+  // Determine which token to use for auth handshake
   const accessToken = getAccessToken();
-  const guestToken = getGuestToken(); // Still get guest token for logging/potential future use
-  const tokenForHandshake = accessToken; // Only send access token in handshake
-  const tokenType = accessToken ? 'User Access Token' : (guestToken ? 'Guest Token (Not Sent)' : 'No Token');
-
-  // Decide if connection is possible (needs at least a guest token conceptually, even if not sent)
-  const canConnect = !!accessToken || !!guestToken;
-
-  // If neither token is available conceptually, don't attempt connection
-  if (!canConnect) {
-      logger.warn(MODULE_NAME, 'No user or guest token available conceptually. Cannot connect to server.');
-      // Ensure socket is null if we explicitly decide not to connect
-      if (socket) {
-          socket.disconnect();
-          socket = null;
-      }
-      return;
-  }
+  const guestToken = getGuestToken();
+  const clientId = getPersistedClientId();
+  const tokenType = accessToken
+    ? 'User Access Token'
+    : guestToken
+    ? 'Guest Token'
+    : 'No Token';
 
   // Don't reconnect if already connected with the same socket instance
   if (socket?.connected) {
-    // TODO: Optionally check if the token has changed and force reconnect if needed
     logger.warn(MODULE_NAME, 'Already connected to server.');
     return;
   }
 
-  logger.info(MODULE_NAME, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
+  logger.info(
+    MODULE_NAME,
+    `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`,
+  );
   sendConnectionStatus('connecting'); // Update status: Connecting
 
   // Disconnect previous socket if exists (e.g., if token changed)
@@ -64,50 +53,50 @@ export function connectToServer(): void {
     socket = null; // Ensure we create a new socket instance
   }
 
+  // Prepare handshake options
+  let handshakeAuth: any = {};
+  let handshakeQuery: any = {};
+
+  if (accessToken) {
+    handshakeAuth = { token: accessToken };
+  } else if (guestToken) {
+    handshakeAuth = { token: guestToken };
+  } else if (clientId) {
+    handshakeQuery = { clientId };
+  } else {
+    logger.warn(
+      MODULE_NAME,
+      'No access token, guest token, or clientId available. Cannot connect to server.',
+    );
+    return;
+  }
+
   socket = io(SERVER_URL, {
-    reconnection: true, // Ensure reconnection is enabled (default)
-    reconnectionAttempts: Infinity, // Keep trying indefinitely
-    reconnectionDelay: 10000, // Initial delay 10 seconds
-    reconnectionDelayMax: 60000, // Max delay 60 seconds (optional, prevents excessive delays)
-    transports: ['websocket'], // Use WebSocket transport
-    // Send access token for authentication
-    auth: (cb) => {
-      // ONLY pass the access token if available. If only guest token exists, send nothing.
-      const tokenToSend = accessToken; // Explicitly use accessToken here
-      const sendingType = tokenToSend ? 'User Access Token' : 'No Token';
-      logger.debug(MODULE_NAME, `Socket auth callback: Providing ${sendingType}: ${tokenToSend ? 'Yes (first 10 chars: ' + tokenToSend.substring(0, 10) + '...)' : 'No'}`);
-      cb(tokenToSend ? { token: tokenToSend } : {}); // Send empty object if no access token
-    }
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 10000,
+    reconnectionDelayMax: 60000,
+    transports: ['websocket'],
+    auth: handshakeAuth,
+    query: handshakeQuery,
   });
 
   socket.on('connect', () => {
-    logger.info(MODULE_NAME, `Successfully connected to server: ${socket?.id}. Checking authentication method...`);
+    logger.info(
+      MODULE_NAME,
+      `Successfully connected to server: ${socket?.id}. Authentication handshake sent.`,
+    );
+    // No need to send authenticate_guest message; handled by handshake and guestToken event now.
+  });
 
-    // Check if we connected as a guest (no access token sent in handshake, but guest token exists)
-    const currentAccessToken = getAccessToken();
-    const currentGuestToken = getGuestToken();
-
-    if (!currentAccessToken && currentGuestToken) {
-      // Connected without user auth, attempt guest auth via message
-      logger.info(MODULE_NAME, `Connected without user token. Sending authenticate_guest message...`);
-      socket?.emit('authenticate_guest', { token: currentGuestToken }, (ack: { success: boolean; error?: string }) => {
-         if (ack?.success) {
-            logger.info(MODULE_NAME, 'Server acknowledged guest authentication request.');
-            // Wait for the 'authenticated' event from the server now
-         } else {
-            logger.error(MODULE_NAME, `Server rejected guest authentication: ${ack?.error || 'Unknown error'}`);
-            // Handle error - maybe disconnect or retry? For now, just log.
-            // The 'authenticated' event will likely not arrive.
-         }
-      });
-    } else if (currentAccessToken) {
-       // Connected with user access token, waiting for 'authenticated' event from server handshake validation
-       logger.info(MODULE_NAME, `Connected with user token. Waiting for server authentication confirmation...`);
-    } else {
-       // Connected without any token (should not happen based on connectToServer logic, but handle defensively)
-       logger.warn(MODULE_NAME, `Connected without any token. Cannot authenticate.`);
+  // Listen for guestToken event from server and store it
+  socket.on('guestToken', (data: { token: string }) => {
+    if (data?.token) {
+      logger.info(MODULE_NAME, 'Received guest token from server. Storing...');
+      setGuestToken(data.token);
+      disconnectFromServer();
+      setTimeout(connectToServer, 100); // Reconnect with the new token
     }
-    // Still 'connecting' until server confirms 'authenticated' event via handshake or message response
   });
 
   // Listen for custom 'authenticated' event from server
@@ -125,9 +114,51 @@ export function connectToServer(): void {
     // Socket.io handles reconnection attempts automatically based on options
   });
 
-  socket.on('connect_error', (error: Error) => { // Add type for error
+  socket.on('connect_error', (error: Error) => {
     logger.error(MODULE_NAME, `Connection error: ${error.message}`);
-    sendConnectionStatus('error'); // Update status: Error
+    sendConnectionStatus('error');
+    // If the error is an authentication failure, clear guest token and retry as new guest
+    if (
+      error.message &&
+      (error.message.includes('invalid signature') ||
+        error.message.toLowerCase().includes('auth'))
+    ) {
+      logger.warn(MODULE_NAME, 'Clearing guest token and retrying as new guest...');
+      clearGuestToken();
+      setTimeout(connectToServer, 200); // Small delay to avoid rapid reconnect loop
+    }
+  });
+
+  // Listen for server telling us to retry authentication
+  socket.on('retry_auth', async (data: { reason?: string }) => { // Make handler async
+      logger.warn(MODULE_NAME, `Received 'retry_auth' event from server. Reason: ${data?.reason || 'No reason provided'}. Authentication failed.`);
+      isAuthenticated = false; // Mark as not authenticated
+      sendConnectionStatus('connecting'); // Show user we are trying again
+
+      // Explicitly disconnect the current socket instance.
+      if (socket) {
+          socket.off(); // Remove listeners from the old socket
+          socket.disconnect();
+          socket = null;
+      }
+
+      // Attempt to refresh the token BEFORE trying to reconnect
+      logger.info(MODULE_NAME, 'Attempting token refresh before reconnecting...');
+      const refreshedUserInfo = await refreshToken(); // Call the refresh token function
+
+      if (refreshedUserInfo) {
+          logger.info(MODULE_NAME, `Token refresh successful for ${refreshedUserInfo.username}. Proceeding with reconnection.`);
+      } else {
+          logger.warn(MODULE_NAME, 'Token refresh failed. Reconnection attempt might fail if token was invalid.');
+          // If refresh fails, the user might be logged out by refreshToken().
+          // connectToServer() will handle the case where no access token is available.
+      }
+
+      // Add a small delay before attempting to reconnect.
+      setTimeout(() => {
+          logger.info(MODULE_NAME, 'Attempting to reconnect after retry_auth event and refresh attempt...');
+          connectToServer(); // Re-initiate the connection process
+      }, 2000); // 2-second delay
   });
 
   // Optional: Listen for server acknowledgements or errors

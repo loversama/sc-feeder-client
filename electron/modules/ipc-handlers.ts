@@ -134,6 +134,20 @@ export function registerIpcHandlers() {
         return !!value;
     });
 
+    // --- Launch on Startup Handlers ---
+    ipcMain.handle('get-launch-on-startup', () => {
+        return ConfigManager.getLaunchOnStartup();
+    });
+    ipcMain.handle('set-launch-on-startup', (event, value: boolean) => {
+        ConfigManager.setLaunchOnStartup(!!value);
+        // Set OS login item
+        app.setLoginItemSettings({
+            openAtLogin: !!value,
+            args: ['--hidden'] // Electron convention for "start hidden/in tray"
+        });
+        return !!value;
+    });
+
     // API/CSV Settings
     ipcMain.handle('get-api-settings', () => {
         // Only return offlineMode now

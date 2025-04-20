@@ -13,7 +13,12 @@ const MODULE_NAME = 'LogParser'; // Define module name for logger
 // State variables specific to parsing context
 let currentUsername: string | null = getLastLoggedInUser() || null; // Initialize from store
 let currentPlayerShip: string = "Unknown";
-let currentGameMode: 'PU' | 'AC' | 'Unknown' = "Unknown";
+let stableGameMode: 'PU' | 'AC' | 'Unknown' = "Unknown"; // The mode we report and use for events
+let rawDetectedGameMode: 'PU' | 'AC' | 'Unknown' = "Unknown"; // Last mode seen directly in logs
+let lastRawModeDetectionTime: number = 0;
+let modeDebounceTimer: NodeJS.Timeout | null = null;
+const MODE_DEBOUNCE_MS = 2000; // 2 seconds threshold - adjust as needed
+
 let currentGameVersion: string = "";
 let currentLocation: string = ""; // Last known zone location
 
@@ -38,8 +43,9 @@ const shipManufacturerPattern = `^(${shipManufacturers.join('|')})`;
 const loginRegex = /<AccountLoginCharacterStatus_Character>.*?name\s+(\S+)\s+-/;
 const legacyLoginRegex = /<Legacy login response>.*?Handle\[([A-Za-z0-9_-]+)\]/;
 const sessionStartRegex = /<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?Starting new game session/i;
-const puModeRegex = /<\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z> \[Notice\] <ContextEstablisherTaskFinished>.*?map="megamap".*?gamerules="SC_Default"/;
-const acModeRegex = /ArenaCommanderFeature/;
+const puModeRegex = /Loading GameModeRecord='SC_Default'/; // Detects PU loading
+const acModeRegex = /Loading GameModeRecord='EA_.*?'/; // Detects AC loading (any EA mode)
+const frontendModeRegex = /Requesting game mode Frontend_Main\/SC_Frontend|Loading screen for Frontend_Main : SC_Frontend closed/; // Detects entering Frontend
 const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterior \[(?<InstancedInterior>[^\]]+)\] \[\d+\] -> Entity \[(?<Entity>[^\]]+)\] \[\d+\] --.*?m_ownerGEID\[(?<OwnerGEID>[^\[]+)\]/;
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
@@ -48,6 +54,44 @@ const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}
 const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<EnemyPilot>[^']+)' \[\d+\] in zone '(?<EnemyShip>[^']+)' killed by '(?<Player>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
 const environmentDeathRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<playerName>[^']+)' .*? damage type '(?<damageType>BleedOut|SuffocationDamage)'/;
+
+// --- Helper Functions for Mode Detection ---
+
+// Called when a potential mode is detected in a log line
+function handleRawModeDetection(detectedMode: 'PU' | 'AC') {
+    const now = Date.now();
+    rawDetectedGameMode = detectedMode;
+    lastRawModeDetectionTime = now;
+
+    // Clear existing timer if any
+    if (modeDebounceTimer) {
+        clearTimeout(modeDebounceTimer);
+        modeDebounceTimer = null;
+    }
+
+    // Start a new timer to update the stable mode if this detection remains consistent
+    modeDebounceTimer = setTimeout(() => {
+        // Check if the raw mode hasn't changed since the timer started
+        // Add small buffer to account for potential timer inaccuracies
+        if (rawDetectedGameMode === detectedMode && Date.now() - lastRawModeDetectionTime < MODE_DEBOUNCE_MS + 100) {
+             updateStableGameMode(detectedMode);
+        }
+        modeDebounceTimer = null; // Timer finished
+    }, MODE_DEBOUNCE_MS);
+}
+
+// Updates the stable mode and notifies the renderer
+function updateStableGameMode(newStableMode: 'PU' | 'AC' | 'Unknown') {
+    if (stableGameMode !== newStableMode) {
+        stableGameMode = newStableMode;
+        logger.info(MODULE_NAME, "Stable Game Mode updated:", { status: stableGameMode });
+        const win = getMainWindow();
+        win?.webContents.send('game-mode-update', stableGameMode); // Send dedicated IPC message
+        // Optionally send a general log status update as well
+        // win?.webContents.send('log-status', `Game Mode set to: ${stableGameMode}`);
+    }
+}
+
 
 // --- Main Parsing Function ---
 
@@ -75,20 +119,16 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue; // Login line processed
             }
 
-            // --- Game Mode Detection ---
-            if (line.match(puModeRegex)) {
-                if (currentGameMode !== "PU") {
-                    currentGameMode = "PU";
-                    logger.info(MODULE_NAME, "Game Mode detected:", { status: 'Persistent Universe (PU)' });
-                    win?.webContents.send('log-status', `Game Mode: Persistent Universe (PU)`);
-                }
-            } else if (line.match(acModeRegex) && !line.includes('SC_Default')) {
-                if (currentGameMode !== "AC") {
-                    currentGameMode = "AC";
-                    logger.info(MODULE_NAME, "Game Mode detected:", { status: 'Arena Commander (AC)' });
-                    win?.webContents.send('log-status', `Game Mode: Arena Commander (AC)`);
-                }
+            // --- Game Mode Detection (Direct Update) ---
+            if (line.match(puModeRegex)) { // Use new puModeRegex
+                updateStableGameMode('PU'); // Update directly
+            } else if (line.match(acModeRegex)) { // Use new acModeRegex
+                updateStableGameMode('AC'); // Update directly
+            } else if (line.match(frontendModeRegex)) { // Use new frontendModeRegex
+                updateStableGameMode('Unknown'); // Treat Frontend as 'Unknown' for now
             }
+            // Note: The debounce logic in handleRawModeDetection is now bypassed for these specific lines.
+            // Consider removing handleRawModeDetection if no longer needed elsewhere.
 
             // --- Game Version Detection ---
             const versionMatch = line.match(versionPattern);
@@ -156,7 +196,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         location: vehicle_zone,
                         weapon: damage_type, // Use damage_type as initial weapon/cause
                         damageType: damage_type,
-                        gameMode: currentGameMode,
+                        gameMode: stableGameMode, // Use stable mode
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         coordinates: { x: parseFloat(pos_x || '0'), y: parseFloat(pos_y || '0'), z: parseFloat(pos_z || '0') },
@@ -221,7 +261,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         location: currentLocation, // Use last known location
                         weapon: Weapon,
                         damageType: DamageType,
-                        gameMode: currentGameMode,
+                        gameMode: stableGameMode, // Use stable mode
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         isPlayerInvolved: isPlayerInvolved,
@@ -256,7 +296,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     location: currentLocation,
                     weapon: damageType,
                     damageType: damageType,
-                    gameMode: currentGameMode,
+                    gameMode: stableGameMode, // Use stable mode
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
                     isPlayerInvolved: isPlayerInvolved,
@@ -288,7 +328,13 @@ export function resetParserState() {
     logger.info(MODULE_NAME, "Resetting parser state.");
     currentUsername = getLastLoggedInUser() || null; // Re-initialize from store
     currentPlayerShip = "Unknown";
-    currentGameMode = "Unknown";
+    stableGameMode = "Unknown"; // Reset stable mode
+    rawDetectedGameMode = "Unknown"; // Reset raw mode
+    lastRawModeDetectionTime = 0;
+    if (modeDebounceTimer) { // Clear any pending timer
+        clearTimeout(modeDebounceTimer);
+        modeDebounceTimer = null;
+    }
     currentGameVersion = "";
     currentLocation = "";
     recentPlayerDeaths.length = 0; // Clear recent deaths

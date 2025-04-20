@@ -59,6 +59,10 @@ const schema = {
   feedMode: {
     type: 'string', // Storing as string, validation in getter/setter
     default: 'player'
+  },
+  launchOnStartup: {
+    type: 'boolean',
+    default: true
   }
 } as const; // Use 'as const' for stronger type inference if Store supports it well, otherwise define schema type explicitly
 
@@ -82,11 +86,19 @@ export function setLogPath(newPath: string): boolean {
     store.set('logFilePath', newPath); // Save to store
     return true; // Indicate path was changed
   } else if (newPath === currentPath) {
-     logger.debug(MODULE_NAME, `Path is already set to: ${newPath}. No change needed.`);
-     return false; // Indicate no change
+    logger.debug(MODULE_NAME, `Path is already set to: ${newPath}. No change needed.`);
+    return false; // Indicate no change
   }
   logger.warn(MODULE_NAME, `Invalid path provided: ${newPath}`);
   return false; // Indicate failure/no change
+}
+
+// --- Launch on Startup ---
+export function getLaunchOnStartup(): boolean {
+  return store.get('launchOnStartup');
+}
+export function setLaunchOnStartup(value: boolean): void {
+  store.set('launchOnStartup', !!value);
 }
 
 // Getters and Setters for other settings (Example)

@@ -79,6 +79,10 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   setFetchProfileData: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-fetch-profile-data', value),
   getSoundEffects: (): Promise<boolean> => ipcRenderer.invoke('get-sound-effects'),
   setSoundEffects: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-sound-effects', value),
+
+  // Launch on Startup
+  getLaunchOnStartup: (): Promise<boolean> => ipcRenderer.invoke('get-launch-on-startup'),
+  setLaunchOnStartup: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-launch-on-startup', value),
   
   // API/CSV Settings - Add these back if they were removed
   // Updated: Only offlineMode is relevant now
@@ -139,6 +143,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('connection-status-changed', callback);
     return () => ipcRenderer.removeListener('connection-status-changed', callback);
   },
+  // Listener for stable game mode updates
+  onGameModeUpdate: (callback: (event: Electron.IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => {
+    ipcRenderer.on('game-mode-update', callback);
+    return () => ipcRenderer.removeListener('game-mode-update', callback); // Return cleanup function
+  },
 
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
@@ -149,6 +158,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.removeAllListeners('kill-feed-event')
     ipcRenderer.removeAllListeners('auth-status-changed') // Clean up new listener
     ipcRenderer.removeAllListeners('connection-status-changed') // Clean up connection status listener
+    ipcRenderer.removeAllListeners('game-mode-update') // Clean up game mode listener
   }
 })
 

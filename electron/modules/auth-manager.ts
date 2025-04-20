@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
 
 const MODULE_NAME = 'AuthManager';
-const SERVER_API_URL = 'https://server-killfeed.sinfulshadows.com';
+import { SERVER_API_URL } from './server-config';
 
 // Secure storage for refresh token
 const store = new Store({ name: 'auth-state' }); // Use a separate store file
@@ -15,6 +15,16 @@ const store = new Store({ name: 'auth-state' }); // Use a separate store file
 let accessToken: string | null = null;
 let loggedInUser: { userId: string; username: string } | null = null;
 let guestToken: string | null = null; // In-memory storage for guest token
+
+// Exported function to set guest token
+export function setGuestToken(token: string): void {
+  guestToken = token;
+}
+
+// Exported function to clear guest token
+export function clearGuestToken(): void {
+  guestToken = null;
+}
 let clientId: string | null = null; // Persisted client ID
 
 // --- Helper Functions ---
@@ -136,19 +146,16 @@ export async function login(identifier: string, password: string): Promise<{ suc
              await storeTokens(data.access_token, tempRefreshToken);
              guestToken = null; // Clear guest token on successful user login
 
-             // Decode access token to get user info
-             try {
-                const decoded = JSON.parse(Buffer.from(data.access_token.split('.')[1], 'base64').toString());
-                if (decoded.sub && decoded.username) {
-                    loggedInUser = { userId: decoded.sub, username: decoded.username };
-                    logger.info(MODULE_NAME, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId})`);
-                } else {
-                    throw new Error('Invalid token payload structure');
-                }
-             } catch (decodeError) {
-                 logger.error(MODULE_NAME, 'Failed to decode access token after login:', decodeError);
-                 await clearTokens(); // Clear potentially bad state (includes guest token)
-                 return { success: false, error: 'Failed to process login response.' };
+             // REMOVED: Client-side decoding of access token.
+             // The client should trust the server's response or use a profile endpoint.
+             // We need the user object from the server response directly.
+             if (data.user && data.user.id && data.user.username) {
+                 loggedInUser = { userId: data.user.id, username: data.user.username };
+                 logger.info(MODULE_NAME, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId}) from server response.`);
+             } else {
+                 logger.error(MODULE_NAME, 'User info missing from login response data.');
+                 await clearTokens(); // Clear potentially bad state
+                 return { success: false, error: 'Server login response incomplete (missing user info).' };
              }
              // Force reconnect after successful login
              disconnectFromServer();

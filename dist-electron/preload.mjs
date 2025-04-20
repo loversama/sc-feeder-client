@@ -11476,6 +11476,9 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   setFetchProfileData: (value) => require$$0.ipcRenderer.invoke("set-fetch-profile-data", value),
   getSoundEffects: () => require$$0.ipcRenderer.invoke("get-sound-effects"),
   setSoundEffects: (value) => require$$0.ipcRenderer.invoke("set-sound-effects", value),
+  // Launch on Startup
+  getLaunchOnStartup: () => require$$0.ipcRenderer.invoke("get-launch-on-startup"),
+  setLaunchOnStartup: (value) => require$$0.ipcRenderer.invoke("set-launch-on-startup", value),
   // API/CSV Settings - Add these back if they were removed
   // Updated: Only offlineMode is relevant now
   getApiSettings: () => require$$0.ipcRenderer.invoke("get-api-settings"),
@@ -11529,6 +11532,11 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.on("connection-status-changed", callback);
     return () => require$$0.ipcRenderer.removeListener("connection-status-changed", callback);
   },
+  // Listener for stable game mode updates
+  onGameModeUpdate: (callback) => {
+    require$$0.ipcRenderer.on("game-mode-update", callback);
+    return () => require$$0.ipcRenderer.removeListener("game-mode-update", callback);
+  },
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
     require$$0.ipcRenderer.removeAllListeners("log-update");
@@ -11538,6 +11546,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.removeAllListeners("kill-feed-event");
     require$$0.ipcRenderer.removeAllListeners("auth-status-changed");
     require$$0.ipcRenderer.removeAllListeners("connection-status-changed");
+    require$$0.ipcRenderer.removeAllListeners("game-mode-update");
   }
 });
 window.addEventListener("DOMContentLoaded", () => {

@@ -16827,9 +16827,9 @@ function commentKeyword$1({ gen, schemaEnv, schema: schema2, errSchemaPath, opts
   }
 }
 function returnResults$1(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError3}(${names_1$d.default.vErrors})`));
+    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError2}(${names_1$d.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$X._)`${validateName2}.errors`, names_1$d.default.vErrors);
     if (opts.unevaluated)
@@ -17174,14 +17174,14 @@ function getData$1($data, { dataLevel, dataNames, dataPathArr }) {
 validate$1.getData = getData$1;
 var validation_error$1 = {};
 Object.defineProperty(validation_error$1, "__esModule", { value: true });
-let ValidationError$1 = class ValidationError extends Error {
+class ValidationError extends Error {
   constructor(errors2) {
     super("validation failed");
     this.errors = errors2;
     this.ajv = this.validation = true;
   }
-};
-validation_error$1.default = ValidationError$1;
+}
+validation_error$1.default = ValidationError;
 var ref_error$1 = {};
 Object.defineProperty(ref_error$1, "__esModule", { value: true });
 const resolve_1$4 = resolve$4;
@@ -23653,9 +23653,9 @@ function commentKeyword({ gen, schemaEnv, schema: schema2, errSchemaPath, opts }
   }
 }
 function returnResults(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError3}(${names_1$3.default.vErrors})`));
+    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError2}(${names_1$3.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$n._)`${validateName2}.errors`, names_1$3.default.vErrors);
     if (opts.unevaluated)
@@ -23999,15 +23999,21 @@ function getData($data, { dataLevel, dataNames, dataPathArr }) {
 }
 validate.getData = getData;
 var validation_error = {};
-Object.defineProperty(validation_error, "__esModule", { value: true });
-class ValidationError2 extends Error {
-  constructor(errors2) {
-    super("validation failed");
-    this.errors = errors2;
-    this.ajv = this.validation = true;
+var hasRequiredValidation_error;
+function requireValidation_error() {
+  if (hasRequiredValidation_error) return validation_error;
+  hasRequiredValidation_error = 1;
+  Object.defineProperty(validation_error, "__esModule", { value: true });
+  class ValidationError2 extends Error {
+    constructor(errors2) {
+      super("validation failed");
+      this.errors = errors2;
+      this.ajv = this.validation = true;
+    }
   }
+  validation_error.default = ValidationError2;
+  return validation_error;
 }
-validation_error.default = ValidationError2;
 var ref_error = {};
 Object.defineProperty(ref_error, "__esModule", { value: true });
 const resolve_1$1 = resolve$1;
@@ -24023,7 +24029,7 @@ var compile$1 = {};
 Object.defineProperty(compile$1, "__esModule", { value: true });
 compile$1.resolveSchema = compile$1.getCompilingSchema = compile$1.resolveRef = compile$1.compileSchema = compile$1.SchemaEnv = void 0;
 const codegen_1$m = codegen;
-const validation_error_1 = validation_error;
+const validation_error_1 = requireValidation_error();
 const names_1$2 = names$1;
 const resolve_1 = resolve$1;
 const util_1$k = util$n;
@@ -24296,7 +24302,7 @@ uri$1.default = uri;
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  const validation_error_12 = validation_error;
+  const validation_error_12 = requireValidation_error();
   const ref_error_12 = ref_error;
   const rules_12 = rules;
   const compile_12 = compile$1;
@@ -26749,7 +26755,7 @@ const require$$3$1 = {
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  var validation_error_12 = validation_error;
+  var validation_error_12 = requireValidation_error();
   Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function() {
     return validation_error_12.default;
   } });
@@ -33810,6 +33816,10 @@ const schema = {
     type: "string",
     // Storing as string, validation in getter/setter
     default: "player"
+  },
+  launchOnStartup: {
+    type: "boolean",
+    default: true
   }
 };
 const store$1 = new ElectronStore({ schema });
@@ -33828,6 +33838,12 @@ function setLogPath(newPath) {
   }
   warn(MODULE_NAME$c, `Invalid path provided: ${newPath}`);
   return false;
+}
+function getLaunchOnStartup() {
+  return store$1.get("launchOnStartup");
+}
+function setLaunchOnStartup(value2) {
+  store$1.set("launchOnStartup", !!value2);
 }
 function getShowNotifications() {
   return store$1.get("showNotifications");
@@ -156302,7 +156318,7 @@ function clearEvents() {
 const MODULE_NAME$7 = "LogParser";
 let currentUsername = getLastLoggedInUser() || null;
 let currentPlayerShip = "Unknown";
-let currentGameMode = "Unknown";
+let stableGameMode = "Unknown";
 let currentGameVersion = "";
 let currentLocation = "";
 const recentPlayerDeaths = [];
@@ -156330,8 +156346,9 @@ const shipManufacturerPattern = `^(${shipManufacturers.join("|")})`;
 const loginRegex = /<AccountLoginCharacterStatus_Character>.*?name\s+(\S+)\s+-/;
 const legacyLoginRegex = /<Legacy login response>.*?Handle\[([A-Za-z0-9_-]+)\]/;
 const sessionStartRegex = /<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?Starting new game session/i;
-const puModeRegex = /<\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z> \[Notice\] <ContextEstablisherTaskFinished>.*?map="megamap".*?gamerules="SC_Default"/;
-const acModeRegex = /ArenaCommanderFeature/;
+const puModeRegex = /Loading GameModeRecord='SC_Default'/;
+const acModeRegex = /Loading GameModeRecord='EA_.*?'/;
+const frontendModeRegex = /Requesting game mode Frontend_Main\/SC_Frontend|Loading screen for Frontend_Main : SC_Frontend closed/;
 const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterior \[(?<InstancedInterior>[^\]]+)\] \[\d+\] -> Entity \[(?<Entity>[^\]]+)\] \[\d+\] --.*?m_ownerGEID\[(?<OwnerGEID>[^\[]+)\]/;
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
@@ -156340,6 +156357,14 @@ const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}
 const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<EnemyPilot>[^']+)' \[\d+\] in zone '(?<EnemyShip>[^']+)' killed by '(?<Player>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
 const environmentDeathRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<playerName>[^']+)' .*? damage type '(?<damageType>BleedOut|SuffocationDamage)'/;
+function updateStableGameMode(newStableMode) {
+  if (stableGameMode !== newStableMode) {
+    stableGameMode = newStableMode;
+    info(MODULE_NAME$7, "Stable Game Mode updated:", { status: stableGameMode });
+    const win = getMainWindow();
+    win == null ? void 0 : win.webContents.send("game-mode-update", stableGameMode);
+  }
+}
 async function parseLogContent(content2, silentMode = false) {
   var _a3;
   const lines = content2.split("\n");
@@ -156362,17 +156387,11 @@ async function parseLogContent(content2, silentMode = false) {
         continue;
       }
       if (line.match(puModeRegex)) {
-        if (currentGameMode !== "PU") {
-          currentGameMode = "PU";
-          info(MODULE_NAME$7, "Game Mode detected:", { status: "Persistent Universe (PU)" });
-          win == null ? void 0 : win.webContents.send("log-status", `Game Mode: Persistent Universe (PU)`);
-        }
-      } else if (line.match(acModeRegex) && !line.includes("SC_Default")) {
-        if (currentGameMode !== "AC") {
-          currentGameMode = "AC";
-          info(MODULE_NAME$7, "Game Mode detected:", { status: "Arena Commander (AC)" });
-          win == null ? void 0 : win.webContents.send("log-status", `Game Mode: Arena Commander (AC)`);
-        }
+        updateStableGameMode("PU");
+      } else if (line.match(acModeRegex)) {
+        updateStableGameMode("AC");
+      } else if (line.match(frontendModeRegex)) {
+        updateStableGameMode("Unknown");
       }
       const versionMatch = line.match(versionPattern);
       if (((_a3 = versionMatch == null ? void 0 : versionMatch.groups) == null ? void 0 : _a3.gameversion) && versionMatch.groups.gameversion !== currentGameVersion) {
@@ -156429,7 +156448,8 @@ async function parseLogContent(content2, silentMode = false) {
             weapon: damage_type,
             // Use damage_type as initial weapon/cause
             damageType: damage_type,
-            gameMode: currentGameMode,
+            gameMode: stableGameMode,
+            // Use stable mode
             gameVersion: currentGameVersion,
             playerShip: currentPlayerShip,
             coordinates: { x: parseFloat(pos_x || "0"), y: parseFloat(pos_y || "0"), z: parseFloat(pos_z || "0") },
@@ -156479,7 +156499,8 @@ async function parseLogContent(content2, silentMode = false) {
             // Use last known location
             weapon: Weapon,
             damageType: DamageType,
-            gameMode: currentGameMode,
+            gameMode: stableGameMode,
+            // Use stable mode
             gameVersion: currentGameVersion,
             playerShip: currentPlayerShip,
             isPlayerInvolved
@@ -156508,7 +156529,8 @@ async function parseLogContent(content2, silentMode = false) {
           location: currentLocation,
           weapon: damageType,
           damageType,
-          gameMode: currentGameMode,
+          gameMode: stableGameMode,
+          // Use stable mode
           gameVersion: currentGameVersion,
           playerShip: currentPlayerShip,
           isPlayerInvolved
@@ -156530,7 +156552,7 @@ function resetParserState() {
   info(MODULE_NAME$7, "Resetting parser state.");
   currentUsername = getLastLoggedInUser() || null;
   currentPlayerShip = "Unknown";
-  currentGameMode = "Unknown";
+  stableGameMode = "Unknown";
   currentGameVersion = "";
   currentLocation = "";
   recentPlayerDeaths.length = 0;
@@ -165208,12 +165230,22 @@ function v4(options, buf, offset) {
   rnds[8] = rnds[8] & 63 | 128;
   return unsafeStringify(rnds);
 }
+const isProduction = process.env.NODE_ENV === "production";
+const DEV_SERVER_URL = "ws://localhost:5324";
+const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
+const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
+const SERVER_API_URL = SERVER_URL.replace(/^ws/, "http").replace(/^wss/, "https").replace(/\/$/, "");
 const MODULE_NAME$5 = "AuthManager";
-const SERVER_API_URL = "https://server-killfeed.sinfulshadows.com";
 const store = new ElectronStore({ name: "auth-state" });
 let accessToken = null;
 let loggedInUser = null;
 let guestToken = null;
+function setGuestToken(token) {
+  guestToken = token;
+}
+function clearGuestToken() {
+  guestToken = null;
+}
 let clientId = null;
 async function storeTokens(access, refresh) {
   accessToken = access;
@@ -165304,18 +165336,13 @@ async function login(identifier, password) {
       }
       await storeTokens(data2.access_token, tempRefreshToken);
       guestToken = null;
-      try {
-        const decoded = JSON.parse(Buffer.from(data2.access_token.split(".")[1], "base64").toString());
-        if (decoded.sub && decoded.username) {
-          loggedInUser = { userId: decoded.sub, username: decoded.username };
-          info(MODULE_NAME$5, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId})`);
-        } else {
-          throw new Error("Invalid token payload structure");
-        }
-      } catch (decodeError) {
-        error(MODULE_NAME$5, "Failed to decode access token after login:", decodeError);
+      if (data2.user && data2.user.id && data2.user.username) {
+        loggedInUser = { userId: data2.user.id, username: data2.user.username };
+        info(MODULE_NAME$5, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId}) from server response.`);
+      } else {
+        error(MODULE_NAME$5, "User info missing from login response data.");
         await clearTokens();
-        return { success: false, error: "Failed to process login response." };
+        return { success: false, error: "Server login response incomplete (missing user info)." };
       }
       disconnectFromServer();
       connectToServer();
@@ -165491,10 +165518,6 @@ async function initializeAuth() {
   return connectionReady;
 }
 const MODULE_NAME$4 = "ServerConnection";
-const isProduction = process.env.NODE_ENV === "production";
-const DEV_SERVER_URL = "ws://localhost:5324";
-const PROD_SERVER_URL = "wss://server-killfeed.sinfulshadows.com";
-const SERVER_URL = isProduction ? PROD_SERVER_URL : DEV_SERVER_URL;
 let socket = null;
 let isAuthenticated = false;
 let currentStatus = "disconnected";
@@ -165510,62 +165533,57 @@ let logChunkBuffer = [];
 function connectToServer() {
   const accessToken2 = getAccessToken();
   const guestToken2 = getGuestToken();
-  const tokenType = accessToken2 ? "User Access Token" : guestToken2 ? "Guest Token (Not Sent)" : "No Token";
-  const canConnect = !!accessToken2 || !!guestToken2;
-  if (!canConnect) {
-    warn(MODULE_NAME$4, "No user or guest token available conceptually. Cannot connect to server.");
-    if (socket) {
-      socket.disconnect();
-      socket = null;
-    }
-    return;
-  }
+  const clientId2 = getPersistedClientId();
+  const tokenType = accessToken2 ? "User Access Token" : guestToken2 ? "Guest Token" : "No Token";
   if (socket == null ? void 0 : socket.connected) {
     warn(MODULE_NAME$4, "Already connected to server.");
     return;
   }
-  info(MODULE_NAME$4, `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`);
+  info(
+    MODULE_NAME$4,
+    `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`
+  );
   sendConnectionStatus("connecting");
   if (socket) {
     socket.disconnect();
     socket = null;
   }
+  let handshakeAuth = {};
+  let handshakeQuery = {};
+  if (accessToken2) {
+    handshakeAuth = { token: accessToken2 };
+  } else if (guestToken2) {
+    handshakeAuth = { token: guestToken2 };
+  } else if (clientId2) {
+    handshakeQuery = { clientId: clientId2 };
+  } else {
+    warn(
+      MODULE_NAME$4,
+      "No access token, guest token, or clientId available. Cannot connect to server."
+    );
+    return;
+  }
   socket = lookup(SERVER_URL, {
     reconnection: true,
-    // Ensure reconnection is enabled (default)
     reconnectionAttempts: Infinity,
-    // Keep trying indefinitely
     reconnectionDelay: 1e4,
-    // Initial delay 10 seconds
     reconnectionDelayMax: 6e4,
-    // Max delay 60 seconds (optional, prevents excessive delays)
     transports: ["websocket"],
-    // Use WebSocket transport
-    // Send access token for authentication
-    auth: (cb) => {
-      const tokenToSend = accessToken2;
-      const sendingType = tokenToSend ? "User Access Token" : "No Token";
-      debug$b(MODULE_NAME$4, `Socket auth callback: Providing ${sendingType}: ${tokenToSend ? "Yes (first 10 chars: " + tokenToSend.substring(0, 10) + "...)" : "No"}`);
-      cb(tokenToSend ? { token: tokenToSend } : {});
-    }
+    auth: handshakeAuth,
+    query: handshakeQuery
   });
   socket.on("connect", () => {
-    info(MODULE_NAME$4, `Successfully connected to server: ${socket == null ? void 0 : socket.id}. Checking authentication method...`);
-    const currentAccessToken = getAccessToken();
-    const currentGuestToken = getGuestToken();
-    if (!currentAccessToken && currentGuestToken) {
-      info(MODULE_NAME$4, `Connected without user token. Sending authenticate_guest message...`);
-      socket == null ? void 0 : socket.emit("authenticate_guest", { token: currentGuestToken }, (ack) => {
-        if (ack == null ? void 0 : ack.success) {
-          info(MODULE_NAME$4, "Server acknowledged guest authentication request.");
-        } else {
-          error(MODULE_NAME$4, `Server rejected guest authentication: ${(ack == null ? void 0 : ack.error) || "Unknown error"}`);
-        }
-      });
-    } else if (currentAccessToken) {
-      info(MODULE_NAME$4, `Connected with user token. Waiting for server authentication confirmation...`);
-    } else {
-      warn(MODULE_NAME$4, `Connected without any token. Cannot authenticate.`);
+    info(
+      MODULE_NAME$4,
+      `Successfully connected to server: ${socket == null ? void 0 : socket.id}. Authentication handshake sent.`
+    );
+  });
+  socket.on("guestToken", (data2) => {
+    if (data2 == null ? void 0 : data2.token) {
+      info(MODULE_NAME$4, "Received guest token from server. Storing...");
+      setGuestToken(data2.token);
+      disconnectFromServer();
+      setTimeout(connectToServer, 100);
     }
   });
   socket.on("authenticated", () => {
@@ -165582,6 +165600,32 @@ function connectToServer() {
   socket.on("connect_error", (error$12) => {
     error(MODULE_NAME$4, `Connection error: ${error$12.message}`);
     sendConnectionStatus("error");
+    if (error$12.message && (error$12.message.includes("invalid signature") || error$12.message.toLowerCase().includes("auth"))) {
+      warn(MODULE_NAME$4, "Clearing guest token and retrying as new guest...");
+      clearGuestToken();
+      setTimeout(connectToServer, 200);
+    }
+  });
+  socket.on("retry_auth", async (data2) => {
+    warn(MODULE_NAME$4, `Received 'retry_auth' event from server. Reason: ${(data2 == null ? void 0 : data2.reason) || "No reason provided"}. Authentication failed.`);
+    isAuthenticated = false;
+    sendConnectionStatus("connecting");
+    if (socket) {
+      socket.off();
+      socket.disconnect();
+      socket = null;
+    }
+    info(MODULE_NAME$4, "Attempting token refresh before reconnecting...");
+    const refreshedUserInfo = await refreshToken();
+    if (refreshedUserInfo) {
+      info(MODULE_NAME$4, `Token refresh successful for ${refreshedUserInfo.username}. Proceeding with reconnection.`);
+    } else {
+      warn(MODULE_NAME$4, "Token refresh failed. Reconnection attempt might fail if token was invalid.");
+    }
+    setTimeout(() => {
+      info(MODULE_NAME$4, "Attempting to reconnect after retry_auth event and refresh attempt...");
+      connectToServer();
+    }, 2e3);
   });
 }
 function disconnectFromServer() {
@@ -165941,6 +165985,18 @@ function registerIpcHandlers() {
   });
   ipcMain$1.handle("set-sound-effects", (event, value2) => {
     setPlaySoundEffects(!!value2);
+    return !!value2;
+  });
+  ipcMain$1.handle("get-launch-on-startup", () => {
+    return getLaunchOnStartup();
+  });
+  ipcMain$1.handle("set-launch-on-startup", (event, value2) => {
+    setLaunchOnStartup(!!value2);
+    app$1.setLoginItemSettings({
+      openAtLogin: !!value2,
+      args: ["--hidden"]
+      // Electron convention for "start hidden/in tray"
+    });
     return !!value2;
   });
   ipcMain$1.handle("get-api-settings", () => {

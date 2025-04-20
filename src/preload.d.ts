@@ -38,6 +38,9 @@ export interface LogMonitorApi {
   getCsvLogPath: () => Promise<string>;
   setCsvLogPath: (newPath: string) => Promise<boolean>;
 
+  // Launch on Startup
+  getLaunchOnStartup: () => Promise<boolean>;
+  setLaunchOnStartup: (value: boolean) => Promise<boolean>;
   // Window Actions
   openSettingsWindow: () => Promise<void>;
   windowMinimize: () => void; // Added
@@ -66,6 +69,8 @@ export interface LogMonitorApi {
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
   // Add listener for connection status
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
+  // Add listener for game mode updates
+  onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   // Cleanup
   removeAllListeners: () => void;
 }

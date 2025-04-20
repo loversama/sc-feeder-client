@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
@@ -17,12 +18,13 @@ const connectionStatus = ref<ConnectionStatus>('disconnected'); // Track server 
 // Use a relative path that will work with Electron
 // const killSound = new Audio(); // Removed - will create dynamically
 const resourcePath = ref<string>(''); // To store the path provided by main process
+const currentGameMode = ref<'PU' | 'AC' | 'Unknown'>('Unknown'); // Added for stable game mode
 
 // Function to open the event details window
 const openEventDetails = async (event: KillEvent) => {
   console.log('%c KILLFEED CLICK HANDLER ACTIVATED', 'background: #222; color: #bada55; font-size: 16px; padding: 4px;');
   console.log('Click detected. Opening details for event:', event.id);
-  
+
   // Verify that logMonitorApi and openEventDetailsWindow exist
   if (!window.logMonitorApi) {
     console.error('logMonitorApi is not available on window!');
@@ -30,14 +32,14 @@ const openEventDetails = async (event: KillEvent) => {
     alert("Error: logMonitorApi is not available. Please check console.");
     return;
   }
-  
+
   if (!window.logMonitorApi.openEventDetailsWindow) {
     console.error('openEventDetailsWindow method is not available on logMonitorApi!');
     console.table(Object.keys(window.logMonitorApi));
     alert("Error: openEventDetailsWindow method is not available. Please check console.");
     return;
   }
-  
+
   // Build the minimal event object with just the necessary properties
   // This avoids passing reactive Vue objects that can't be properly serialized
   const minimalEvent: KillEvent = {
@@ -66,9 +68,9 @@ const openEventDetails = async (event: KillEvent) => {
     victimOrg: String(event.victimOrg || '-'),
     victimPfpUrl: String(event.victimPfpUrl || '')
   };
-  
+
   console.log('Passing event data:', JSON.stringify(minimalEvent, null, 2));
-  
+
   try {
     // Call the API method with a slight delay to ensure UI is responsive
     setTimeout(async () => {
@@ -108,7 +110,7 @@ const sortedFilteredEvents = computed(() => {
     .filter((event: KillEvent) => { // Add type annotation
       // Apply search filter
       if (!searchQuery.value.trim()) return true;
-      
+
       const search = searchQuery.value.toLowerCase().trim();
       // Search across relevant fields
       const searchFields = [
@@ -124,33 +126,79 @@ const sortedFilteredEvents = computed(() => {
         event.victimOrg,
         event.victimRsiRecord
       ];
-      
+
       return searchFields.some(field => field?.toLowerCase().includes(search));
     })
     // Sort newest first (reverse chronological)
     .sort((a: KillEvent, b: KillEvent) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Add type annotations
+});
 
-// Computed property for status indicator class
-const statusIndicatorClass = computed(() => {
-  const logActive = logStatus.value.includes('active') || logStatus.value.includes('Monitoring started');
+// --- BADGE COMPUTED PROPERTIES ---
+const isMonitoringActive = computed(() =>
+  logStatus.value.toLowerCase().includes('active') || logStatus.value.toLowerCase().includes('monitoring started')
+);
 
+const monitoringBadge = computed(() => ({
+  text: isMonitoringActive.value ? 'Monitoring' : 'Not Monitoring',
+  class: isMonitoringActive.value
+    ? 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset'
+    : 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'
+}));
+
+const loginBadge = computed(() => {
   if (isOffline.value) {
-    return logActive ? 'status-orange' : 'status-grey'; // Orange if monitoring, grey otherwise in offline mode
-  } else {
-    // Online mode
-    if (connectionStatus.value === 'connected' && logActive) {
-      return 'status-green'; // Green only if connected AND monitoring
-    } else if (connectionStatus.value === 'connecting') {
-      return 'status-orange'; // Orange while connecting
-    } else if (connectionStatus.value === 'error') {
-      return 'status-red'; // Red on connection error
-    } else {
-      // Disconnected or log not active
-      return logActive ? 'status-orange' : 'status-grey'; // Orange if monitoring but disconnected, grey otherwise
-    }
+    return {
+      text: 'Offline',
+      class: 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'
+    };
+  }
+  // Use only isAuthenticated for "Logged In" status, regardless of connectionStatus
+  if (isAuthenticated.value) {
+    return {
+      text: 'Logged In',
+      class: 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset'
+    };
+  }
+  return {
+    text: 'Guest',
+    class: 'inline-flex items-center rounded-md bg-yellow-50 px-2 py-1 text-xs font-medium text-yellow-800 ring-1 ring-yellow-600/20 ring-inset'
+  };
+});
+
+const modeBadge = computed(() => {
+  switch (currentGameMode.value) {
+    case 'PU':
+      return {
+        text: 'PU',
+        class: 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset'
+      };
+    case 'AC':
+      return {
+        text: 'AC',
+        class: 'inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-700/10 ring-inset'
+      };
+    default:
+      return {
+        text: '?',
+        class: 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'
+      };
   }
 });
+
+const feedModeBadge = computed(() => {
+  if (isAuthenticated.value) {
+    return {
+      text: 'Global Events',
+      class: 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset'
+    };
+  }
+  return {
+    text: 'Player Events',
+    class: 'inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset'
+  };
 });
+
+// Removed old statusIndicatorClass computed property
 
 // Format time from ISO string to appropriate format based on age
 const formatTime = (isoTime: string): string => {
@@ -158,21 +206,21 @@ const formatTime = (isoTime: string): string => {
   try {
     const date = new Date(isoTime);
     const now = new Date();
-    
+
     // Format options - Use correct literal types
     const timeOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
-    
+
     // If timestamp is from today, show only time
     if (date.toDateString() === now.toDateString()) {
       return date.toLocaleTimeString([], timeOptions);
     }
-    
+
     // If from the current year, show date and time
     if (date.getFullYear() === now.getFullYear()) {
       return date.toLocaleDateString([], { day: 'numeric', month: 'short' }) +
              ' ' + date.toLocaleTimeString([], timeOptions);
     }
-    
+
     // If older than a year, include year
     return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) +
            ' ' + date.toLocaleTimeString([], timeOptions);
@@ -201,13 +249,13 @@ const loadKillEvents = async () => {
     // Load both event sets to ensure they're available for toggle
     const playerEvents = await window.logMonitorApi.getKillEvents(100);
     const globalEvents = await window.logMonitorApi.getGlobalKillEvents(100);
-    
+
     // Update the ref arrays
     killEvents.value = playerEvents;
     globalKillEvents.value = globalEvents;
-    
+
     console.log(`Loaded ${playerEvents.length} player events and ${globalEvents.length} global events`);
-    
+
     // Scroll to top after initial load
     nextTick(() => {
       if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
@@ -380,9 +428,21 @@ onMounted(() => {
       } else {
         console.warn('[KillFeed] onConnectionStatusChanged API not available.');
       }
+    })(),
+    // Add listener for stable game mode updates
+    (() => {
+      if (window.logMonitorApi?.onGameModeUpdate) {
+        const cleanup = window.logMonitorApi.onGameModeUpdate((_event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => {
+          console.log('[KillFeed] Received game mode update:', mode);
+          currentGameMode.value = mode;
+        });
+        cleanupFunctions.push(cleanup);
+      } else {
+         console.warn('[KillFeed] onGameModeUpdate API not available.');
+      }
     })()
   ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
-  
+
   // Listen for new/updated spacecraft events
   cleanupFunctions.push(
     // Explicitly type the incoming data
@@ -497,12 +557,12 @@ onMounted(() => {
       }
     })
   );
-  
+
   // Listen for log status updates
   cleanupFunctions.push(
     window.logMonitorApi.onLogStatus((_event, status) => {
       logStatus.value = status;
-      
+
       // Check for player ship updates in status messages
       if (status.includes('Current ship:')) {
         const shipMatch = status.match(/Current ship: ([A-Z0-9_]+)/i);
@@ -512,7 +572,7 @@ onMounted(() => {
       }
     })
   );
-  
+
   // No longer need the cleanup for the interval
 });
 
@@ -534,30 +594,18 @@ onUnmounted(() => {
         type="text"
       >
     </div>
-    
-    <!-- Status bar -->
+
+    <!-- Status bar with Pips -->
     <div class="status-bar">
-      <!-- Stats section -->
-      <!-- Stats section - Simplified view indicator -->
-      <div class="stats-section">
-        <span class="stats-item view-mode-indicator">
-          <span class="mode-badge" :class="{ 'global-mode': isAuthenticated }">
-            {{ isAuthenticated ? 'All Events' : 'Player Events' }}
-          </span>
-          <span class="count-badge">
-            {{ currentEvents.length }} events <!-- Use currentEvents directly -->
-          </span>
-        </span>
-        <span class="stats-item" v-if="currentPlayerShip">Ship: {{ currentPlayerShip }}</span>
+      <div class="status-badges-container">
+        <span :class="feedModeBadge.class">{{ feedModeBadge.text }}</span>
+        <span :class="loginBadge.class">{{ loginBadge.text }}</span>
+        <span :class="monitoringBadge.class">{{ monitoringBadge.text }}</span>
+        <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
       </div>
-      
-      <!-- Status indicator -->
-      <div class="log-status">
-        <div class="status-indicator" :class="{active: logStatus.includes('active') || logStatus.includes('Monitoring started')}"></div>
-        <span>{{ logStatus }}</span>
-      </div>
+      <!-- Optionally, show logStatus as a tooltip or below -->
     </div>
-    
+
     <!-- Event List Area -->
     <!-- Check for no events first (using currentEvents based on mode) -->
     <div v-if="!currentEvents.length" class="no-events">
@@ -593,7 +641,7 @@ onUnmounted(() => {
             {{ event.deathType }} Death
             <!-- Display secondary death type if merged -->
             <span v-if="event.data?.secondaryDeathType" class="secondary-death-type">
-              + {{ event.data.secondaryDeathType }}
+              + {{ event.data?.secondaryDeathType }} <!-- Added optional chaining -->
             </span>
           </span>
           <!-- Game Mode Pill -->
@@ -604,7 +652,7 @@ onUnmounted(() => {
           <span class="event-location" v-if="event.location">{{ event.location }}</span>
           <span class="event-time">{{ formatTime(event.timestamp) }}</span>
         </div>
-        
+
         <div class="event-content">
           <div class="player-names">
             <!-- Special layout for environmental deaths or crashes -->
@@ -656,11 +704,96 @@ onUnmounted(() => {
        </div> <!-- End of v-for element -->
        </transition-group> <!-- Close transition-group here -->
      <!-- The v-else-if conditions are handled earlier, this closes the v-else div -->
-   </div>
- </div> <!-- Close kill-feed-container -->
+    </div>
+
+    <!-- Relocated Stats Section -->
+    <div class="stats-section">
+      <span class="stats-item view-mode-indicator">
+        <span class="mode-badge" :class="{ 'global-mode': isAuthenticated }">
+          {{ isAuthenticated ? 'All Events' : 'Player Events' }}
+        </span>
+        <span class="count-badge">
+          {{ currentEvents.length }} events <!-- Use currentEvents directly -->
+        </span>
+      </span>
+      <span class="stats-item" v-if="currentPlayerShip">Ship: {{ currentPlayerShip }}</span>
+    </div>
+
+  </div> <!-- Close kill-feed-container -->
 </template>
 
 <style scoped>
+.status-badges-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Badge base style (for fallback if Tailwind is not present) */
+.inline-flex {
+  display: inline-flex;
+  align-items: center;
+}
+.rounded-md { border-radius: 0.375rem; }
+.px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+.py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+.text-xs { font-size: 0.75rem; line-height: 1rem; }
+.font-medium { font-weight: 500; }
+.ring-1 { box-shadow: 0 0 0 1px rgba(0,0,0,0.05); }
+.ring-inset { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+
+/* Color classes for badges (fallbacks for Tailwind) */
+.bg-gray-50 { background-color: #f9fafb; }
+.text-gray-600 { color: #4b5563; }
+.ring-gray-500\/10 { box-shadow: 0 0 0 1px rgba(107,114,128,0.1); }
+.bg-red-50 { background-color: #fef2f2; }
+.text-red-700 { color: #b91c1c; }
+.ring-red-600\/10 { box-shadow: 0 0 0 1px rgba(220,38,38,0.1); }
+.bg-yellow-50 { background-color: #fffbeb; }
+.text-yellow-800 { color: #92400e; }
+.ring-yellow-600\/20 { box-shadow: 0 0 0 1px rgba(202,138,4,0.2); }
+.bg-green-50 { background-color: #ecfdf5; }
+.text-green-700 { color: #047857; }
+.ring-green-600\/20 { box-shadow: 0 0 0 1px rgba(5,150,105,0.2); }
+.bg-blue-50 { background-color: #eff6ff; }
+.text-blue-700 { color: #1d4ed8; }
+.ring-blue-700\/10 { box-shadow: 0 0 0 1px rgba(29,78,216,0.1); }
+.bg-indigo-50 { background-color: #eef2ff; }
+.text-indigo-700 { color: #4338ca; }
+.ring-indigo-700\/10 { box-shadow: 0 0 0 1px rgba(67,56,202,0.1); }
+
+/* --- DARK MODE BADGES --- */
+@media (prefers-color-scheme: dark) {
+  .bg-gray-50 { background-color: #23272e !important; }
+  .text-gray-600 { color: #d1d5db !important; }
+  .ring-gray-500\/10 { box-shadow: 0 0 0 1px rgba(156,163,175,0.2) !important; }
+  .bg-red-50 { background-color: #4b1e1e !important; }
+  .text-red-700 { color: #fca5a5 !important; }
+  .ring-red-600\/10 { box-shadow: 0 0 0 1px rgba(252,165,165,0.25) !important; }
+  .bg-yellow-50 { background-color: #4b3a1e !important; }
+  .text-yellow-800 { color: #fde68a !important; }
+  .ring-yellow-600\/20 { box-shadow: 0 0 0 1px rgba(253,224,71,0.25) !important; }
+  .bg-green-50 { background-color: #1e3a2f !important; }
+  .text-green-700 { color: #6ee7b7 !important; }
+  .ring-green-600\/20 { box-shadow: 0 0 0 1px rgba(16,185,129,0.25) !important; }
+  .bg-blue-50 { background-color: #1e293b !important; }
+  .text-blue-700 { color: #93c5fd !important; }
+  .ring-blue-700\/10 { box-shadow: 0 0 0 1px rgba(147,197,253,0.25) !important; }
+  .bg-indigo-50 { background-color: #312e81 !important; }
+  .text-indigo-700 { color: #c7d2fe !important; }
+  .ring-indigo-700\/10 { box-shadow: 0 0 0 1px rgba(199,210,254,0.25) !important; }
+}
+
+.status-bar {
+  display: flex;
+  padding: 8px 15px;
+  background-color: #222;
+  border-bottom: 1px solid #333;
+  justify-content: flex-start;
+  font-size: 0.8em;
+  flex-shrink: 0;
+  align-items: center;
+}
 .kill-feed-container {
   display: flex;
   flex-direction: column;
@@ -773,10 +906,53 @@ onUnmounted(() => {
   align-items: center;
 }
 
+/* New Pip Styles */
+.status-pips-container {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* Spacing between pips */
+}
+
+.status-pip {
+  width: 20px; /* Adjust size as needed */
+  height: 10px;
+  border-radius: 3px; /* Rectangular pips */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  font-weight: bold;
+  color: white;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+  line-height: 1; /* Ensure text fits vertically */
+  overflow: hidden; /* Hide overflow text */
+  white-space: nowrap; /* Prevent text wrapping */
+}
+
+.monitoring-pip { /* Only color, no text */
+   width: 10px; /* Make monitoring pip smaller */
+   border-radius: 50%; /* Make it round */
+}
+
+/* Pip Color States */
+.status-green { background-color: #4caf50; }
+.status-orange { background-color: #f39c12; }
+.status-blue-pu { background-color: #3498db; }
+.status-purple-ac { background-color: #9b59b6; }
+.status-grey { background-color: #7f8c8d; }
+.status-red { background-color: #e74c3c; } /* For errors if needed */
+
+
+/* Styles for Relocated Stats Section */
 .stats-section {
   display: flex;
   gap: 15px;
   align-items: center;
+  padding: 10px 15px; /* Add padding */
+  border-top: 1px solid #333; /* Add separator */
+  background-color: #222; /* Match status bar bg */
+  flex-shrink: 0; /* Prevent shrinking */
+  font-size: 0.8em; /* Match status bar font size */
 }
 
 .stats-item {
@@ -815,25 +991,12 @@ onUnmounted(() => {
   font-size: 0.75em;
 }
 
-.log-status {
-  display: flex;
-  align-items: center;
-  color: #888;
-}
-
-.status-indicator {
-  width: 8px; /* Smaller indicator */
-  height: 8px;
-  border-radius: 50%;
-  background-color: #777;
-  margin-right: 6px;
-  transition: background-color 0.5s, box-shadow 0.5s;
-}
-
-.status-indicator.active {
-  background-color: #4caf50; /* Green when active */
-  box-shadow: 0 0 4px #4caf50;
-}
+/* Remove old log-status and status-indicator styles */
+/*
+.log-status { ... }
+.status-indicator { ... }
+.status-indicator.active { ... }
+*/
 
 /* Event List Area */
 .no-events {
