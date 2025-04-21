@@ -134,9 +134,15 @@ const sortedFilteredEvents = computed(() => {
 });
 
 // --- BADGE COMPUTED PROPERTIES ---
-const isMonitoringActive = computed(() =>
-  logStatus.value.toLowerCase().includes('active') || logStatus.value.toLowerCase().includes('monitoring started')
-);
+const isMonitoringActive = computed(() => {
+  const statusCheck = logStatus.value.toLowerCase().includes('active') || logStatus.value.toLowerCase().includes('monitoring started');
+
+  // Check if there are any events and if the most recent event is within the last 60 seconds
+  const hasRecentEvent = currentEvents.value.length > 0 &&
+                         (new Date().getTime() - new Date(currentEvents.value[0].timestamp).getTime()) < 60000;
+
+  return statusCheck || hasRecentEvent;
+});
 
 const monitoringBadge = computed(() => ({
   text: isMonitoringActive.value ? 'Monitoring' : 'Not Monitoring',
