@@ -1,16 +1,21 @@
 @import "tailwindcss";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
+@theme {
+  --color-theme-bg-dark: #181a1d;
+  --color-theme-bg-panel: #2a2d31; /* Slightly lighter panel for contrast */
+  --color-theme-accent-blue: #90b6f0;
+  --color-theme-accent-orange: #f0a070;
+  --color-theme-text-light: #e5e7eb;
+  --color-theme-text-white: #ffffff;
+  --color-theme-border: #3a3d42;
+  --color-scrollbar-thumb: #4f535a; /* Darker grey for thumb */
+  --color-scrollbar-thumb-hover: #6a6e75; /* Lighter grey for hover */
+}
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  /* Default text color for the dark theme */
-  color: theme('colors.theme-text-light');
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -21,52 +26,112 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: theme('colors.theme-bg-dark');
-  /* Remove default flex centering */
-  /* display: flex; */
-  /* place-items: center; */
+  background-color: var(--color-theme-bg-dark);
+  color: var(--color-theme-text-light);
+  overflow: hidden; /* Prevent body scrollbars */
 }
 
-/* Remove default link styling, will be handled by components/theme */
-/* a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+/* Global Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 10px; /* Slightly wider */
+  height: 10px;
 }
-a:hover {
-  color: #535bf2;
-} */
 
-/* Remove default button styling, will be handled by components/theme */
-/* button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
+::-webkit-scrollbar-track {
+  background: var(--color-theme-bg-dark); /* Match dark background */
 }
-button:hover {
-  border-color: #646cff;
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid var(--color-theme-bg-dark); /* Creates padding around thumb */
 }
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-} */
 
-/* Remove default #app styling */
-/* #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-} */
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-scrollbar-thumb-hover);
+}
 
-/* Remove default h1 styling */
-/* h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-} */
+/* Theme Colors */
+@layer utilities {
+  .bg-theme-bg-dark {
+    background-color: var(--color-theme-bg-dark);
+  }
+  .bg-theme-bg-panel {
+    background-color: var(--color-theme-bg-panel);
+  }
+  .text-theme-text-light {
+    color: var(--color-theme-text-light);
+  }
+  .text-theme-text-white {
+    color: var(--color-theme-text-white);
+  }
+  .text-theme-accent-blue {
+    color: var(--color-theme-accent-blue);
+  }
+  .border-theme-border {
+    border-color: var(--color-theme-border);
+  }
+
+  /* Spacing Utilities */
+  .p-1 { padding: 0.25rem; }
+  .p-2 { padding: 0.5rem; }
+  .p-4 { padding: 1rem; }
+  .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .mt-2 { margin-top: 0.5rem; }
+  .mr-4 { margin-right: 1rem; }
+
+  /* Sizing */
+  .h-full { height: 100%; }
+  .h-screen { height: 100vh; }
+  .w-screen { width: 100vw; }
+  .w-2 { width: 0.5rem; }
+  .h-2 { height: 0.5rem; }
+
+  /* Display & Layout */
+  .flex { display: flex; }
+  .flex-1 { flex: 1 1 0%; }
+  .flex-col { flex-direction: column; }
+  .flex-grow { flex-grow: 1; }
+  .items-center { align-items: center; }
+  .justify-center { justify-content: center; }
+  .justify-end { justify-content: flex-end; }
+  .relative { position: relative; }
+  .fixed { position: fixed; }
+  .top-0 { top: 0; }
+  .left-0 { left: 0; }
+  .right-0 { right: 0; }
+  .z-10 { z-index: 10; }
+
+
+  /* Typography */
+  .text-lg { font-size: 1.125rem; }
+  .font-semibold { font-weight: 600; }
+  .text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+  .mb-4 { margin-bottom: 1rem; }
+  .mb-2 { margin-bottom: 0.5rem; }
+  .text-red-500 { color: rgb(239 68 68); }
+
+
+  /* Borders */
+  .rounded { border-radius: 0.25rem; }
+  .border { border-width: 1px; }
+
+  /* Effects */
+  .shadow { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06); } /* Adjusted shadow */
+  .overflow-hidden { overflow: hidden; }
+  .overflow-auto { overflow: auto; }
+
+  /* Transitions */
+  .transition-colors { transition-property: background-color, border-color, color, fill, stroke; }
+  .duration-200 { transition-duration: 200ms; }
+
+  /* Background Opacity */
+  .bg-white\/5 { background-color: rgba(255, 255, 255, 0.05); }
+  .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1); }
+
+  /* Colors */
+  .bg-transparent { background-color: transparent; }
+  .bg-red-600 { background-color: rgb(220, 38, 38); }
+  .border-none { border: none; }
+}

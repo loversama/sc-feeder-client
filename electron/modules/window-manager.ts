@@ -18,6 +18,7 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let webContentWindow: BrowserWindow | null = null; // Added for Web Content Window
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
@@ -27,6 +28,7 @@ type WindowStoreSchema = {
     windowBounds?: Rectangle;
     settingsWindowBounds?: Rectangle;
     eventDetailsWindowBounds?: Rectangle;
+    webContentWindowBounds?: Rectangle; // Added for Web Content Window
 };
 
 // electron-store setup for window state
@@ -34,7 +36,8 @@ const store = new Store<WindowStoreSchema>({
     defaults: {
         windowBounds: undefined,
         settingsWindowBounds: undefined,
-        eventDetailsWindowBounds: undefined
+        eventDetailsWindowBounds: undefined,
+        webContentWindowBounds: undefined // Added for Web Content Window
     }
 });
 
@@ -598,6 +601,130 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
     return detailsWindow;
 }
 
+// --- NEW Web Content Window ---
+export function createWebContentWindow(): BrowserWindow | null {
+    if (webContentWindow) {
+        webContentWindow.focus();
+        return webContentWindow;
+    }
+
+    // --- Web Content Window Bounds ---
+    const savedBounds = store.get('webContentWindowBounds');
+    const defaultWidth = 1024;
+    const defaultHeight = 768;
+
+    const webContentWindowOptions: Electron.BrowserWindowConstructorOptions = {
+        width: defaultWidth,
+        height: defaultHeight,
+        x: undefined,
+        y: undefined,
+        title: 'SC Feeder - Web Content',
+        webPreferences: {
+            preload: getPreloadPath(),
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: !app.isPackaged,
+            spellcheck: false
+        },
+        frame: false, // Required for custom title bar
+        titleBarStyle: 'hidden',
+        titleBarOverlay: true, // Enable overlay for custom controls
+        autoHideMenuBar: true,
+        show: false, // Don't show until ready
+        icon: getIconPath() || undefined,
+        minWidth: 800, // Set reasonable minimum dimensions
+        minHeight: 600,
+        backgroundColor: '#1a1a1a' // Match other windows if desired
+    };
+
+    // Validate and apply saved bounds
+    if (savedBounds) {
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+            const displayBounds = display.workArea;
+            return (
+                savedBounds.x < displayBounds.x + displayBounds.width &&
+                savedBounds.x + savedBounds.width > displayBounds.x &&
+                savedBounds.y < displayBounds.y + displayBounds.height &&
+                savedBounds.y + savedBounds.height > displayBounds.y
+            );
+        });
+
+        if (isVisible) {
+            logger.info(MODULE_NAME, 'Applying saved web content window bounds:', savedBounds);
+            webContentWindowOptions.x = savedBounds.x;
+            webContentWindowOptions.y = savedBounds.y;
+            webContentWindowOptions.width = savedBounds.width;
+            webContentWindowOptions.height = savedBounds.height;
+        } else {
+            logger.warn(MODULE_NAME, 'Saved web content window bounds are outside visible screen area. Using defaults.');
+            store.delete('webContentWindowBounds'); // Clear invalid bounds
+        }
+    } else {
+        logger.info(MODULE_NAME, `No saved web content bounds found. Using default size: ${defaultWidth}x${defaultHeight}`);
+    }
+
+    webContentWindow = new BrowserWindow(webContentWindowOptions);
+
+    attachTitlebarToWindow(webContentWindow); // Attach the custom title bar
+
+    // Load web content URL
+    const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
+    if (devServerUrl) {
+        const webContentUrl = `${devServerUrl}/web-content.html`;
+        logger.info(MODULE_NAME, `Loading web content window from dev server: ${webContentUrl}`);
+        webContentWindow.loadURL(webContentUrl)
+            .catch(err => logger.error(MODULE_NAME, 'Failed to load web-content.html from dev server:', err));
+    } else {
+        // Production: Load file using url.format
+        const productionWebContentUrl = url.format({
+            pathname: path.join(__dirname, '..', 'dist', 'web-content.html'),
+            protocol: 'file:',
+            slashes: true
+        });
+        logger.info(MODULE_NAME, `Loading web content window from URL: ${productionWebContentUrl}`);
+        webContentWindow.loadURL(productionWebContentUrl)
+            .catch(err => {
+                logger.error(MODULE_NAME, `Failed to load web-content.html from ${productionWebContentUrl}:`, err);
+                if (webContentWindow) { // Add null check
+                    webContentWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load web content page from ${productionWebContentUrl}.</p><p>${err}</p>`)}`);
+                }
+            });
+    }
+
+    webContentWindow.once('ready-to-show', () => {
+        logger.info(MODULE_NAME, 'Web content window ready-to-show');
+        webContentWindow?.show();
+        if (!app.isPackaged) {
+            webContentWindow?.webContents.openDevTools(); // Open dev tools in dev
+        }
+    });
+
+    webContentWindow.on('closed', () => {
+        webContentWindow = null; // Dereference the window object
+        logger.debug(MODULE_NAME, 'Web content window closed and dereferenced.');
+    });
+
+    // --- Save Web Content Window Bounds ---
+    const saveWebContentBounds = createSaveBoundsHandler(webContentWindow, 'webContentWindowBounds');
+    webContentWindow.on('resize', saveWebContentBounds);
+    webContentWindow.on('move', saveWebContentBounds);
+
+    // Handle external links in web content window
+    webContentWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+            logger.info(MODULE_NAME, `Opening external link from web content window: ${url}`);
+            shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        logger.warn(MODULE_NAME, `Denying window open request for non-external URL: ${url}`);
+        return { action: 'deny' };
+    });
+
+    return webContentWindow;
+}
+
+
 // --- Accessor Functions ---
 
 export function getMainWindow(): BrowserWindow | null {
@@ -606,6 +733,10 @@ export function getMainWindow(): BrowserWindow | null {
 
 export function getSettingsWindow(): BrowserWindow | null {
     return settingsWindow;
+}
+
+export function getWebContentWindow(): BrowserWindow | null { // Added accessor
+    return webContentWindow;
 }
 
 export function getActiveEventDataForWindow(): KillEvent | null {
@@ -621,12 +752,14 @@ export function getActiveEventDataForWindow(): KillEvent | null {
 export function closeAllWindows() {
     BrowserWindow.getAllWindows().forEach(window => {
         // Check if it's one of our managed windows before closing forcefully
-        if (window === mainWindow || window === settingsWindow /* add details window if needed */) {
+        // Updated to include webContentWindow
+        if (window === mainWindow || window === settingsWindow || window === webContentWindow /* add details window if needed */) {
              window.close();
         }
         // Or simply close all: window.close();
     });
     mainWindow = null;
     settingsWindow = null;
+    webContentWindow = null; // Added dereference
     activeEventDataForWindow = null;
 }

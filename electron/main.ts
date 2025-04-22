@@ -66,19 +66,7 @@ autoUpdater.logger = logger; // Use the existing logger module
 
 autoUpdater.on('update-available', (info) => {
   logger.info(MODULE_NAME, `Update available: ${info.version}`);
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Available',
-    message: `A new version (${info.version}) of SC Kill Feed is available. Do you want to download and install it now?`,
-    buttons: ['Yes', 'No']
-  }).then(({ response }) => {
-    if (response === 0) { // User clicked 'Yes'
-      logger.info(MODULE_NAME,'User agreed to download update.');
-      autoUpdater.downloadUpdate();
-    } else {
-      logger.info(MODULE_NAME,'User declined update download.');
-    }
-  });
+  autoUpdater.downloadUpdate();
 });
 
 autoUpdater.on('update-not-available', (info) => {
@@ -97,7 +85,11 @@ autoUpdater.on('download-progress', (progressObj) => {
   // Optional: Send progress to renderer process to display in UI
   const mainWindow = getMainWindow();
   if (mainWindow) {
-      // Example: mainWindow.webContents.send('update-download-progress', progressObj.percent);
+      // TODO: Implement download progress bar in renderer process
+      // Example:
+      // if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      //   mainWindow.webContents.send('update-download-progress', progressObj.percent);
+      // }
   }
 });
 
@@ -117,3 +109,10 @@ autoUpdater.on('update-downloaded', (info) => {
     }
   });
 });
+
+// --- Auto Update Check Interval ---
+// Check for updates every 5 minutes (300000 milliseconds)
+setInterval(() => {
+logger.info(MODULE_NAME, 'Checking for updates...');
+autoUpdater.checkForUpdates();
+}, 300000);

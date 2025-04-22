@@ -1,7 +1,8 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'; // Import app
 import path from 'node:path';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
-import * as WindowManager from './window-manager.ts'; // Added .ts
+// Import createWebContentWindow specifically
+import { getMainWindow, createSettingsWindow, createEventDetailsWindow, getActiveEventDataForWindow, createWebContentWindow } from './window-manager.ts'; // Added .ts and createWebContentWindow
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
@@ -28,16 +29,16 @@ export function registerIpcHandlers() {
             // Restart watcher only if path actually changed
             LogWatcher.startWatchingLogFile().catch(err => logger.error(MODULE_NAME, "Error restarting watcher after set-log-path:", err));
             // Notify renderer
-            WindowManager.getMainWindow()?.webContents.send('log-path-updated', newPath);
+            getMainWindow()?.webContents.send('log-path-updated', newPath);
         } else {
-             WindowManager.getMainWindow()?.webContents.send('log-status', 'Log path was not changed.');
+             getMainWindow()?.webContents.send('log-status', 'Log path was not changed.');
         }
     });
 
     // Handles directory selection dialog
     ipcMain.handle('select-log-directory', async () => {
         logger.info(MODULE_NAME, "Received 'select-log-directory'");
-        const win = WindowManager.getMainWindow();
+        const win = getMainWindow();
         if (!win) {
             logger.error(MODULE_NAME, "Cannot show dialog, main window not available.");
             return null;
@@ -53,10 +54,10 @@ export function registerIpcHandlers() {
             const changed = ConfigManager.setLogPath(newLogFilePath);
             if (changed) {
                  await LogWatcher.startWatchingLogFile(); // Restart watcher
-                 WindowManager.getMainWindow()?.webContents.send('log-path-updated', newLogFilePath); // Notify renderer
+                 getMainWindow()?.webContents.send('log-path-updated', newLogFilePath); // Notify renderer
                  return newLogFilePath; // Return the path that was set
             } else {
-                 WindowManager.getMainWindow()?.webContents.send('log-status', 'Log path was not changed.');
+                 getMainWindow()?.webContents.send('log-status', 'Log path was not changed.');
                  return ConfigManager.getCurrentLogPath(); // Return current path if no change
             }
         }
@@ -193,18 +194,48 @@ try {
 
     // --- Window Management Handlers ---
     ipcMain.handle('open-settings-window', () => {
-        WindowManager.createSettingsWindow();
+        createSettingsWindow();
     });
 
     ipcMain.handle('open-event-details-window', async (event, eventData) => {
         // Pass current username for context
         const username = getCurrentUsername();
-        const success = WindowManager.createEventDetailsWindow(eventData, username);
+        const success = createEventDetailsWindow(eventData, username);
         return !!success; // Return true if window creation was attempted
     });
 
+    // NEW: Handler for Web Content Window
+    ipcMain.handle('open-web-content-window', (_event, initialTab?: string) => {
+      logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
+      const webWindow = createWebContentWindow(); // This function handles creation or focusing
+
+      // Optional: Navigate to initial tab if window was just created or needs focusing
+      if (webWindow && initialTab) {
+         // Ensure the window is ready before sending messages or navigating
+         if (webWindow.webContents.isLoading()) {
+             webWindow.webContents.once('did-finish-load', () => {
+                 logger.info(MODULE_NAME, `Web content window finished loading, navigating to: /${initialTab}`);
+                 // Use hash-based navigation for vue-router
+                 webWindow.loadURL(webWindow.webContents.getURL() + `#/${initialTab}`);
+                 // Or send an IPC message to the window's renderer process if preferred
+                 // webWindow.webContents.send('navigate-to-tab', initialTab);
+             });
+         } else {
+             logger.info(MODULE_NAME, `Web content window already loaded, navigating to: /${initialTab}`);
+             // Use hash-based navigation for vue-router
+             webWindow.loadURL(webWindow.webContents.getURL().split('#')[0] + `#/${initialTab}`);
+             // Or send an IPC message
+             // webWindow.webContents.send('navigate-to-tab', initialTab);
+         }
+      } else if (webWindow) {
+         // If no specific tab, ensure it's focused/shown
+         if (webWindow.isMinimized()) webWindow.restore();
+         webWindow.focus();
+      }
+    });
+
     ipcMain.handle('get-passed-event-data', () => {
-        return WindowManager.getActiveEventDataForWindow();
+        return getActiveEventDataForWindow();
     });
 
     ipcMain.handle('close-current-window', (event) => {
@@ -218,7 +249,7 @@ try {
 
     // --- Custom Title Bar Window Controls ---
     ipcMain.on('window:minimize', (event) => {
-        const win = WindowManager.getMainWindow(); // Or get window from event sender if needed
+        const win = getMainWindow(); // Or get window from event sender if needed
         if (win) {
             logger.debug(MODULE_NAME, "Minimizing main window.");
             win.minimize();
@@ -228,7 +259,7 @@ try {
     });
 
     ipcMain.on('window:toggleMaximize', (event) => {
-        const win = WindowManager.getMainWindow();
+        const win = getMainWindow();
         if (win) {
             if (win.isMaximized()) {
                 logger.debug(MODULE_NAME, "Unmaximizing main window.");
@@ -243,7 +274,7 @@ try {
     });
 
     ipcMain.on('window:close', (event) => {
-        const win = WindowManager.getMainWindow();
+        const win = getMainWindow();
         if (win) {
             logger.debug(MODULE_NAME, "Closing main window.");
             win.close(); // This will trigger the 'close' event handler in window-manager

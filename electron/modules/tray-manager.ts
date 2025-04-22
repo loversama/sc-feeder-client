@@ -1,55 +1,71 @@
-import { app, Menu, Tray, nativeImage } from 'electron';
+import { app, Menu, Tray, nativeImage } from 'electron'; // Removed ipcMain import
 import path from 'node:path';
 import fsSync from 'node:fs';
-import { fileURLToPath } from 'node:url'; // Added for ESM __dirname
-// Import getIconPath along with other window functions
-import { createMainWindow, createSettingsWindow, getMainWindow, getIconPath } from './window-manager';
+import { fileURLToPath } from 'node:url';
+// Import necessary window functions, including createWebContentWindow
+import { createMainWindow, createSettingsWindow, getMainWindow, getIconPath, createWebContentWindow } from './window-manager';
 import { setIsQuitting } from './app-lifecycle';
-import * as logger from './logger'; // Import the logger utility
+import * as logger from './logger';
 
-const MODULE_NAME = 'TrayManager'; // Define module name for logger
+const MODULE_NAME = 'TrayManager';
 
-// Define __dirname for ES module scope
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// --- Module State ---
-
 let tray: Tray | null = null;
 
-// --- Constants ---
+// Helper function to open/focus the web content window and navigate to a specific tab
+function navigateWebContentWindow(tabName: string) {
+    logger.info(MODULE_NAME, `Tray: Attempting to open/navigate web content window to: ${tabName}`);
+    const webWindow = createWebContentWindow(); // This handles creation or focusing
 
-// VITE_PUBLIC is set in window-manager.ts and stored in process.env
-// We will read it directly in getIconPath
+    if (webWindow) {
+        const navigate = () => {
+            logger.info(MODULE_NAME, `Navigating web content window to hash: /${tabName}`);
+            const currentURL = webWindow.webContents.getURL();
+            const baseURL = currentURL.split('#')[0]; // Get URL before any existing hash
+            // Ensure the base URL ends with .html before appending the hash
+            const finalBaseURL = baseURL.endsWith('.html') ? baseURL : (baseURL.endsWith('/') ? baseURL + 'web-content.html' : baseURL + '/web-content.html');
+            webWindow.loadURL(`${finalBaseURL}#/${tabName}`); // Use hash navigation
+        };
 
-// --- Functions ---
+        // Ensure the window is ready before navigating
+        if (webWindow.webContents.isLoading()) {
+            webWindow.webContents.once('did-finish-load', navigate);
+        } else {
+            navigate();
+        }
 
-// REMOVED: getPublicPath function is no longer needed.
-// Path logic is now directly within createTrayMenu using resourcesPath.
+        // Ensure window is visible and focused
+        if (webWindow.isMinimized()) webWindow.restore();
+        webWindow.focus();
+    } else {
+        logger.error(MODULE_NAME, `Failed to create or find web content window for navigation to ${tabName}.`);
+    }
+}
+
 
 export function createTrayMenu() {
-    // Get the icon path using the centralized function from window-manager
-    const iconPath = getIconPath(); // This function now handles dev/prod paths
+    const iconPath = getIconPath();
 
-    // Create Tray directly using the icon path string
     try {
-        if (iconPath && fsSync.existsSync(iconPath)) { // Check if path is valid and exists
+        if (iconPath && fsSync.existsSync(iconPath)) {
             logger.info(MODULE_NAME, `Attempting to create tray directly with path: ${iconPath}`);
-            tray = new Tray(iconPath); // Pass the path string directly
+            tray = new Tray(iconPath);
             logger.info(MODULE_NAME, "Successfully created tray with path.");
         } else {
             logger.warn(MODULE_NAME, `Icon path "${iconPath}" is invalid or file does not exist. Creating empty tray.`);
-            tray = new Tray(nativeImage.createEmpty()); // Fallback to empty
+            tray = new Tray(nativeImage.createEmpty());
             logger.info(MODULE_NAME, "Successfully created empty tray as fallback.");
         }
     } catch (trayErr: any) {
         logger.error(MODULE_NAME, `Error creating tray (even with path/fallback): ${trayErr.message}. Final attempt with empty.`);
         try {
-             tray = new Tray(nativeImage.createEmpty()); // Final fallback
+             tray = new Tray(nativeImage.createEmpty());
              logger.warn(MODULE_NAME, "Successfully created empty tray as final fallback.");
         } catch (finalErr: any) {
              logger.error(MODULE_NAME, `FATAL: Failed to create tray even with empty icon as final fallback: ${finalErr.message}`);
-             return; // Cannot create tray
+             return;
         }
     }
 
@@ -62,7 +78,7 @@ export function createTrayMenu() {
                 if (win) {
                     win.show();
                 } else {
-                    createMainWindow(); // Recreate if closed
+                    createMainWindow();
                 }
             }
         },
@@ -72,31 +88,32 @@ export function createTrayMenu() {
             click: () => {
                 let win = getMainWindow();
                 if (!win) {
-                    win = createMainWindow(); // Create if doesn't exist
+                    win = createMainWindow();
                 }
-                // Ensure window is shown before sending message
                 win.show();
-                // Send message after a short delay to ensure renderer is ready
                 setTimeout(() => win?.webContents.send('change-page', 'kill-feed'), 100);
             }
         },
-        // { // Removed Debug option from tray menu
-        //     label: 'Debug',
-        //     click: () => {
-        //          let win = getMainWindow();
-        //          if (!win) {
-        //              win = createMainWindow(); // Create if doesn't exist
-        //          }
-        //          // Ensure window is shown before sending message
-        //          win.show();
-        //          // Send message after a short delay to ensure renderer is ready
-        //          setTimeout(() => win?.webContents.send('change-page', 'debug'), 100);
-        //     }
-        // },
+        { type: 'separator' },
+        {
+          label: 'My Profile',
+          click: () => {
+            logger.info(MODULE_NAME, 'Tray: My Profile clicked.');
+            navigateWebContentWindow('profile'); // Use helper function
+          }
+        },
+        {
+          label: 'Leaderboard',
+          click: () => {
+            logger.info(MODULE_NAME, 'Tray: Leaderboard clicked.');
+            navigateWebContentWindow('leaderboard'); // Use helper function
+          }
+        },
+        { type: 'separator' },
         {
             label: 'Settings',
             click: () => {
-                createSettingsWindow(); // Open/focus the dedicated settings window
+                createSettingsWindow();
             }
         },
         { type: 'separator' },
@@ -104,35 +121,31 @@ export function createTrayMenu() {
             label: 'Quit',
             click: () => {
                 logger.info(MODULE_NAME, "Quit clicked.");
-                setIsQuitting(true); // Set the flag in app-lifecycle
+                setIsQuitting(true);
                 app.quit();
             }
         }
     ]);
 
-    // Configure the tray only if it was successfully created
     if (tray) {
         tray.setToolTip('SC Kill Feed');
         tray.setContextMenu(contextMenu);
 
-        // Single click on tray icon shows the app
         tray.on('click', () => {
             const win = getMainWindow();
             if (win) {
                 if (win.isVisible() && !win.isMinimized()) {
-                     win.focus(); // Focus if visible and not minimized
+                     win.focus();
                 } else {
-                     win.show(); // Show if hidden or minimized
+                     win.show();
                 }
             } else {
-                createMainWindow(); // Recreate if closed
+                createMainWindow();
             }
         });
 
-        // Log success only if tray was configured
         logger.success(MODULE_NAME, "System tray icon created and configured successfully.");
     } else {
-        // Log failure if tray is still null after all attempts
         logger.error(MODULE_NAME, "Tray icon could not be created after all attempts.");
     }
 }

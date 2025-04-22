@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
-// import SettingsPage from './pages/SettingsPage.vue' // Removed settings page import
 
 // --- Window Control Methods ---
 const minimizeWindow = () => {
@@ -81,137 +80,108 @@ onUnmounted(() => {
 </script>
 
 <template>
-
-
-
-  <div class="app-container bg-theme-bg-dark text-theme-text-light">
-
-      <!-- Center Section (Navigation) -->
-      <div class="flex-grow flex justify-center top-nav">
-        <Navigation :activePage="activePage" @change-page="changePage" />
-      </div>
-
-
- 
+  <div class="flex flex-col h-screen w-screen overflow-hidden bg-theme-bg-dark text-theme-text-light">
+    <!-- Center Section (Navigation) -->
+    <div class="flex-grow flex justify-center">
+      <Navigation :activePage="activePage" @change-page="changePage" />
+    </div>
 
     <!-- Page content -->
-    <main class="content-container flex-1"> <!-- Removed overflow-auto and p-4 -->
+    <main class="flex-1">
       <KillFeedPage v-if="activePage === 'kill-feed'" />
-      <!-- <DebugPage v-else-if="activePage === 'debug'" /> --> <!-- Debug page was previously removed -->
-      <!-- <SettingsPage v-else-if="activePage === 'settings'" /> --> <!-- Removed settings page rendering -->
     </main>
   </div>
 </template>
 
 <style>
 /* Make the title bar draggable */
-
 .nav-container {
-
-    height: 75px !important;
-
+  height: 75px !important;
 }
 
 .app-title.cet-drag-region {
   top: 15px;
-  left:8px;
-  margin-bottom:20px;
-  height:75px;
+  left: 8px;
+  margin-bottom: 20px;
+  height: 75px;
 }
 
 .cet-container {
   position: relative !important;
-  top: 0px !important;
+  top: 0 !important;
   bottom: 0;
   overflow: auto;
   z-index: 1;
-  }
+}
 
 .cet-drag-region {
-  /* padding-bottom: 80px; */
   z-index: 1 !important;
-
 }
     
-
 .cet-menubar {
-    display: none !important;
+  display: none !important;
 }
 
 .cet-icon {
-    display: none !important;
+  display: none !important;
 }
 
 .title-bar {
   -webkit-app-region: drag;
-  user-select: none; /* Prevent text selection */
+  user-select: none;
 }
 
 .window-controls {
-  -webkit-app-region: no-drag; /* Prevent dragging on controls */
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   height: 100%;
-  padding: 0 8px;
-
+  padding: 0 0.5rem;
 }
 
-/* Make controls non-draggable */
-.window-controls
- button,
-.title-bar .flex-grow a /* Ensure nav links are clickable */ {
+.window-controls button,
+.title-bar .flex-grow a {
   -webkit-app-region: no-drag;
 }
 
-/* Basic styling for window controls */
 .window-controls button {
-  background: none;
+  background: transparent;
   border: none;
-  padding: 4px 8px;
-  color: theme('colors.theme-text-light');
-  border-radius: 4px;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  color: var(--color-theme-text-light);
   transition: background-color 0.2s ease;
 }
 
 .window-controls button:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
+
 .window-controls button.close-button:hover {
-  background-color: theme('colors.red.600'); /* Use Tailwind red for close hover */
-  color: theme('colors.theme-text-white');
+  background-color: rgb(220, 38, 38);
+  color: var(--color-theme-text-white);
 }
 
-/* Ensure app container fills the viewport */
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden; /* Prevent body scrollbars */
-}
-
-/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
 }
 
 ::-webkit-scrollbar-track {
-  background: theme('colors.theme-bg-dark');
+  background-color: var(--color-theme-bg-dark);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: theme('colors.theme-bg-panel');
-  border-radius: 5px;
-  border: 1px solid theme('colors.theme-border');
+  background-color: var(--color-theme-bg-panel);
+  border-radius: 0.25rem;
+  border: 1px solid var(--color-theme-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: theme('colors.theme-border');
+  background-color: var(--color-theme-border);
 }
 
-/* Remove default body margin added by some browsers */
 body {
   margin: 0;
 }
