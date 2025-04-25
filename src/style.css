@@ -21,6 +21,22 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Element Plus Theme Overrides */
+  --el-color-primary: var(--color-theme-accent-blue);
+  --el-bg-color: var(--color-theme-bg-panel); /* Use panel bg for components */
+  --el-bg-color-overlay: var(--color-theme-bg-panel); /* Use panel bg for overlays like dropdowns */
+  --el-text-color-primary: var(--color-theme-text-light);
+  --el-text-color-regular: var(--color-theme-text-light); /* Ensure regular text also uses light theme */
+  --el-border-color: var(--color-theme-border);
+  --el-border-color-light: var(--color-theme-border); /* Keep borders consistent */
+  --el-border-color-lighter: var(--color-theme-border); /* Keep borders consistent */
+  --el-fill-color-blank: var(--color-theme-bg-dark); /* Use dark bg for blank fills */
+  --el-disabled-bg-color: var(--color-theme-bg-panel); /* Adjust disabled background */
+  --el-disabled-text-color: #606266; /* Keep default disabled text or adjust if needed */
+  --el-disabled-border-color: var(--color-theme-border); /* Adjust disabled border */
+  --el-color-info: var(--color-theme-accent-blue); /* Use accent blue for info color */
+  /* Add more overrides as needed based on Element Plus usage */
 }
 
 body {

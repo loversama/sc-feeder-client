@@ -6,21 +6,32 @@ import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 // Importing type only, no runtime dependency
 import type { KillEvent } from '../../shared/types'; // Import from the new shared types file
 
+// --- State Refs ---
 const MAX_EVENTS_DISPLAY = 100; // Local constant for display limit
 const killEvents = ref<KillEvent[]>([]); // Player-involved events
 const globalKillEvents = ref<KillEvent[]>([]); // All events including non-player ones
-// const feedMode = ref<'player' | 'global'>('player'); // Removed feed mode toggle
 const isAuthenticated = ref<boolean>(false); // Track auth status
 const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
 const isOffline = ref<boolean>(false); // Track offline mode setting
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 const connectionStatus = ref<ConnectionStatus>('disconnected'); // Track server connection status
-// Use a relative path that will work with Electron
-// const killSound = new Audio(); // Removed - will create dynamically
 const resourcePath = ref<string>(''); // To store the path provided by main process
 const currentGameMode = ref<'PU' | 'AC' | 'Unknown'>('Unknown'); // Added for stable game mode
+const searchQuery = ref<string>(''); // Explicitly type and initialize
+const logStatus = ref<string>('Initializing...'); // Log file monitoring status
+const currentPlayerShip = ref<string>('');
+const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
+const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
+let cleanupFunctions: (() => void)[] = [];
 
-// Function to open the event details window
+// --- Icon Button Active State ---
+const isSettingsActive = ref(false);
+const isProfileActive = ref(false);
+const isLeaderboardActive = ref(false);
+// Note: For external windows like Settings, true active state tracking
+// would require IPC communication with the main process.
+
+// --- Click Handlers ---
 const openEventDetails = async (event: KillEvent) => {
   console.log('%c KILLFEED CLICK HANDLER ACTIVATED', 'background: #222; color: #bada55; font-size: 16px; padding: 4px;');
   console.log('Click detected. Opening details for event:', event.id);
@@ -90,14 +101,51 @@ const openEventDetails = async (event: KillEvent) => {
     alert(`Error setting up window open handler: ${errorMessage}`);
   }
 };
-const searchQuery = ref<string>(''); // Explicitly type and initialize
-const logStatus = ref<string>('Initializing...'); // Log file monitoring status
-const currentPlayerShip = ref<string>('');
-const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
-const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
-let cleanupFunctions: (() => void)[] = [];
 
-// Get the current event source based on feed mode
+const openSettingsWindow = () => {
+  try {
+    if (isSettingsActive.value) {
+      console.log('Settings button clicked while active: Closing window.');
+      window.logMonitorApi.closeSettingsWindow();
+    } else {
+      console.log('Settings button clicked while inactive: Opening window.');
+      window.logMonitorApi.openSettingsWindow();
+    }
+  } catch (error) {
+    console.error("Failed to toggle settings window:", error);
+  }
+}
+
+const openProfile = () => {
+  try {
+    if (isProfileActive.value) {
+      console.log('Profile button clicked while active: Closing window.');
+      window.logMonitorApi.closeWebContentWindow();
+    } else {
+      console.log('Profile button clicked while inactive: Opening window to profile.');
+      window.logMonitorApi.openWebContentWindow('profile');
+    }
+  } catch (error) {
+    console.error("Failed to toggle web content window for profile:", error);
+  }
+}
+
+const openLeaderboard = () => {
+  try {
+    if (isLeaderboardActive.value) {
+      console.log('Leaderboard button clicked while active: Closing window.');
+      window.logMonitorApi.closeWebContentWindow();
+    } else {
+      console.log('Leaderboard button clicked while inactive: Opening window to leaderboard.');
+      window.logMonitorApi.openWebContentWindow('leaderboard');
+    }
+  } catch (error) {
+    console.error("Failed to toggle web content window for leaderboard:", error);
+  }
+}
+
+// --- Computed Properties ---
+
 // Get the current event source based on authentication status
 const currentEvents = computed(() => {
   // If authenticated, show global events, otherwise show only player events
@@ -392,8 +440,42 @@ const checkOfflineMode = async () => {
 };
 
 
-onMounted(() => {
-  // Check initial states, load sound settings, then load events
+// Function to get initial window states synchronously
+const getInitialWindowStates = async () => {
+  try {
+    if (window.logMonitorApi?.getSettingsWindowStatus) {
+      const settingsStatus = await window.logMonitorApi.getSettingsWindowStatus();
+      console.log('[KillFeed] Initial settings status:', settingsStatus);
+      isSettingsActive.value = settingsStatus.isOpen;
+    } else {
+      console.warn('[KillFeed] getSettingsWindowStatus API not available for initial check.');
+    }
+
+    if (window.logMonitorApi?.getWebContentWindowStatus) {
+      const webContentStatus = await window.logMonitorApi.getWebContentWindowStatus();
+      console.log('[KillFeed] Initial web content status:', webContentStatus);
+      // Set based on initial status
+      isProfileActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'profile';
+      isLeaderboardActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'leaderboard';
+       // Ensure both are false if closed initially
+       if (!webContentStatus.isOpen) {
+         isProfileActive.value = false;
+         isLeaderboardActive.value = false;
+       }
+    } else {
+      console.warn('[KillFeed] getWebContentWindowStatus API not available for initial check.');
+    }
+  } catch (error) {
+    console.error('[KillFeed] Error getting initial window states:', error);
+  }
+};
+
+
+onMounted(async () => { // Make onMounted async
+  // Get initial states synchronously FIRST
+  await getInitialWindowStates();
+
+  // Then proceed with setting up listeners and loading data
   Promise.all([
     checkAuthStatus(),
     checkOfflineMode(), // Check offline mode
@@ -446,11 +528,41 @@ onMounted(() => {
       } else {
          console.warn('[KillFeed] onGameModeUpdate API not available.');
       }
+    })(),
+    // Add listener for Settings window status
+    (() => {
+      if (window.logMonitorApi?.onSettingsWindowStatus) {
+        const cleanup = window.logMonitorApi.onSettingsWindowStatus((_event, status: { isOpen: boolean }) => {
+          console.log('[KillFeed] Received settings window status update:', status);
+          isSettingsActive.value = status.isOpen;
+        });
+        cleanupFunctions.push(cleanup);
+      } else {
+        console.warn('[KillFeed] onSettingsWindowStatus API not available.');
+      }
+    })(),
+    // Add listener for Web Content window status
+    (() => {
+      if (window.logMonitorApi?.onWebContentWindowStatus) {
+        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => {
+          console.log('[KillFeed] Received web content window status update:', status);
+          isProfileActive.value = status.isOpen && status.activeSection === 'profile';
+          isLeaderboardActive.value = status.isOpen && status.activeSection === 'leaderboard';
+          // If web content window is closed, ensure both are inactive regardless of last section
+          if (!status.isOpen) {
+            isProfileActive.value = false;
+            isLeaderboardActive.value = false;
+          }
+        });
+        cleanupFunctions.push(cleanup);
+      } else {
+        console.warn('[KillFeed] onWebContentWindowStatus API not available.');
+      }
     })()
-  ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
+ ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
 
-  // Listen for new/updated spacecraft events
-  cleanupFunctions.push(
+ // Listen for new/updated spacecraft events
+ cleanupFunctions.push(
     // Explicitly type the incoming data
     window.logMonitorApi.onKillFeedEvent((_event, data: { event: KillEvent, source: 'player' | 'global' } | null) => {
       if (data === null) {
@@ -609,7 +721,33 @@ onUnmounted(() => {
         <span :class="monitoringBadge.class">{{ monitoringBadge.text }}</span>
         <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
       </div>
-      <!-- Optionally, show logStatus as a tooltip or below -->
+      <!-- Right-aligned Icon Buttons (Order: Leaderboard, Profile, Settings) -->
+      <div class="status-icons-container">
+        <div
+          @click="openLeaderboard"
+          class="status-icon-button"
+          :class="{ active: isLeaderboardActive }"
+          title="Leaderboard"
+        >
+          <el-icon><Tickets /></el-icon>
+        </div>
+        <div
+          @click="openProfile"
+          class="status-icon-button"
+          :class="{ active: isProfileActive }"
+          title="Profile"
+        >
+          <el-icon><User /></el-icon>
+        </div>
+        <div
+          @click="openSettingsWindow"
+          class="status-icon-button"
+          :class="{ active: isSettingsActive }"
+          title="Settings"
+        >
+          <el-icon><Setting /></el-icon>
+        </div>
+      </div>
     </div>
 
     <!-- Event List Area -->
@@ -795,10 +933,34 @@ onUnmounted(() => {
   padding: 8px 15px;
   background-color: #222;
   border-bottom: 1px solid #333;
-  justify-content: flex-start;
+  justify-content: space-between; /* Changed to space-between */
   font-size: 0.8em;
   flex-shrink: 0;
   align-items: center;
+}
+
+/* Container for right-aligned icons */
+.status-icons-container {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* Spacing between icons */
+}
+
+.status-icon-button {
+  color: #ccc; /* Default icon color */
+  font-size: 1.3em; /* Icon size */
+  cursor: pointer;
+  transition: color 0.2s ease;
+  display: flex; /* Helps vertical alignment */
+  align-items: center;
+}
+
+.status-icon-button:hover {
+  color: #fff; /* White on hover */
+}
+
+.status-icon-button.active {
+  color: #e74c3c; /* Highlight color (theme red) */
 }
 .kill-feed-container {
   display: flex;
@@ -901,16 +1063,7 @@ onUnmounted(() => {
 }
 
 /* Status bar */
-.status-bar {
-  display: flex;
-  padding: 8px 15px; /* Restore padding */
-  background-color: #222;
-  border-bottom: 1px solid #333;
-  justify-content: space-between;
-  font-size: 0.8em; /* Smaller font */
-  flex-shrink: 0; /* Restore flex-shrink */
-  align-items: center;
-}
+/* .status-bar styles moved up */
 
 /* New Pip Styles */
 .status-pips-container {

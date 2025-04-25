@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue'
+import { defineProps, defineEmits } from 'vue' // Removed ref import
 
 const props = defineProps<{
   activePage: string
@@ -7,63 +7,57 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'change-page', page: string): void
+  // Removed profile/leaderboard emits
 }>()
 
 const changePage = (page: string) => {
   emit('change-page', page)
 }
 
-const openSettingsWindow = () => {
-  try {
-    window.logMonitorApi.openSettingsWindow();
-  } catch (error) {
-    console.error("Failed to open settings window:", error);
-  }
-}
+// Removed openSettingsWindow function
+// Removed openProfile and openLeaderboard functions
+// Removed local state refs (isSettingsActive, etc.)
 </script>
 
 <template>
-  <nav class="nav-container">
+  <nav class="nav-container p-2 bg-theme-bg-panel shadow"> <!-- Added styles -->
     <div class="nav-draggable cet-drag-region"> <!-- Keep drag region here -->
       <div class="app-title"> <!-- Title text container -->
         SC Kill Feed
-        <span class="settings-icon" @click.stop="openSettingsWindow" title="Open Settings">
-          ⚙️
-        </span>
+        <!-- Removed settings icon -->
       </div>
     </div>
+    <!-- Removed nav-buttons div and its content -->
     <div class="nav-buttons">
-      <!-- <button 
-        @click="changePage('kill-feed')" 
-        class="nav-button"
-        :class="{ active: activePage === 'kill-feed' }"
-      >
-        <div class="icon">⚔️</div>
-        <span>Kill Feed</span>
-      </button>
-       -->
-      
+       <!-- Original commented out button example (optional to keep) -->
+       <!-- <button
+         @click="changePage('kill-feed')"
+         class="nav-button"
+         :class="{ active: activePage === 'kill-feed' }"
+       >
+         <div class="icon">⚔️</div>
+         <span>Kill Feed</span>
+       </button>
+        -->
     </div>
   </nav>
 </template>
 
 <style scoped>
-
+/* Restored original styles from before icon additions */
 .app-title {
     font-size: 1.2em;
     font-weight: 600;
     color: #e74c3c;
     margin-left: 10px;
-    font-size: 30px !important;
-    margin-top: 1cqmin; 
+    /* Removed font-size: 30px !important; */
+    /* Removed margin-top: 1cqmin; */
 }
 
 .app-title.cet-drag-region {
   height: 50px;
   width: 80%;
 }
-
-/* Removed old .settings-icon styles */
 
 .cet-drag-region {
     top: 0;
@@ -76,29 +70,16 @@ const openSettingsWindow = () => {
     -webkit-app-region: drag;
 }
 
-/* Style for Unicode cog icon */
-.settings-icon {
-  margin-left: 10px; /* Space between title and icon */
-  font-size: 0.8em; /* Adjust size relative to title */
-  color: white; /* White color */
-  cursor: pointer;
-  transition: color 0.2s ease;
-  -webkit-app-region: no-drag; /* Make icon clickable */
-  vertical-align: middle; /* Align icon better with text */
-}
-
-.settings-icon:hover {
-  color: #ccc; /* Lighter grey on hover */
-}
+/* Removed settings icon styles */
 
 .nav-container {
   display: flex;
   background-color: #121212;
   border-bottom: 1px solid #333;
   padding: 0 10px;
-  height: 50px;
+  /* Removed fixed height: 50px; Let padding and content determine height */
   align-items: center;
-  justify-content: space-between;
+  /* Removed justify-content: space-between */
   user-select: none;
   margin: 0;
   width: 100%;
@@ -108,22 +89,12 @@ const openSettingsWindow = () => {
   display: flex;
   width:80vw;
   height:50px;
-  /* Reverted: Ensure no -webkit-app-region: drag here */
 }
 
-/* Restore duplicate .app-title block */
-.app-title {
-  font-size: 1.2em;
-  font-weight: 600;
-  color: #e74c3c;
-  margin-left: 10px;
-}
-
-
+/* Removed duplicate .app-title block */
 .nav-buttons {
   display: flex;
   height: 100%;
-
 }
 
 .nav-button {
@@ -164,16 +135,15 @@ const openSettingsWindow = () => {
 }
 
 .icon {
-  margin-right: 20px;
+  margin-right: 20px; /* Restored original */
   left: 20px;
   top: 50%;
   font-size: 1.1em;
 }
 
-span.settings-icon {
-    position: absolute;
-    bottom: 1px;
-    left: 167px;
-    color: white !important;
-}
+/* Removed settings icon positioning styles */
+
+/* Removed .nav-left */
+/* Removed .icon-button styles */
+/* Removed .icon-button.active styles */
 </style>

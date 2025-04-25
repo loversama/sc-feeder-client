@@ -31527,6 +31527,7 @@ const __dirname$2 = path$m.dirname(__filename$3);
 let mainWindow = null;
 let settingsWindow = null;
 let webContentWindow = null;
+let currentWebContentSection = null;
 let activeEventDataForWindow = null;
 const store$2 = new ElectronStore({
   defaults: {
@@ -31836,13 +31837,19 @@ function createSettingsWindow() {
     });
   }
   settingsWindow.once("ready-to-show", () => {
+    var _a3;
     settingsWindow == null ? void 0 : settingsWindow.show();
+    (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("settings-window-status", { isOpen: true });
+    info(MODULE_NAME$e, "Sent settings-window-status { isOpen: true }");
     if (!app$1.isPackaged) {
       settingsWindow == null ? void 0 : settingsWindow.webContents.openDevTools();
     }
   });
   settingsWindow.on("closed", () => {
+    var _a3;
     settingsWindow = null;
+    (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("settings-window-status", { isOpen: false });
+    info(MODULE_NAME$e, "Sent settings-window-status { isOpen: false }");
   });
   const saveSettingsBounds = createSaveBoundsHandler(settingsWindow, "settingsWindowBounds");
   settingsWindow.on("resize", saveSettingsBounds);
@@ -31957,11 +31964,28 @@ function createEventDetailsWindow(eventData, currentUsername2) {
   detailsWindow.on("move", saveEventDetailsBounds);
   return detailsWindow;
 }
-function createWebContentWindow() {
-  if (webContentWindow) {
+function createWebContentWindow(section) {
+  var _a3;
+  if (webContentWindow && !webContentWindow.isDestroyed()) {
+    info(MODULE_NAME$e, `Web content window already exists. Focusing and checking section: ${section}`);
+    if (webContentWindow.isMinimized()) {
+      webContentWindow.restore();
+    }
     webContentWindow.focus();
+    const newSection = section || null;
+    if (newSection && newSection !== currentWebContentSection) {
+      info(MODULE_NAME$e, `Switching section from ${currentWebContentSection} to ${newSection}`);
+      webContentWindow.webContents.send("navigate-to-section", newSection);
+      currentWebContentSection = newSection;
+      (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("web-content-window-status", { isOpen: true, activeSection: currentWebContentSection });
+      info(MODULE_NAME$e, `Sent web-content-window-status update for section switch: { isOpen: true, activeSection: ${currentWebContentSection} }`);
+    } else {
+      debug$b(MODULE_NAME$e, `Requested section (${section}) is same as current (${currentWebContentSection}) or null. No navigation needed.`);
+    }
     return webContentWindow;
   }
+  info(MODULE_NAME$e, `Creating new web content window for section: ${section}`);
+  currentWebContentSection = section || null;
   const savedBounds = store$2.get("webContentWindowBounds");
   const defaultWidth = 1024;
   const defaultHeight = 768;
@@ -32016,14 +32040,17 @@ function createWebContentWindow() {
   mainExports.attachTitlebarToWindow(webContentWindow);
   const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrl) {
-    const webContentUrl = `${devServerUrl}/web-content.html`;
+    const webContentUrl = `${devServerUrl}/web-content.html${section ? "#" + section : ""}`;
     info(MODULE_NAME$e, `Loading web content window from dev server: ${webContentUrl}`);
     webContentWindow.loadURL(webContentUrl).catch((err) => error(MODULE_NAME$e, "Failed to load web-content.html from dev server:", err));
   } else {
     const productionWebContentUrl = url$1.format({
       pathname: path$m.join(__dirname$2, "..", "dist", "web-content.html"),
+      // Base path
       protocol: "file:",
-      slashes: true
+      slashes: true,
+      hash: section ? section : ""
+      // Append hash if provided
     });
     info(MODULE_NAME$e, `Loading web content window from URL: ${productionWebContentUrl}`);
     webContentWindow.loadURL(productionWebContentUrl).catch((err) => {
@@ -32034,15 +32061,22 @@ function createWebContentWindow() {
     });
   }
   webContentWindow.once("ready-to-show", () => {
+    var _a4;
     info(MODULE_NAME$e, "Web content window ready-to-show");
     webContentWindow == null ? void 0 : webContentWindow.show();
+    (_a4 = getMainWindow()) == null ? void 0 : _a4.webContents.send("web-content-window-status", { isOpen: true, activeSection: currentWebContentSection });
+    info(MODULE_NAME$e, `Sent web-content-window-status { isOpen: true, activeSection: ${currentWebContentSection} }`);
     if (!app$1.isPackaged) {
       webContentWindow == null ? void 0 : webContentWindow.webContents.openDevTools();
     }
   });
   webContentWindow.on("closed", () => {
+    var _a4;
     webContentWindow = null;
-    debug$b(MODULE_NAME$e, "Web content window closed and dereferenced.");
+    currentWebContentSection = null;
+    debug$b(MODULE_NAME$e, "Web content window closed, dereferenced, and section reset.");
+    (_a4 = getMainWindow()) == null ? void 0 : _a4.webContents.send("web-content-window-status", { isOpen: false, activeSection: null });
+    info(MODULE_NAME$e, "Sent web-content-window-status { isOpen: false, activeSection: null }");
   });
   const saveWebContentBounds = createSaveBoundsHandler(webContentWindow, "webContentWindowBounds");
   webContentWindow.on("resize", saveWebContentBounds);
@@ -32057,6 +32091,33 @@ function createWebContentWindow() {
     return { action: "deny" };
   });
   return webContentWindow;
+}
+function closeSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    info(MODULE_NAME$e, "Closing settings window programmatically.");
+    settingsWindow.close();
+  } else {
+    info(MODULE_NAME$e, "Close settings window requested, but window not found or already destroyed.");
+  }
+}
+function closeWebContentWindow() {
+  if (webContentWindow && !webContentWindow.isDestroyed()) {
+    info(MODULE_NAME$e, "Closing web content window programmatically.");
+    webContentWindow.close();
+  } else {
+    info(MODULE_NAME$e, "Close web content window requested, but window not found or already destroyed.");
+  }
+}
+function getSettingsStatus() {
+  const isOpen = !!settingsWindow && !settingsWindow.isDestroyed();
+  debug$b(MODULE_NAME$e, `Getting settings status: ${isOpen}`);
+  return { isOpen };
+}
+function getWebContentStatus() {
+  const isOpen = !!webContentWindow && !webContentWindow.isDestroyed();
+  const section = isOpen ? currentWebContentSection : null;
+  debug$b(MODULE_NAME$e, `Getting web content status: isOpen=${isOpen}, activeSection=${section}`);
+  return { isOpen, activeSection: section };
 }
 function getMainWindow() {
   return mainWindow;
@@ -166166,19 +166227,12 @@ function registerIpcHandlers() {
     return !!success2;
   });
   ipcMain$1.handle("open-web-content-window", (_event, initialTab) => {
+    var _a3;
     info(MODULE_NAME$2, `Received 'open-web-content-window' request. Initial tab: ${initialTab || "default"}`);
-    const webWindow = createWebContentWindow();
-    if (webWindow && initialTab) {
-      if (webWindow.webContents.isLoading()) {
-        webWindow.webContents.once("did-finish-load", () => {
-          info(MODULE_NAME$2, `Web content window finished loading, navigating to: /${initialTab}`);
-          webWindow.loadURL(webWindow.webContents.getURL() + `#/${initialTab}`);
-        });
-      } else {
-        info(MODULE_NAME$2, `Web content window already loaded, navigating to: /${initialTab}`);
-        webWindow.loadURL(webWindow.webContents.getURL().split("#")[0] + `#/${initialTab}`);
-      }
-    } else if (webWindow) {
+    const webWindow = createWebContentWindow(initialTab);
+    if (webWindow) {
+      (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("web-content-window-status", { isOpen: true, activeSection: initialTab });
+      info(MODULE_NAME$2, `Sent web-content-window-status { isOpen: true, activeSection: ${initialTab || "default"} }`);
       if (webWindow.isMinimized()) webWindow.restore();
       webWindow.focus();
     }
@@ -166193,6 +166247,24 @@ function registerIpcHandlers() {
       return true;
     }
     return false;
+  });
+  ipcMain$1.handle("close-settings-window", () => {
+    info(MODULE_NAME$2, "Received 'close-settings-window' request.");
+    closeSettingsWindow();
+    return true;
+  });
+  ipcMain$1.handle("close-web-content-window", () => {
+    info(MODULE_NAME$2, "Received 'close-web-content-window' request.");
+    closeWebContentWindow();
+    return true;
+  });
+  ipcMain$1.handle("get-settings-window-status", () => {
+    info(MODULE_NAME$2, "Received 'get-settings-window-status' request.");
+    return getSettingsStatus();
+  });
+  ipcMain$1.handle("get-web-content-window-status", () => {
+    info(MODULE_NAME$2, "Received 'get-web-content-window-status' request.");
+    return getWebContentStatus();
   });
   ipcMain$1.on("window:minimize", (event) => {
     const win = getMainWindow();

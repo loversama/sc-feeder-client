@@ -43,9 +43,16 @@ export interface LogMonitorApi {
   setLaunchOnStartup: (value: boolean) => Promise<boolean>;
   // Window Actions
   openSettingsWindow: () => Promise<void>;
+  openWebContentWindow: (section: 'profile' | 'leaderboard') => Promise<void>; // Added
+  closeSettingsWindow: () => Promise<boolean>; // Added
+  closeWebContentWindow: () => Promise<boolean>; // Added
   windowMinimize: () => void; // Added
   windowToggleMaximize: () => void; // Added
   windowClose: () => void; // Added
+
+  // Window Status (Synchronous Getters)
+  getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>; // Added for initial state
+  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }>; // Added for initial state
 
   // Debug Actions
   resetSessions: () => Promise<boolean>;
@@ -56,6 +63,7 @@ export interface LogMonitorApi {
   authLogin: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
   authLogout: () => Promise<boolean>;
   authGetStatus: () => Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }>;
+  authGetAccessToken: () => Promise<string | null>; // Added
 
   // Resource Path
   getResourcePath: () => Promise<string>;
@@ -71,6 +79,9 @@ export interface LogMonitorApi {
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   // Add listener for game mode updates
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
+  // Add listeners for window status
+  onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void; // Added
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => () => void; // Added
   // Cleanup
   removeAllListeners: () => void;
 }

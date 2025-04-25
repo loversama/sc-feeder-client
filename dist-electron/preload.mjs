@@ -11487,6 +11487,12 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   setCsvLogPath: (newPath) => require$$0.ipcRenderer.invoke("set-csv-log-path", newPath),
   // Window Actions
   openSettingsWindow: () => require$$0.ipcRenderer.invoke("open-settings-window"),
+  openWebContentWindow: (section) => require$$0.ipcRenderer.invoke("open-web-content-window", section),
+  // Added for Profile/Leaderboard
+  closeSettingsWindow: () => require$$0.ipcRenderer.invoke("close-settings-window"),
+  // Added for toggle-close
+  closeWebContentWindow: () => require$$0.ipcRenderer.invoke("close-web-content-window"),
+  // Added for toggle-close
   // Custom Title Bar / Window Controls
   windowMinimize: () => require$$0.ipcRenderer.send("window:minimize"),
   windowToggleMaximize: () => require$$0.ipcRenderer.send("window:toggleMaximize"),
@@ -11499,6 +11505,11 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authLogin: (identifier, password) => require$$0.ipcRenderer.invoke("auth:login", identifier, password),
   authLogout: () => require$$0.ipcRenderer.invoke("auth:logout"),
   authGetStatus: () => require$$0.ipcRenderer.invoke("auth:getStatus"),
+  authGetAccessToken: () => require$$0.ipcRenderer.invoke("auth:getAccessToken"),
+  // Added
+  // Window Status Getters (Synchronous)
+  getSettingsWindowStatus: () => require$$0.ipcRenderer.invoke("get-settings-window-status"),
+  getWebContentWindowStatus: () => require$$0.ipcRenderer.invoke("get-web-content-window-status"),
   // Resource Path
   getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
   // Main to Renderer (Receive)
@@ -11537,6 +11548,16 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.on("game-mode-update", callback);
     return () => require$$0.ipcRenderer.removeListener("game-mode-update", callback);
   },
+  // Listener for Settings window status
+  onSettingsWindowStatus: (callback) => {
+    require$$0.ipcRenderer.on("settings-window-status", callback);
+    return () => require$$0.ipcRenderer.removeListener("settings-window-status", callback);
+  },
+  // Listener for Web Content window status
+  onWebContentWindowStatus: (callback) => {
+    require$$0.ipcRenderer.on("web-content-window-status", callback);
+    return () => require$$0.ipcRenderer.removeListener("web-content-window-status", callback);
+  },
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
     require$$0.ipcRenderer.removeAllListeners("log-update");
@@ -11547,6 +11568,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.removeAllListeners("auth-status-changed");
     require$$0.ipcRenderer.removeAllListeners("connection-status-changed");
     require$$0.ipcRenderer.removeAllListeners("game-mode-update");
+    require$$0.ipcRenderer.removeAllListeners("settings-window-status");
+    require$$0.ipcRenderer.removeAllListeners("web-content-window-status");
   }
 });
 window.addEventListener("DOMContentLoaded", () => {

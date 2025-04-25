@@ -27,7 +27,7 @@ const pageTitle = ref<string>('Kill Feed')
 
 .page-header {
   padding: 15px 20px;
-  background-color: #1a1a1a;
+  background-color: #2a2d31;
   border-bottom: 1px solid #333;
 }
 

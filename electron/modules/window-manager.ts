@@ -19,6 +19,7 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let webContentWindow: BrowserWindow | null = null; // Added for Web Content Window
+let currentWebContentSection: 'profile' | 'leaderboard' | null = null; // Track active section
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
@@ -444,6 +445,9 @@ export function createSettingsWindow(): BrowserWindow | null {
 
     settingsWindow.once('ready-to-show', () => {
         settingsWindow?.show();
+        // Emit status update when shown
+        getMainWindow()?.webContents.send('settings-window-status', { isOpen: true });
+        logger.info(MODULE_NAME, 'Sent settings-window-status { isOpen: true }');
         if (!app.isPackaged) {
             settingsWindow?.webContents.openDevTools(); // Open dev tools for settings in dev
         }
@@ -451,6 +455,9 @@ export function createSettingsWindow(): BrowserWindow | null {
 
     settingsWindow.on('closed', () => {
         settingsWindow = null; // Dereference the window object
+        // Emit status update when closed
+        getMainWindow()?.webContents.send('settings-window-status', { isOpen: false });
+        logger.info(MODULE_NAME, 'Sent settings-window-status { isOpen: false }');
     });
 
     // --- Save Settings Window Bounds ---
@@ -602,11 +609,35 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
 }
 
 // --- NEW Web Content Window ---
-export function createWebContentWindow(): BrowserWindow | null {
-    if (webContentWindow) {
-        webContentWindow.focus();
-        return webContentWindow;
+export function createWebContentWindow(section?: 'profile' | 'leaderboard'): BrowserWindow | null {
+    // --- Handle Existing Window ---
+    if (webContentWindow && !webContentWindow.isDestroyed()) {
+        logger.info(MODULE_NAME, `Web content window already exists. Focusing and checking section: ${section}`);
+        if (webContentWindow.isMinimized()) {
+            webContentWindow.restore(); // Restore if minimized
+        }
+        webContentWindow.focus(); // Bring to front
+
+        // Check if section needs changing
+        const newSection = section || null; // Default to null if undefined
+        if (newSection && newSection !== currentWebContentSection) {
+            logger.info(MODULE_NAME, `Switching section from ${currentWebContentSection} to ${newSection}`);
+            // Send IPC to renderer to navigate
+            webContentWindow.webContents.send('navigate-to-section', newSection);
+            // Update tracked section
+            currentWebContentSection = newSection;
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+            logger.info(MODULE_NAME, `Sent web-content-window-status update for section switch: { isOpen: true, activeSection: ${currentWebContentSection} }`);
+        } else {
+             logger.debug(MODULE_NAME, `Requested section (${section}) is same as current (${currentWebContentSection}) or null. No navigation needed.`);
+        }
+        return webContentWindow; // Return existing window
     }
+
+    // --- Create New Window ---
+    logger.info(MODULE_NAME, `Creating new web content window for section: ${section}`);
+    currentWebContentSection = section || null; // Set initial section *before* loading
 
     // --- Web Content Window Bounds ---
     const savedBounds = store.get('webContentWindowBounds');
@@ -671,16 +702,18 @@ export function createWebContentWindow(): BrowserWindow | null {
     // Load web content URL
     const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
     if (devServerUrl) {
-        const webContentUrl = `${devServerUrl}/web-content.html`;
-        logger.info(MODULE_NAME, `Loading web content window from dev server: ${webContentUrl}`);
-        webContentWindow.loadURL(webContentUrl)
-            .catch(err => logger.error(MODULE_NAME, 'Failed to load web-content.html from dev server:', err));
+         // Append section hash if provided
+         const webContentUrl = `${devServerUrl}/web-content.html${section ? '#' + section : ''}`;
+         logger.info(MODULE_NAME, `Loading web content window from dev server: ${webContentUrl}`);
+         webContentWindow.loadURL(webContentUrl)
+             .catch(err => logger.error(MODULE_NAME, 'Failed to load web-content.html from dev server:', err));
     } else {
         // Production: Load file using url.format
         const productionWebContentUrl = url.format({
-            pathname: path.join(__dirname, '..', 'dist', 'web-content.html'),
+            pathname: path.join(__dirname, '..', 'dist', 'web-content.html'), // Base path
             protocol: 'file:',
-            slashes: true
+            slashes: true,
+            hash: section ? section : '' // Append hash if provided
         });
         logger.info(MODULE_NAME, `Loading web content window from URL: ${productionWebContentUrl}`);
         webContentWindow.loadURL(productionWebContentUrl)
@@ -695,6 +728,9 @@ export function createWebContentWindow(): BrowserWindow | null {
     webContentWindow.once('ready-to-show', () => {
         logger.info(MODULE_NAME, 'Web content window ready-to-show');
         webContentWindow?.show();
+        // Emit status update when shown, reflecting the initially loaded section
+        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+        logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${currentWebContentSection} }`);
         if (!app.isPackaged) {
             webContentWindow?.webContents.openDevTools(); // Open dev tools in dev
         }
@@ -702,7 +738,11 @@ export function createWebContentWindow(): BrowserWindow | null {
 
     webContentWindow.on('closed', () => {
         webContentWindow = null; // Dereference the window object
-        logger.debug(MODULE_NAME, 'Web content window closed and dereferenced.');
+        currentWebContentSection = null; // Reset the active section
+        logger.debug(MODULE_NAME, 'Web content window closed, dereferenced, and section reset.');
+        // Emit status update when closed
+        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: false, activeSection: null });
+        logger.info(MODULE_NAME, 'Sent web-content-window-status { isOpen: false, activeSection: null }');
     });
 
     // --- Save Web Content Window Bounds ---
@@ -724,6 +764,49 @@ export function createWebContentWindow(): BrowserWindow | null {
     return webContentWindow;
 }
 
+
+// --- Window Closing Functions ---
+
+export function closeSettingsWindow() {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+        logger.info(MODULE_NAME, "Closing settings window programmatically.");
+        settingsWindow.close(); // This will trigger the 'closed' event and status update
+    } else {
+        logger.info(MODULE_NAME, "Close settings window requested, but window not found or already destroyed.");
+    }
+}
+
+export function closeWebContentWindow() {
+    if (webContentWindow && !webContentWindow.isDestroyed()) {
+        logger.info(MODULE_NAME, "Closing web content window programmatically.");
+        webContentWindow.close(); // This will trigger the 'closed' event and status update
+    } else {
+        logger.info(MODULE_NAME, "Close web content window requested, but window not found or already destroyed.");
+    }
+}
+
+// --- Status Getters (Synchronous) ---
+
+/**
+ * Gets the current status of the Settings window.
+ * @returns {{ isOpen: boolean }}
+ */
+export function getSettingsStatus(): { isOpen: boolean } {
+    const isOpen = !!settingsWindow && !settingsWindow.isDestroyed();
+    logger.debug(MODULE_NAME, `Getting settings status: ${isOpen}`);
+    return { isOpen };
+}
+
+/**
+ * Gets the current status of the Web Content window, including the active section.
+ * @returns {{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }}
+ */
+export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null } {
+    const isOpen = !!webContentWindow && !webContentWindow.isDestroyed();
+    const section = isOpen ? currentWebContentSection : null;
+    logger.debug(MODULE_NAME, `Getting web content status: isOpen=${isOpen}, activeSection=${section}`);
+    return { isOpen, activeSection: section };
+}
 
 // --- Accessor Functions ---
 

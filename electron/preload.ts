@@ -93,6 +93,9 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   
   // Window Actions
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
+  openWebContentWindow: (section: 'profile' | 'leaderboard'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section), // Added for Profile/Leaderboard
+  closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'), // Added for toggle-close
+  closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'), // Added for toggle-close
   // Custom Title Bar / Window Controls
   windowMinimize: (): void => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: (): void => ipcRenderer.send('window:toggleMaximize'),
@@ -107,6 +110,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authLogin: (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:login', identifier, password),
   authLogout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout'),
   authGetStatus: (): Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }> => ipcRenderer.invoke('auth:getStatus'),
+  authGetAccessToken: (): Promise<string | null> => ipcRenderer.invoke('auth:getAccessToken'), // Added
+
+  // Window Status Getters (Synchronous)
+  getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => ipcRenderer.invoke('get-settings-window-status'),
+  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
 
   // Resource Path
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
@@ -148,6 +156,16 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('game-mode-update', callback);
     return () => ipcRenderer.removeListener('game-mode-update', callback); // Return cleanup function
   },
+  // Listener for Settings window status
+  onSettingsWindowStatus: (callback: (event: Electron.IpcRendererEvent, status: { isOpen: boolean }) => void) => {
+    ipcRenderer.on('settings-window-status', callback);
+    return () => ipcRenderer.removeListener('settings-window-status', callback);
+  },
+  // Listener for Web Content window status
+  onWebContentWindowStatus: (callback: (event: Electron.IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => {
+    ipcRenderer.on('web-content-window-status', callback);
+    return () => ipcRenderer.removeListener('web-content-window-status', callback);
+  },
 
   // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
@@ -159,6 +177,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.removeAllListeners('auth-status-changed') // Clean up new listener
     ipcRenderer.removeAllListeners('connection-status-changed') // Clean up connection status listener
     ipcRenderer.removeAllListeners('game-mode-update') // Clean up game mode listener
+    ipcRenderer.removeAllListeners('settings-window-status') // Clean up settings status listener
+    ipcRenderer.removeAllListeners('web-content-window-status') // Clean up web content status listener
   }
 })
 

@@ -2,7 +2,18 @@ import { ipcMain, dialog, BrowserWindow, app } from 'electron'; // Import app
 import path from 'node:path';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
 // Import createWebContentWindow specifically
-import { getMainWindow, createSettingsWindow, createEventDetailsWindow, getActiveEventDataForWindow, createWebContentWindow } from './window-manager.ts'; // Added .ts and createWebContentWindow
+// Import status getters as well
+import {
+    getMainWindow,
+    createSettingsWindow,
+    createEventDetailsWindow,
+    getActiveEventDataForWindow,
+    createWebContentWindow,
+    closeSettingsWindow,
+    closeWebContentWindow,
+    getSettingsStatus, // Added
+    getWebContentStatus // Added
+} from './window-manager.ts'; // Added close functions and status getters
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
@@ -205,33 +216,23 @@ try {
     });
 
     // NEW: Handler for Web Content Window
-    ipcMain.handle('open-web-content-window', (_event, initialTab?: string) => {
+    ipcMain.handle('open-web-content-window', (_event, initialTab?: 'profile' | 'leaderboard') => { // Type the initialTab
       logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
-      const webWindow = createWebContentWindow(); // This function handles creation or focusing
+      // Pass initialTab directly to createWebContentWindow, which now handles the URL hash
+      const webWindow = createWebContentWindow(initialTab); // Pass initialTab here
 
-      // Optional: Navigate to initial tab if window was just created or needs focusing
-      if (webWindow && initialTab) {
-         // Ensure the window is ready before sending messages or navigating
-         if (webWindow.webContents.isLoading()) {
-             webWindow.webContents.once('did-finish-load', () => {
-                 logger.info(MODULE_NAME, `Web content window finished loading, navigating to: /${initialTab}`);
-                 // Use hash-based navigation for vue-router
-                 webWindow.loadURL(webWindow.webContents.getURL() + `#/${initialTab}`);
-                 // Or send an IPC message to the window's renderer process if preferred
-                 // webWindow.webContents.send('navigate-to-tab', initialTab);
-             });
-         } else {
-             logger.info(MODULE_NAME, `Web content window already loaded, navigating to: /${initialTab}`);
-             // Use hash-based navigation for vue-router
-             webWindow.loadURL(webWindow.webContents.getURL().split('#')[0] + `#/${initialTab}`);
-             // Or send an IPC message
-             // webWindow.webContents.send('navigate-to-tab', initialTab);
-         }
-      } else if (webWindow) {
-         // If no specific tab, ensure it's focused/shown
-         if (webWindow.isMinimized()) webWindow.restore();
-         webWindow.focus();
+      if (webWindow) {
+          // Send status update regardless of whether it was created or focused
+          // Use initialTab if provided, otherwise maybe default to a known section or null?
+          // Let's assume for now the web content window itself determines the default if no hash is present.
+          getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: initialTab });
+          logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${initialTab || 'default'} }`);
+
+          // Ensure the window is focused/restored if it already existed
+          if (webWindow.isMinimized()) webWindow.restore();
+          webWindow.focus();
       }
+      // Removed the post-creation navigation logic as createWebContentWindow handles the initial URL hash now.
     });
 
     ipcMain.handle('get-passed-event-data', () => {
@@ -245,6 +246,30 @@ try {
             return true;
         }
         return false;
+    });
+
+    // NEW: Handlers for closing specific windows
+    ipcMain.handle('close-settings-window', () => {
+        logger.info(MODULE_NAME, "Received 'close-settings-window' request.");
+        closeSettingsWindow(); // Call the function from window-manager
+        return true; // Indicate the call was made
+    });
+
+    ipcMain.handle('close-web-content-window', () => {
+        logger.info(MODULE_NAME, "Received 'close-web-content-window' request.");
+        closeWebContentWindow(); // Call the function from window-manager
+        return true; // Indicate the call was made
+    });
+
+    // NEW: Handlers for getting window status synchronously
+    ipcMain.handle('get-settings-window-status', () => {
+        logger.info(MODULE_NAME, "Received 'get-settings-window-status' request.");
+        return getSettingsStatus(); // Call the function from window-manager
+    });
+
+    ipcMain.handle('get-web-content-window-status', () => {
+        logger.info(MODULE_NAME, "Received 'get-web-content-window-status' request.");
+        return getWebContentStatus(); // Call the function from window-manager
     });
 
     // --- Custom Title Bar Window Controls ---
