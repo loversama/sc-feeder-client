@@ -3,35 +3,54 @@
   <div v-else-if="webAppUrl" class="iframe-container h-full">
     <iframe :src="webAppUrl" class="w-full h-full border-none" title="KillFeed Web App - Profile"></iframe>
   </div>
-  <div v-else class="p-4 text-red-500">
-    Could not load web application. Authentication token not available. Please log in via Settings.
-  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 
 const accessToken = ref<string | null>(null);
+const lastUsername = ref<string | null>(null); // Add ref for username
 const isLoading = ref(true);
 const webAppBaseUrl = 'https://killfeed.sinfulshadows.com'; // Define base URL
 
 onMounted(async () => {
-  isLoading.value = true; // Ensure loading state is true initially
+  isLoading.value = true;
+  let fetchedToken: string | null = null;
+
   try {
-    // Ensure the API function exists before calling
+    // Attempt to fetch access token
     if (window.logMonitorApi && typeof window.logMonitorApi.authGetAccessToken === 'function') {
-      accessToken.value = await window.logMonitorApi.authGetAccessToken();
-      console.log('Fetched access token:', accessToken.value ? 'Token received' : 'No token');
+      fetchedToken = await window.logMonitorApi.authGetAccessToken();
+      console.log('Attempted to fetch access token:', fetchedToken ? 'Token received' : 'No token');
     } else {
       console.error('logMonitorApi.authGetAccessToken is not available.');
-      accessToken.value = null; // Ensure token is null if API is missing
     }
   } catch (error) {
-    console.error('Failed to get access token:', error);
-    accessToken.value = null; // Ensure token is null on error
-  } finally {
-    isLoading.value = false;
+    console.error('Error fetching access token, falling back to guest mode:', error);
+    fetchedToken = null; // Ensure token is null on error
   }
+
+  // Assign the potentially fetched token
+  accessToken.value = fetchedToken;
+
+  // Always try to get username if we might need it for guest mode (either no token or fetch failed)
+  if (!accessToken.value) {
+    try {
+      if (window.logMonitorApi && typeof window.logMonitorApi.getLastLoggedInUser === 'function') {
+        lastUsername.value = await window.logMonitorApi.getLastLoggedInUser();
+        console.log('Fetched last username for guest mode:', lastUsername.value);
+      } else {
+        console.error('logMonitorApi.getLastLoggedInUser is not available.');
+        lastUsername.value = null;
+      }
+    } catch (userError) {
+       console.error('Error fetching last username for guest mode:', userError);
+       lastUsername.value = null;
+    }
+  }
+
+  // Loading is complete after attempting token and potentially username fetch
+  isLoading.value = false;
 });
 
 // Computed property for the final iframe URL
@@ -46,8 +65,16 @@ const webAppUrl = computed(() => {
     // initUrl.hash = '#profile'; // Example if using hash routing on web app side
     return initUrl.toString();
   }
-  // Return null if no token, the template will show an error message
-  return null;
+  // If no token (guest user), construct the user profile URL
+  if (lastUsername.value) {
+    return `${webAppBaseUrl}/user/${lastUsername.value}`;
+  } else {
+    // Fallback if username couldn't be fetched (or handle this case differently?)
+    // Maybe return a generic page or an error indicator? For now, return base URL.
+    console.warn('No last username available for guest profile view.');
+    // Returning null will prevent the iframe from loading until username is available or handled
+    return null; // Or return a specific fallback URL like `${webAppBaseUrl}/`
+  }
 });
 </script>
 

@@ -3,9 +3,6 @@
   <div v-else-if="webAppUrl" class="iframe-container h-full">
     <iframe :src="webAppUrl" class="w-full h-full border-none" title="KillFeed Web App - Leaderboard"></iframe>
   </div>
-  <div v-else class="p-4 text-red-500">
-    Could not load web application. Authentication token not available. Please log in via Settings.
-  </div>
 </template>
 
 <script setup lang="ts">
@@ -16,22 +13,27 @@ const isLoading = ref(true);
 const webAppBaseUrl = 'https://killfeed.sinfulshadows.com'; // Define base URL
 
 onMounted(async () => {
-  isLoading.value = true; // Ensure loading state is true initially
+  isLoading.value = true;
+  let fetchedToken: string | null = null;
+
   try {
-    // Ensure the API function exists before calling
+    // Attempt to fetch access token
     if (window.logMonitorApi && typeof window.logMonitorApi.authGetAccessToken === 'function') {
-      accessToken.value = await window.logMonitorApi.authGetAccessToken();
-      console.log('Fetched access token:', accessToken.value ? 'Token received' : 'No token');
+      fetchedToken = await window.logMonitorApi.authGetAccessToken();
+      console.log('Attempted to fetch access token:', fetchedToken ? 'Token received' : 'No token');
     } else {
       console.error('logMonitorApi.authGetAccessToken is not available.');
-      accessToken.value = null; // Ensure token is null if API is missing
     }
   } catch (error) {
-    console.error('Failed to get access token:', error);
-    accessToken.value = null; // Ensure token is null on error
-  } finally {
-    isLoading.value = false;
+    console.error('Error fetching access token, falling back to guest mode:', error);
+    fetchedToken = null; // Ensure token is null on error
   }
+
+  // Assign the potentially fetched token
+  accessToken.value = fetchedToken;
+
+  // Loading is complete after attempting token fetch
+  isLoading.value = false;
 });
 
 // Computed property for the final iframe URL
@@ -46,8 +48,8 @@ const webAppUrl = computed(() => {
     // initUrl.hash = '#leaderboard'; // Example if using hash routing on web app side
     return initUrl.toString();
   }
-  // Return null if no token, the template will show an error message
-  return null;
+  // If no token (or fetch failed), return the public leaderboard URL
+  return `${webAppBaseUrl}/leaderboard`;
 });
 </script>
 
