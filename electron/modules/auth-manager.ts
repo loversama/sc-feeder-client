@@ -255,6 +255,7 @@ export async function refreshToken(): Promise<{ userId: string; username: string
                  return null;
              }
              broadcastAuthStatusChange(); // Broadcast change after successful refresh
+connectToServer(); // Reconnect WebSocket after successful token refresh
              return loggedInUser; // Return the user info object
          } else {
              logger.error(MODULE_NAME, 'Access token missing from refresh response.');

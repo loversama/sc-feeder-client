@@ -1,25 +1,18 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router';
-import { ref, onMounted } from 'vue';
+// Removed ref, onMounted
 import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
 
-const headerRef = ref<HTMLElement | null>(null);
-const headerHeight = ref(0);
-
-onMounted(() => {
-  if (headerRef.value) {
-    headerHeight.value = headerRef.value.offsetHeight;
-  }
-});
+// Removed headerRef and headerHeight logic
 </script>
 
 <template>
   <div class="relative flex flex-col h-screen overflow-hidden bg-theme-bg-dark text-theme-text-light border border-theme-border">
-    <!-- Fixed Header -->
-    <header ref="headerRef" class="fixed top-0 left-0 right-0 z-10 p-2 bg-theme-bg-panel shadow">
+    <!-- Non-Fixed Header -->
+    <header class="p-2 bg-theme-bg-panel shadow shrink-0"> <!-- Removed 'fixed...', removed ref, added shrink-0 -->
       <!-- <h1 class="text-lg font-semibold">Web Content Window</h1> -->
       <!-- Tab Navigation -->
-      <nav class="mt-2 flex items-center"> <!-- Added flex and items-center -->
+      <nav class="mt-2 flex items-center">
         <!-- More Options Button -->
         <el-button
           ref="ref3"
@@ -48,10 +41,9 @@ onMounted(() => {
 
     <!-- Main Content Area (takes remaining space) -->
     <main
-      class="flex-1"
-      :style="{ paddingTop: `${headerHeight}px` }"
+      class="flex-1 overflow-auto"
     >
-      <router-view />
+      <router-view /> <!-- The page component should handle its own height (h-full) -->
     </main>
   </div>
 </template>
@@ -91,6 +83,6 @@ display: none !important;
 
 main.flex-1 {
     padding: 0px !important;
-    margin-top: -25px !important;
+    /* margin-top: -25px !important; */ /* Removed negative margin */
 }
 </style>

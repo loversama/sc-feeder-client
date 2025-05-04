@@ -1,3 +1,4 @@
+import EventEmitter from 'events';
 import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
 // Import refreshToken along with other auth functions
@@ -15,6 +16,12 @@ let isAuthenticated = false; // Track authentication status
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 let currentStatus: ConnectionStatus = 'disconnected';
 
+const connectionEvents = new EventEmitter();
+// Custom Reconnection Logic State
+const delays = [5000, 10000, 30000, 60000, 120000]; // Delays in ms
+let reconnectionAttempt = 0;
+let reconnectionTimeoutId: NodeJS.Timeout | null = null;
+ 
 // Helper function to send status updates to renderer
 function sendConnectionStatus(status: ConnectionStatus) {
     if (status !== currentStatus) {
@@ -72,23 +79,32 @@ export function connectToServer(): void {
   }
 
   socket = io(SERVER_URL, {
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 10000,
-    reconnectionDelayMax: 60000,
+    path: '/api/socket.io/', // Specify the custom path
+    reconnection: false, // Disable automatic reconnection
+    // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
     transports: ['websocket'],
     auth: handshakeAuth,
     query: handshakeQuery,
   });
 
   socket.on('connect', () => {
+    const isReconnection = reconnectionAttempt > 0;
     logger.info(
       MODULE_NAME,
-      `Successfully connected to server: ${socket?.id}. Authentication handshake sent.`,
+      `${isReconnection ? 'Reconnected' : 'Successfully connected'} to server: ${socket?.id}. Authentication handshake sent.`,
     );
+    // Reset reconnection logic on successful connection
+    if (reconnectionTimeoutId) {
+        clearTimeout(reconnectionTimeoutId);
+        reconnectionTimeoutId = null;
+    }
+    reconnectionAttempt = 0;
+    logger.info(MODULE_NAME, 'Reconnection logic reset on successful connection.');
+    // Emit event on successful connection/reconnection
+    connectionEvents.emit(isReconnection ? 'reconnected' : 'connected');
     // No need to send authenticate_guest message; handled by handshake and guestToken event now.
   });
-
+ 
   // Listen for guestToken event from server and store it
   socket.on('guestToken', (data: { token: string }) => {
     if (data?.token) {
@@ -111,12 +127,34 @@ export function connectToServer(): void {
     logger.warn(MODULE_NAME, `Disconnected from server: ${reason}`);
     isAuthenticated = false; // Reset auth status on disconnect
     sendConnectionStatus('disconnected'); // Update status: Disconnected
-    // Socket.io handles reconnection attempts automatically based on options
+ 
+    // Custom reconnection logic
+    if (reconnectionTimeoutId) {
+        clearTimeout(reconnectionTimeoutId); // Clear any existing timeout
+    }
+ 
+    const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1]; // Get next delay or max
+    logger.warn(MODULE_NAME, `Disconnected. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s. Reason: ${reason}`);
+ 
+    reconnectionTimeoutId = setTimeout(() => {
+      logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+      // Don't call connectToServer() as it creates a new socket instance.
+      // Instead, call connect() on the existing socket instance.
+      // If the socket was manually disconnected (socket = null), this won't run, which is correct.
+      socket?.connect();
+    }, nextDelay);
+ 
+    reconnectionAttempt++;
   });
-
+ 
   socket.on('connect_error', (error: Error) => {
     logger.error(MODULE_NAME, `Connection error: ${error.message}`);
     sendConnectionStatus('error');
+
+    if (reconnectionTimeoutId) { // Add this check
+      clearTimeout(reconnectionTimeoutId); // Clear any pending retry
+    }
+
     // If the error is an authentication failure, clear guest token and retry as new guest
     if (
       error.message &&
@@ -126,6 +164,17 @@ export function connectToServer(): void {
       logger.warn(MODULE_NAME, 'Clearing guest token and retrying as new guest...');
       clearGuestToken();
       setTimeout(connectToServer, 200); // Small delay to avoid rapid reconnect loop
+    } else {
+      // Custom reconnection logic for other errors
+      const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1]; // Get next delay or max
+      logger.error(MODULE_NAME, `Connection error. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s. Error: ${error.message}`);
+
+      reconnectionTimeoutId = setTimeout(() => {
+        logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+        socket?.connect();
+      }, nextDelay);
+
+      reconnectionAttempt++;
     }
   });
 
@@ -263,3 +312,5 @@ export function ensureConnectedAndSendLogChunk(chunk: string): void {
     sendLogChunk(chunk); // Then send the current chunk
   }
 }
+
+export { connectionEvents };

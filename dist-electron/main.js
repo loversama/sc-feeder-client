@@ -29,7 +29,7 @@ import require$$1$6 from "string_decoder";
 import zlib$1 from "zlib";
 import http$3 from "http";
 import path$m, { resolve as resolve$5, join, relative, sep } from "node:path";
-import url$1, { fileURLToPath } from "node:url";
+import url$1, { fileURLToPath, URL as URL$5 } from "node:url";
 import fs$k from "node:fs";
 import process$1 from "node:process";
 import require$$0$c, { promisify as promisify$2, isDeepStrictEqual } from "node:util";
@@ -31737,6 +31737,20 @@ function createMainWindow(onFinishLoad) {
     });
   }
   mainWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const WEBSITE_BASE_URL = isDevelopment ? "http://localhost:3001" : "https://killfeed.sinfulshadows.com";
+    try {
+      const parsedUrl = new URL(url2);
+      const parsedPath = parsedUrl.pathname;
+      if (parsedPath.startsWith("/profile") || parsedPath.startsWith("/leaderboard")) {
+        const newUrl = `${WEBSITE_BASE_URL}${parsedPath}`;
+        info(MODULE_NAME$e, `Opening environment-specific link: ${newUrl}`);
+        shell$1.openExternal(newUrl);
+        return { action: "deny" };
+      }
+    } catch (e) {
+      error(MODULE_NAME$e, `Failed to parse or handle URL: ${url2}`, e);
+    }
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
       info(MODULE_NAME$e, `Opening external link from main window: ${url2}`);
       shell$1.openExternal(url2);
@@ -32000,7 +32014,9 @@ function createWebContentWindow(section) {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !app$1.isPackaged,
-      spellcheck: false
+      spellcheck: false,
+      webviewTag: true
+      // Enable the <webview> tag
     },
     frame: false,
     // Required for custom title bar
@@ -165614,6 +165630,7 @@ async function refreshToken() {
         return null;
       }
       broadcastAuthStatusChange();
+      connectToServer();
       return loggedInUser;
     } else {
       error(MODULE_NAME$5, "Access token missing from refresh response.");
@@ -165705,6 +165722,10 @@ const MODULE_NAME$4 = "ServerConnection";
 let socket = null;
 let isAuthenticated = false;
 let currentStatus = "disconnected";
+const connectionEvents = new require$$0$3();
+const delays = [5e3, 1e4, 3e4, 6e4, 12e4];
+let reconnectionAttempt = 0;
+let reconnectionTimeoutId = null;
 function sendConnectionStatus(status) {
   var _a3;
   if (status !== currentStatus) {
@@ -165748,19 +165769,28 @@ function connectToServer() {
     return;
   }
   socket = lookup(SERVER_URL, {
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1e4,
-    reconnectionDelayMax: 6e4,
+    path: "/api/socket.io/",
+    // Specify the custom path
+    reconnection: false,
+    // Disable automatic reconnection
+    // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
     transports: ["websocket"],
     auth: handshakeAuth,
     query: handshakeQuery
   });
   socket.on("connect", () => {
+    const isReconnection = reconnectionAttempt > 0;
     info(
       MODULE_NAME$4,
-      `Successfully connected to server: ${socket == null ? void 0 : socket.id}. Authentication handshake sent.`
+      `${isReconnection ? "Reconnected" : "Successfully connected"} to server: ${socket == null ? void 0 : socket.id}. Authentication handshake sent.`
     );
+    if (reconnectionTimeoutId) {
+      clearTimeout(reconnectionTimeoutId);
+      reconnectionTimeoutId = null;
+    }
+    reconnectionAttempt = 0;
+    info(MODULE_NAME$4, "Reconnection logic reset on successful connection.");
+    connectionEvents.emit(isReconnection ? "reconnected" : "connected");
   });
   socket.on("guestToken", (data2) => {
     if (data2 == null ? void 0 : data2.token) {
@@ -165780,14 +165810,35 @@ function connectToServer() {
     warn(MODULE_NAME$4, `Disconnected from server: ${reason}`);
     isAuthenticated = false;
     sendConnectionStatus("disconnected");
+    if (reconnectionTimeoutId) {
+      clearTimeout(reconnectionTimeoutId);
+    }
+    const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1];
+    warn(MODULE_NAME$4, `Disconnected. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1e3}s. Reason: ${reason}`);
+    reconnectionTimeoutId = setTimeout(() => {
+      info(MODULE_NAME$4, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+      socket == null ? void 0 : socket.connect();
+    }, nextDelay);
+    reconnectionAttempt++;
   });
   socket.on("connect_error", (error$12) => {
     error(MODULE_NAME$4, `Connection error: ${error$12.message}`);
     sendConnectionStatus("error");
+    if (reconnectionTimeoutId) {
+      clearTimeout(reconnectionTimeoutId);
+    }
     if (error$12.message && (error$12.message.includes("invalid signature") || error$12.message.toLowerCase().includes("auth"))) {
       warn(MODULE_NAME$4, "Clearing guest token and retrying as new guest...");
       clearGuestToken();
       setTimeout(connectToServer, 200);
+    } else {
+      const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1];
+      error(MODULE_NAME$4, `Connection error. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1e3}s. Error: ${error$12.message}`);
+      reconnectionTimeoutId = setTimeout(() => {
+        info(MODULE_NAME$4, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+        socket == null ? void 0 : socket.connect();
+      }, nextDelay);
+      reconnectionAttempt++;
     }
   });
   socket.on("retry_auth", async (data2) => {
@@ -166461,6 +166512,36 @@ if (!app$1.requestSingleInstanceLock()) {
   app$1.quit();
 } else {
   app$1.on("second-instance", (event, commandLine, workingDirectory) => {
+    info(MODULE_NAME, `Second instance launched with command line: ${commandLine.join(" ")}`);
+    const deepLinkUrl = commandLine.find((arg) => arg.startsWith("myapp://auth/client-init"));
+    if (deepLinkUrl) {
+      info(MODULE_NAME, `Deep link found: ${deepLinkUrl}`);
+      try {
+        const url2 = new URL$5(deepLinkUrl);
+        const token = url2.searchParams.get("token");
+        if (token) {
+          info(MODULE_NAME, `Token extracted from deep link.`);
+          const serverEndpoint = `${SERVER_API_URL}/api/auth/client-init?token=${token}`;
+          info(MODULE_NAME, `Making GET request to: ${serverEndpoint}`);
+          fetch(serverEndpoint).then((response2) => {
+            if (response2.ok) {
+              info(MODULE_NAME, `Server request to ${serverEndpoint} successful.`);
+            } else {
+              error(MODULE_NAME, `Server request to ${serverEndpoint} failed with status: ${response2.status}`);
+            }
+          }).then((data2) => {
+          }).catch((error$12) => {
+            error(MODULE_NAME, `Error making server request to ${serverEndpoint}: ${error$12}`);
+          });
+        } else {
+          warn(MODULE_NAME, "Deep link found but no token parameter.");
+        }
+      } catch (error$12) {
+        error(MODULE_NAME, `Failed to parse deep link URL: ${deepLinkUrl}`, error$12);
+      }
+    } else {
+      info(MODULE_NAME, "No deep link found in command line arguments.");
+    }
     const mainWindow2 = getMainWindow();
     if (mainWindow2) {
       if (mainWindow2.isMinimized()) mainWindow2.restore();

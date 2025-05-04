@@ -313,11 +313,34 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
 
     // Handle external links
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (url.startsWith('http:') || url.startsWith('https:')) {
-            logger.info(MODULE_NAME, `Opening external link from main window: ${url}`);
-            shell.openExternal(url);
-            return { action: 'deny' };
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const WEBSITE_BASE_URL = isDevelopment
+          ? 'http://localhost:3001' // Development URL
+          : 'https://killfeed.sinfulshadows.com'; // Production URL
+
+        try {
+            const parsedUrl = new URL(url);
+            const parsedPath = parsedUrl.pathname;
+
+            if (parsedPath.startsWith('/profile') || parsedPath.startsWith('/leaderboard')) {
+                const newUrl = `${WEBSITE_BASE_URL}${parsedPath}`;
+                logger.info(MODULE_NAME, `Opening environment-specific link: ${newUrl}`);
+                shell.openExternal(newUrl);
+                return { action: 'deny' }; // Prevent default Electron window
+            }
+        } catch (e) {
+            logger.error(MODULE_NAME, `Failed to parse or handle URL: ${url}`, e);
+            // Fallback to default behavior or deny if parsing fails
         }
+
+        // Allow other URLs to open in the default browser
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+             logger.info(MODULE_NAME, `Opening external link from main window: ${url}`);
+             shell.openExternal(url);
+             return { action: 'deny' }; // Still deny opening in a new Electron window
+        }
+
+        // Deny any other types of URLs or unhandled cases
         return { action: 'deny' };
     });
 
@@ -655,7 +678,8 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged,
-            spellcheck: false
+            spellcheck: false,
+            webviewTag: true // Enable the <webview> tag
         },
         frame: false, // Required for custom title bar
         titleBarStyle: 'hidden',

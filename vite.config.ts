@@ -7,7 +7,14 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          // Treat 'webview' as a custom element
+          isCustomElement: (tag) => tag === 'webview',
+        },
+      },
+    }),
     tailwindcss(),
     electron({
       main: {

@@ -6,6 +6,8 @@ import * as AppLifecycle from './modules/app-lifecycle.ts'; // Added .ts
 import { getMainWindow } from './modules/window-manager.ts'; // Import getMainWindow - Added .ts
 import * as logger from './modules/logger'; // Import the logger utility
 import { setupTitlebar } from "custom-electron-titlebar/main"; // Import for custom title bar
+import { URL } from 'node:url'; // Import URL for parsing deep links
+import { SERVER_API_URL } from './modules/server-config.ts'; // Import API_BASE_URL
 const MODULE_NAME = 'Main'; // Define module name for logger
 
 // --- Basic Setup ---
@@ -35,6 +37,52 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (event, commandLine, workingDirectory) => {
+    logger.info(MODULE_NAME, `Second instance launched with command line: ${commandLine.join(' ')}`);
+
+    // Find the deep link URL in the command line arguments
+    const deepLinkUrl = commandLine.find(arg => arg.startsWith('myapp://auth/client-init'));
+
+    if (deepLinkUrl) {
+      logger.info(MODULE_NAME, `Deep link found: ${deepLinkUrl}`);
+      try {
+        const url = new URL(deepLinkUrl);
+        const token = url.searchParams.get('token');
+
+        if (token) {
+          logger.info(MODULE_NAME, `Token extracted from deep link.`);
+          // Construct the server endpoint URL
+          const serverEndpoint = `${SERVER_API_URL}/api/auth/client-init?token=${token}`;
+          logger.info(MODULE_NAME, `Making GET request to: ${serverEndpoint}`);
+
+          // Make the GET request to the server
+          fetch(serverEndpoint)
+            .then(response => {
+              if (response.ok) {
+                logger.info(MODULE_NAME, `Server request to ${serverEndpoint} successful.`);
+                // Optional: Handle response body if needed
+                // return response.json();
+              } else {
+                logger.error(MODULE_NAME, `Server request to ${serverEndpoint} failed with status: ${response.status}`);
+              }
+            })
+            .then(data => {
+              // Optional: Process response data
+              // logger.info(MODULE_NAME, 'Server response data:', data);
+            })
+            .catch(error => {
+              logger.error(MODULE_NAME, `Error making server request to ${serverEndpoint}: ${error}`);
+            });
+
+        } else {
+          logger.warn(MODULE_NAME, 'Deep link found but no token parameter.');
+        }
+      } catch (error) {
+        logger.error(MODULE_NAME, `Failed to parse deep link URL: ${deepLinkUrl}`, error);
+      }
+    } else {
+      logger.info(MODULE_NAME, 'No deep link found in command line arguments.');
+    }
+
     // Someone tried to run a second instance, we should focus our window.
     const mainWindow = getMainWindow(); // Use the imported function
     if (mainWindow) {
