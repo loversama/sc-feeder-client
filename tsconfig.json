@@ -5,6 +5,10 @@
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "vuex": ["../node_modules/vuex/types/index.d.ts"]
+    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",
