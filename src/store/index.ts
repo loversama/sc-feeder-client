@@ -1,3 +1,4 @@
+/// <reference types="../../node_modules/vuex/types/index.d.ts" />
 import { createStore, Store as VuexStore, ActionContext } from 'vuex'
 
 export interface UserState {
