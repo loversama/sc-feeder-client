@@ -6,9 +6,6 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "baseUrl": ".",
-    "paths": {
-      "vuex": ["../node_modules/vuex/types/index.d.ts"]
-    },
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -24,6 +21,6 @@
     "noUnusedParameters": false, // Temporarily disable for build
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron", "src/types/**/*.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
