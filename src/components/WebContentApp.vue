@@ -9,7 +9,7 @@ import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
 <template>
   <div class="relative flex flex-col h-screen overflow-hidden bg-theme-bg-dark text-theme-text-light border border-theme-border">
     <!-- Non-Fixed Header -->
-    <header class="p-2 bg-theme-bg-panel shadow shrink-0"> <!-- Removed 'fixed...', removed ref, added shrink-0 -->
+    <header class="p-2 bg-[#171717] border-b border-[#262626] shadow-md shrink-0 h-[80px] flex items-center">
       <!-- <h1 class="text-lg font-semibold">Web Content Window</h1> -->
       <!-- Tab Navigation -->
       <nav class="mt-2 flex items-center">
@@ -25,14 +25,14 @@ import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
         <router-link
           to="/profile"
           class="ml-[50px] p-2 rounded transition-colors duration-200"
-          :class="{ 'text-theme-accent-blue bg-white/5': $route.path === '/profile', 'hover:bg-white/5': $route.path !== '/profile' }"
+          :class="{ 'text-[rgb(99,99,247)] bg-white/5': $route.path === '/profile', 'hover:bg-white/5 hover:text-[rgb(77,77,234)]': $route.path !== '/profile' }"
         >
           Profile
         </router-link>
         <router-link
           to="/leaderboard"
           class="ml-4 p-2 rounded transition-colors duration-200"
-          :class="{ 'text-theme-accent-blue bg-white/5': $route.path === '/leaderboard', 'hover:bg-white/5': $route.path !== '/leaderboard' }"
+          :class="{ 'text-[rgb(99,99,247)] bg-white/5': $route.path === '/leaderboard', 'hover:bg-white/5 hover:text-[rgb(77,77,234)]': $route.path !== '/leaderboard' }"
         >
           Leaderboard
         </router-link>

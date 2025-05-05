@@ -11507,6 +11507,9 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authGetStatus: () => require$$0.ipcRenderer.invoke("auth:getStatus"),
   authGetAccessToken: () => require$$0.ipcRenderer.invoke("auth:getAccessToken"),
   // Added
+  // Profile Action
+  getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
+  // Added
   // Window Status Getters (Synchronous)
   getSettingsWindowStatus: () => require$$0.ipcRenderer.invoke("get-settings-window-status"),
   getWebContentWindowStatus: () => require$$0.ipcRenderer.invoke("get-web-content-window-status"),

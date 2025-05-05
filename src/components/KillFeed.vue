@@ -931,9 +931,9 @@ onUnmounted(() => {
 .status-bar {
   display: flex;
   padding: 8px 15px;
-  background-color: #222;
-  border-bottom: 1px solid #333;
-  justify-content: space-between; /* Changed to space-between */
+  background-color: #171717;  /* charcoal-900 */
+  border-bottom: 1px solid #262626;  /* charcoal-800 */
+  justify-content: space-between;
   font-size: 0.8em;
   flex-shrink: 0;
   align-items: center;
@@ -947,20 +947,20 @@ onUnmounted(() => {
 }
 
 .status-icon-button {
-  color: #ccc; /* Default icon color */
-  font-size: 1.3em; /* Icon size */
+  color: rgb(163, 163, 163);  /* charcoal-400 */
+  font-size: 1.3em;
   cursor: pointer;
   transition: color 0.2s ease;
-  display: flex; /* Helps vertical alignment */
+  display: flex;
   align-items: center;
 }
 
 .status-icon-button:hover {
-  color: #fff; /* White on hover */
+  color: rgb(99, 99, 247);  /* primary-500 */
 }
 
 .status-icon-button.active {
-  color: #e74c3c; /* Highlight color (theme red) */
+  color: rgb(77, 77, 234);  /* primary-600 */
 }
 .kill-feed-container {
   display: flex;
@@ -976,12 +976,11 @@ onUnmounted(() => {
 
 /* Controls container */
 .controls-container {
-  display: flex; /* Use flexbox */
-  padding: 12px 15px; /* Restore padding */
-  background-color: #1a1a1a;
-  border-bottom: 1px solid #333;
+  display: flex;
+  padding: 12px 15px;
+  background-color: #171717; /* charcoal-900 to match web content */
+  border-bottom: 1px solid #262626; /* charcoal-800 to match web content */
   flex-shrink: 0;
-  /* gap: 15px; Removed gap as only search input remains */
   align-items: center;
 }
 
@@ -1039,18 +1038,18 @@ onUnmounted(() => {
 
 /* Search input takes available space */
 .search-input {
-  flex-grow: 1; /* Allow input to grow */
+  flex-grow: 1;
   padding: 8px 12px;
-  background-color: #333;
-  border: 1px solid #444;
+  background-color: #262626; /* charcoal-800 */
+  border: 1px solid #404040; /* charcoal-700 */
   color: white;
   border-radius: 4px;
   font-size: 0.9em;
 }
 .search-input:focus {
   outline: none;
-  border-color: #e74c3c;
-  box-shadow: 0 0 0 1px rgba(231, 76, 60, 0.2);
+  border-color: rgb(99, 99, 247); /* primary-500 */
+  box-shadow: 0 0 0 1px rgba(99, 99, 247, 0.2);
 }
 .search-input::placeholder {
   color: #777;

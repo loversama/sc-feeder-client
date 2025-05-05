@@ -21,6 +21,7 @@ import * as RsiScraper from './rsi-scraper.ts'; // Added .ts
 import * as CsvLogger from './csv-logger.ts'; // Added .ts
 import { getCurrentUsername } from './log-parser.ts'; // Needed for event details window - Added .ts
 import * as logger from './logger'; // Import the logger utility
+import * as AuthManager from './auth-manager'; // Import AuthManager
 
 const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
 
@@ -106,6 +107,23 @@ export function registerIpcHandlers() {
         // Use the getter from log-parser as it holds the active state
         return getCurrentUsername();
         // return ConfigManager.getLastLoggedInUser(); // Or get from store if parser state isn't needed
+    });
+
+    // Handler to get the currently logged-in user's profile data
+    ipcMain.handle('get-profile', () => {
+        logger.debug(MODULE_NAME, "Received 'get-profile' request.");
+        // Use the new getter from AuthManager to get the full loggedInUser object
+        const loggedInUser = AuthManager.getLoggedInUser();
+
+        if (loggedInUser) {
+            logger.debug(MODULE_NAME, `Returning profile for user: ${loggedInUser.username}`);
+            logger.debug(MODULE_NAME, `Profile data being returned: ${JSON.stringify(loggedInUser)}`);
+            // Return the full loggedInUser object which now includes rsiHandle, rsiMoniker, avatar
+            return loggedInUser;
+        } else {
+            logger.debug(MODULE_NAME, "No logged-in user found. Returning null profile.");
+            return null; // Return null if no user is logged in
+        }
     });
 
     // --- Settings Handlers ---

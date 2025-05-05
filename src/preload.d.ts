@@ -1,15 +1,25 @@
 import { IpcRendererEvent } from 'electron';
-import { KillEvent } from '../shared/types'; // Assuming shared types are here
+import { KillEvent } from '../shared/types';
+
+interface Profile {
+  username: string
+  rsiHandle: string
+  rsiMoniker: string | null
+  avatar: string
+}
 
 // Define the structure of the API exposed by preload.ts
 export interface LogMonitorApi {
+  // Profile
+  getProfile: () => Promise<Profile>;
+
   // Log Path
   getLogPath: () => Promise<string>;
   setLogPath: (newPath: string) => void;
   selectLogDirectory: () => Promise<string | null>;
 
   // Sessions
-  getSessions: (limit?: number) => Promise<any[]>; // Consider defining a Session type
+  getSessions: (limit?: number) => Promise<any[]>;
 
   // Kill Feed
   getKillEvents: (limit?: number) => Promise<KillEvent[]>;
@@ -32,7 +42,6 @@ export interface LogMonitorApi {
   setFetchProfileData: (value: boolean) => Promise<boolean>;
   getSoundEffects: () => Promise<boolean>;
   setSoundEffects: (value: boolean) => Promise<boolean>;
-  // Updated: Only offlineMode is relevant now
   getApiSettings: () => Promise<{ offlineMode: boolean }>;
   setApiSettings: (settings: { offlineMode: boolean }) => Promise<boolean>;
   getCsvLogPath: () => Promise<string>;
@@ -41,18 +50,19 @@ export interface LogMonitorApi {
   // Launch on Startup
   getLaunchOnStartup: () => Promise<boolean>;
   setLaunchOnStartup: (value: boolean) => Promise<boolean>;
+
   // Window Actions
   openSettingsWindow: () => Promise<void>;
-  openWebContentWindow: (section: 'profile' | 'leaderboard') => Promise<void>; // Added
-  closeSettingsWindow: () => Promise<boolean>; // Added
-  closeWebContentWindow: () => Promise<boolean>; // Added
-  windowMinimize: () => void; // Added
-  windowToggleMaximize: () => void; // Added
-  windowClose: () => void; // Added
+  openWebContentWindow: (section: 'profile' | 'leaderboard') => Promise<void>;
+  closeSettingsWindow: () => Promise<boolean>;
+  closeWebContentWindow: () => Promise<boolean>;
+  windowMinimize: () => void;
+  windowToggleMaximize: () => void;
+  windowClose: () => void;
 
   // Window Status (Synchronous Getters)
-  getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>; // Added for initial state
-  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }>; // Added for initial state
+  getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
+  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }>;
 
   // Debug Actions
   resetSessions: () => Promise<boolean>;
@@ -63,7 +73,7 @@ export interface LogMonitorApi {
   authLogin: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
   authLogout: () => Promise<boolean>;
   authGetStatus: () => Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }>;
-  authGetAccessToken: () => Promise<string | null>; // Added
+  authGetAccessToken: () => Promise<string | null>;
 
   // Resource Path
   getResourcePath: () => Promise<string>;
@@ -75,28 +85,25 @@ export interface LogMonitorApi {
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void) => () => void;
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
-  // Add listener for connection status
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
-  // Add listener for game mode updates
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
-  // Add listeners for window status
-  onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void; // Added
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => () => void; // Added
+  onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => () => void;
+  
   // Cleanup
   removeAllListeners: () => void;
 }
 
-// Augment the global Window interface
 declare global {
   interface Window {
-    ipcRenderer: { // Keep existing ipcRenderer definition if needed
+    ipcRenderer: {
       on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => void;
       off: (channel: string, listener: (...args: any[]) => void) => void;
       send: (channel: string, ...args: any[]) => void;
       invoke: (channel: string, ...args: any[]) => Promise<any>;
-      removeListener: (channel: string, listener: (...args: any[]) => void) => void; // Added removeListener
+      removeListener: (channel: string, listener: (...args: any[]) => void) => void;
       removeAllListeners: (channel: string) => void;
     };
-    logMonitorApi: LogMonitorApi; // Add our custom API
+    logMonitorApi: LogMonitorApi;
   }
 }

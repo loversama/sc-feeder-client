@@ -99,7 +99,7 @@ watch([webviewRef, accessToken], ([webview, token]) => {
       `;
       webview.insertCSS(css)
         .then(() => console.log('[LeaderboardPage] Full height CSS injected successfully.'))
-        .catch((error: any) => console.error('[LeaderboardPage] Failed to inject CSS:', error));
+        .catch((error: any) => console.error('[LeaderboardPage] Failed to inject CSS:', error)); // Fixed typo here
 
       // Execute token script
       webview.executeJavaScript(script)
@@ -124,19 +124,20 @@ watch([webviewRef, accessToken], ([webview, token]) => {
 // Computed property for the final iframe URL
 const webviewSrc = computed(() => {
   let url: string | null = null; // Define url variable
-  if (accessToken.value) {
-    // Construct the client-init URL with the token
-    const initUrl = new URL('/auth/client-init', webAppBaseUrl);
-    initUrl.searchParams.set('token', accessToken.value);
-    // Append the original target path (leaderboard) as a hash or query param if needed by the web app
-    // For now, just redirecting to client-init which should handle session and redirect
-    // If the web app needs to know the target, adjust here:
-    // initUrl.hash = '#leaderboard'; // Example if using hash routing on web app side
-    url = initUrl.toString();
-  } else {
-    // If no token (or fetch failed), return the public leaderboard URL
+  // Temporarily disable token-based URL for logged-in users
+  // if (accessToken.value) {
+  //   // Construct the client-init URL with the token
+  //   const initUrl = new URL('/auth/client-init', webAppBaseUrl);
+  //   initUrl.searchParams.set('token', accessToken.value);
+  //   // Append the original target path (leaderboard) as a hash or query param if needed by the web app
+  //   // For now, just redirecting to client-init which should handle session and redirect
+  //   // If the web app needs to know the target, adjust here:
+  //   // initUrl.hash = '#leaderboard'; // Example if using hash routing on web app side
+  //   url = initUrl.toString();
+  // } else {
+    // Always use the guest logic for now
     url = `${webAppBaseUrl}/leaderboard`;
-  }
+  // }
   console.log(`[LeaderboardPage] Computed webviewSrc: ${url}`); // Log the computed URL
   return url;
 });

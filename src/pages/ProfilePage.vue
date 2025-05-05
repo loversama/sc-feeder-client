@@ -17,7 +17,8 @@ import { ref, onMounted, computed, watch } from 'vue'; // Import watch
 
 const webviewRef = ref<Electron.WebviewTag | null>(null);
 const accessToken = ref<string | null>(null);
-const lastUsername = ref<string | null>(null); // Add ref for username
+const currentUsername = ref<string | null>(null); // Use currentUsername for logged-in user
+const lastUsername = ref<string | null>(null); // Keep lastUsername for guest fallback
 const isLoading = ref(true);
 // Use Vite's import.meta.env.DEV to check for development mode
 const isDevelopment = import.meta.env.DEV;
@@ -46,23 +47,38 @@ onMounted(async () => {
   // Assign the potentially fetched token
   accessToken.value = fetchedToken;
 
-  // Always try to get username if we might need it for guest mode (either no token or fetch failed)
-  if (!accessToken.value) {
+  // Fetch current username if authenticated, or last username if not
+  if (accessToken.value) {
     try {
-      if (window.logMonitorApi && typeof window.logMonitorApi.getLastLoggedInUser === 'function') {
-        lastUsername.value = await window.logMonitorApi.getLastLoggedInUser();
-        console.log('Fetched last username for guest mode:', lastUsername.value);
+      if (window.logMonitorApi && typeof window.logMonitorApi.authGetStatus === 'function') {
+        const status = await window.logMonitorApi.authGetStatus();
+        currentUsername.value = status.username;
+        console.log('Fetched current username for logged-in user:', currentUsername.value);
       } else {
-        console.error('logMonitorApi.getLastLoggedInUser is not available.');
-        lastUsername.value = null;
+        console.error('logMonitorApi.authGetStatus is not available.');
+        currentUsername.value = null;
       }
     } catch (userError) {
-       console.error('Error fetching last username for guest mode:', userError);
-       lastUsername.value = null;
+       console.error('Error fetching current username for logged-in user:', userError);
+       currentUsername.value = null;
     }
+  } else {
+     // If not authenticated, try to get the last logged-in user for guest view
+     try {
+       if (window.logMonitorApi && typeof window.logMonitorApi.getLastLoggedInUser === 'function') {
+         lastUsername.value = await window.logMonitorApi.getLastLoggedInUser();
+         console.log('Fetched last username for guest mode:', lastUsername.value);
+       } else {
+         console.error('logMonitorApi.getLastLoggedInUser is not available.');
+         lastUsername.value = null;
+       }
+     } catch (userError) {
+        console.error('Error fetching last username for guest mode:', userError);
+        lastUsername.value = null;
+     }
   }
 
-  // Loading is complete after attempting token and potentially username fetch
+  // Loading is complete after attempting token and username fetch
   isLoading.value = false;
 
   // Token injection logic moved to a watcher
@@ -135,25 +151,29 @@ watch([webviewRef, accessToken], ([webview, token]) => {
 // Computed property for the final iframe URL
 const webviewSrc = computed(() => {
   let url: string | null = null; // Define url variable
-  if (accessToken.value) {
-    // Construct the client-init URL with the token
-    const initUrl = new URL('/auth/client-init', webAppBaseUrl);
-    initUrl.searchParams.set('token', accessToken.value);
-    // Append the original target path (profile) as a hash or query param if needed by the web app
-    // For now, just redirecting to client-init which should handle session and redirect
-    // If the web app needs to know the target, adjust here:
-    // initUrl.hash = '#profile'; // Example if using hash routing on web app side
-    url = initUrl.toString();
+  // Temporarily disable token-based URL for logged-in users
+  // if (accessToken.value) {
+  //   // Construct the client-init URL with the token
+  //   const initUrl = new URL('/auth/client-init', webAppBaseUrl);
+  //   initUrl.searchParams.set('token', accessToken.value);
+  //   // Append the original target path (profile) as a hash or query param if needed by the web app
+  //   // For now, just redirecting to client-init which should handle session and redirect
+  //   // If the web app needs to know the target, adjust here:
+  //   // initUrl.hash = '#profile'; // Example if using hash routing on web app side
+  //   url = initUrl.toString();
+  // } else {
+  // Determine the username to use in the URL
+  const usernameToUse = accessToken.value ? currentUsername.value : lastUsername.value;
+
+  if (usernameToUse) {
+    url = `${webAppBaseUrl}/user/${usernameToUse}`;
   } else {
-    // If no token (guest user), construct the user profile URL
-    if (lastUsername.value) {
-      url = `${webAppBaseUrl}/user/${lastUsername.value}`;
-    } else {
-      // Fallback if username couldn't be fetched
-      console.warn('No last username available for guest profile view.');
-      url = null; // Keep it null to prevent loading invalid URL
-    }
+    // Fallback if no username is available (neither current nor last)
+    console.warn('No username available for profile view.');
+    url = null; // Keep it null to prevent loading invalid URL
   }
+
+  console.log(`[ProfilePage] usernameToUse: ${usernameToUse}`); // Added log
   console.log(`[ProfilePage] Computed webviewSrc: ${url}`); // Log the computed URL
   return url;
 });

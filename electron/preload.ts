@@ -111,6 +111,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authLogout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout'),
   authGetStatus: (): Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }> => ipcRenderer.invoke('auth:getStatus'),
   authGetAccessToken: (): Promise<string | null> => ipcRenderer.invoke('auth:getAccessToken'), // Added
+  // Profile Action
+  getProfile: (): Promise<{ userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null> => ipcRenderer.invoke('get-profile'), // Added
 
   // Window Status Getters (Synchronous)
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => ipcRenderer.invoke('get-settings-window-status'),

@@ -13,7 +13,8 @@ const store = new Store({ name: 'auth-state' }); // Use a separate store file
 
 // In-memory storage for access token (cleared on app quit)
 let accessToken: string | null = null;
-let loggedInUser: { userId: string; username: string } | null = null;
+// Updated type to include full profile data
+let loggedInUser: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null = null;
 let guestToken: string | null = null; // In-memory storage for guest token
 
 // Exported function to set guest token
@@ -115,6 +116,11 @@ export function getAuthStatus(): { isAuthenticated: boolean; username: string | 
     };
 }
 
+// New getter to return the full loggedInUser object
+export function getLoggedInUser(): typeof loggedInUser {
+    return loggedInUser;
+}
+
 export async function login(identifier: string, password: string): Promise<{ success: boolean; error?: string }> {
     logger.info(MODULE_NAME, `Attempting login for identifier: ${identifier}`); // Use info
     try {
@@ -133,6 +139,10 @@ export async function login(identifier: string, password: string): Promise<{ suc
 
         const data = await response.json();
         logger.debug(MODULE_NAME, 'Received login response data:', JSON.stringify(data)); // Log the received data
+        logger.debug(MODULE_NAME, 'Login response includes user data:', !!data.user);
+        if (data.user) {
+            logger.debug(MODULE_NAME, 'Login response user data:', JSON.stringify(data.user));
+        }
 
         if (data.access_token) {
              // TODO: Need refresh token from server (e.g., in body or separate mechanism if cookie fails for Electron)
@@ -150,8 +160,16 @@ export async function login(identifier: string, password: string): Promise<{ suc
              // The client should trust the server's response or use a profile endpoint.
              // We need the user object from the server response directly.
              if (data.user && data.user.id && data.user.username) {
-                 loggedInUser = { userId: data.user.id, username: data.user.username };
+                 // Store full user profile data from the login response
+                 loggedInUser = {
+                     userId: data.user.id,
+                     username: data.user.username,
+                     rsiHandle: data.user.rsiHandle || null, // Assuming these fields are in the login response
+                     rsiMoniker: data.user.rsiMoniker || null,
+                     avatar: data.user.avatar || null,
+                 };
                  logger.info(MODULE_NAME, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId}) from server response.`);
+                 logger.debug(MODULE_NAME, `Stored loggedInUser profile: ${JSON.stringify(loggedInUser)}`);
              } else {
                  logger.error(MODULE_NAME, 'User info missing from login response data.');
                  await clearTokens(); // Clear potentially bad state
@@ -244,7 +262,17 @@ export async function refreshToken(): Promise<{ userId: string; username: string
              try {
                 const decoded = JSON.parse(Buffer.from(data.access_token.split('.')[1], 'base64').toString());
                  if (decoded.sub && decoded.username) {
-                    loggedInUser = { userId: decoded.sub, username: decoded.username };
+                    // Note: Refresh token payload doesn't contain full profile data.
+                    // We only have userId and username from the token.
+                    // If we need full profile after refresh, we'd need a separate API call here.
+                    // For now, we'll update only userId and username.
+                    loggedInUser = {
+                        userId: decoded.sub,
+                        username: decoded.username,
+                        rsiHandle: loggedInUser?.rsiHandle || null, // Keep existing or set null
+                        rsiMoniker: loggedInUser?.rsiMoniker || null, // Keep existing or set null
+                        avatar: loggedInUser?.avatar || null, // Keep existing or set null
+                    };
                     logger.info(MODULE_NAME, `Tokens refreshed successfully for ${loggedInUser.username}`);
                  } else {
                      throw new Error('Invalid token payload structure');
@@ -329,7 +357,7 @@ export function registerAuthIpcHandlers(): void {
          return getAccessToken();
     });
 
-     ipcMain.handle('auth:refreshToken', async () => {
+    ipcMain.handle('auth:refreshToken', async () => {
          return await refreshToken();
      });
 

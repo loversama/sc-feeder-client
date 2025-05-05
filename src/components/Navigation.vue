@@ -1,149 +1,222 @@
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue' // Removed ref import
+import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
+import { ElAvatar, ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
+import { User, Key, Switch } from '@element-plus/icons-vue'
+import { useUserState } from '../composables/useUserState'
 
+// Props and emits
 const props = defineProps<{
   activePage: string
 }>()
 
 const emit = defineEmits<{
   (e: 'change-page', page: string): void
-  // Removed profile/leaderboard emits
 }>()
+
+// State
+const activeIndex = ref('1')
+const { state: userState, reset: resetUser, updateAuthStatus } = useUserState()
+
+// Computed values for template
+const displayName = computed(() => {
+  if (userState.value.isAuthenticated) {
+    return userState.value.username
+  }
+  return userState.value.lastLoggedInUser || 'Guest'
+})
+const isAuthenticated = computed(() => userState.value.isAuthenticated)
+const rsiHandle = computed(() => userState.value.rsiHandle)
+const rsiMoniker = computed(() => userState.value.rsiMoniker)
+const avatar = computed(() => userState.value.avatar)
+const avatarText = computed(() => {
+  if (!displayName.value) return 'G'
+  return displayName.value.charAt(0).toUpperCase()
+})
+
+// Watch for debugging
+watch(rsiMoniker, (newVal, oldVal) => {
+  console.log(`Navigation.vue: rsiMoniker changed from ${oldVal} to ${newVal}`)
+})
+watch(rsiHandle, (newVal, oldVal) => {
+  console.log(`Navigation.vue: rsiHandle changed from ${oldVal} to ${newVal}`)
+})
+watch(isAuthenticated, (newVal, oldVal) => {
+  console.log(`Navigation.vue: isAuthenticated changed from ${oldVal} to ${newVal}`)
+})
+
+// Handlers
+const handleCommand = async (command: string) => {
+  try {
+    if (command === 'logout') {
+      await window.logMonitorApi?.authLogout?.()
+      resetUser()
+    } else if (command === 'login') {
+      await window.logMonitorApi?.openWebContentWindow?.('profile')
+    } else if (command === 'profile') {
+      await window.logMonitorApi?.openWebContentWindow?.('profile')
+    } else if (command === 'settings') {
+      await window.logMonitorApi?.openSettingsWindow?.()
+    }
+  } catch (error) {
+    console.error('Error handling command:', error)
+  }
+}
+
+// Set up auth status listener and load initial state
+onMounted(async () => {
+  await updateAuthStatus()
+  window.ipcRenderer.on('auth-status-changed', updateAuthStatus)
+})
 
 const changePage = (page: string) => {
   emit('change-page', page)
 }
-
-// Removed openSettingsWindow function
-// Removed openProfile and openLeaderboard functions
-// Removed local state refs (isSettingsActive, etc.)
 </script>
 
 <template>
-  <nav class="nav-container p-2 bg-theme-bg-panel shadow"> <!-- Added styles -->
-    <div class="nav-draggable cet-drag-region"> <!-- Keep drag region here -->
-      <div class="app-title"> <!-- Title text container -->
-        SC Kill Feed
-        <!-- Removed settings icon -->
-      </div>
-    </div>
-    <!-- Removed nav-buttons div and its content -->
-    <div class="nav-buttons">
-       <!-- Original commented out button example (optional to keep) -->
-       <!-- <button
-         @click="changePage('kill-feed')"
-         class="nav-button"
-         :class="{ active: activePage === 'kill-feed' }"
-       >
-         <div class="icon">⚔️</div>
-         <span>Kill Feed</span>
-       </button>
-        -->
+  <nav class="nav-container bg-theme-bg-panel shadow">
+    <div class="nav-draggable cet-drag-region pl-5">
+      <el-menu
+        :default-active="activeIndex"
+        mode="horizontal"
+        :ellipsis="false"
+        class="custom-menu"
+      >
+        <el-sub-menu index="1" class="w-[60%]">
+          <template #title>
+            <div class="flex items-center gap-4">
+              <el-avatar
+                :size="42"
+                class="bg-gradient-to-br from-[rgb(99,99,247)] to-[rgb(77,77,234)] text-white font-semibold border-2 border-[#404040]"
+                shape="square"
+                :src="avatar"
+              >
+                {{ avatarText }}
+              </el-avatar>
+              <div class="flex flex-col gap-0.5 ml-1.5">
+                <span class="text-sm font-semibold text-theme-text-light leading-none mb-1">
+                  {{ displayName }}
+                </span>
+                <span
+                  class="text-[11px] font-medium tracking-widest uppercase leading-none"
+                  :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : 'text-[#737373]'"
+                >
+                  {{ isAuthenticated ? `@${rsiMoniker || rsiHandle || 'Unknown'}` : 'GUEST MODE' }}
+                </span>
+              </div>
+            </div>
+          </template>
+          <el-menu-item index="1-1" @click="handleCommand(isAuthenticated ? 'logout' : 'login')" class="menu-item">
+            <el-icon><Key /></el-icon>
+            <span>{{ isAuthenticated ? 'Logout' : 'Login' }}</span>
+          </el-menu-item>
+          <el-menu-item index="1-2" @click="handleCommand('profile')" class="menu-item">
+            <el-icon><User /></el-icon>
+            <span>Profile</span>
+          </el-menu-item>
+          <el-menu-item index="1-3" @click="handleCommand('settings')" class="menu-item">
+            <el-icon><Switch /></el-icon>
+            <span>Settings</span>
+          </el-menu-item>
+        </el-sub-menu>
+      </el-menu>
     </div>
   </nav>
 </template>
 
-<style scoped>
-/* Restored original styles from before icon additions */
-.app-title {
-    font-size: 1.2em;
-    font-weight: 600;
-    color: #e74c3c;
-    margin-left: 10px;
-    /* Removed font-size: 30px !important; */
-    /* Removed margin-top: 1cqmin; */
+<style>
+/* Element Plus Menu Overrides */
+.custom-menu {
+  --el-menu-bg-color: transparent !important;
+  --el-menu-border-color: transparent !important;
+  --el-menu-text-color: var(--color-theme-text-light) !important;
+  --el-menu-hover-bg-color: #262626 !important;
+  --el-menu-hover-text-color: white !important;
+  --el-menu-active-color: rgb(99, 99, 247) !important;
+  --el-menu-border-color: transparent !important;
+  height: 80px !important;
+  border: none !important;
+  border-bottom: 0 !important;
 }
 
-.app-title.cet-drag-region {
-  height: 50px;
-  width: 80%;
+.custom-menu :deep(.el-menu-item) {
+  border-bottom: 0 !important;
 }
 
-.cet-drag-region {
-    top: 0;
-    left: 0;
-    display: block;
-    position: absolute;
-    width: 100%; /* Restore */
-    height: 25px; /* Restore */
-    z-index: -1; /* Restore */
-    -webkit-app-region: drag;
+.el-menu--popup {
+  background-color: #171717 !important;
+  border: 1px solid #262626 !important;
+  padding: 8px !important;
+  border-radius: 8px !important;
 }
 
-/* Removed settings icon styles */
+.menu-item.el-menu-item {
+  height: 40px !important;
+  line-height: 40px !important;
+  color: var(--color-theme-text-light) !important;
+  margin: 2px 0 !important;
+  border-radius: 4px !important;
+  font-size: 14px !important;
+}
 
+.menu-item.el-menu-item:hover {
+  background-color: #262626 !important;
+  color: white !important;
+}
+
+.menu-item .el-icon {
+  margin-right: 12px !important;
+  font-size: 18px !important;
+}
+
+.el-sub-menu__title {
+  height: 80px !important;
+  line-height: 80px !important;
+  padding: 0 !important;
+}
+
+/* Avatar and Container Styles */
 .nav-container {
   display: flex;
-  background-color: #121212;
-  border-bottom: 1px solid #333;
-  padding: 0 10px;
-  /* Removed fixed height: 50px; Let padding and content determine height */
-  align-items: center;
-  /* Removed justify-content: space-between */
+  background-color: #171717;
   user-select: none;
-  margin: 0;
   width: 100%;
+  height: 80px;
 }
 
 .nav-draggable {
   display: flex;
-  width:80vw;
-  height:50px;
-}
-
-/* Removed duplicate .app-title block */
-.nav-buttons {
-  display: flex;
-  height: 100%;
-}
-
-.nav-button {
-  display: flex;
-  align-items: center;
-  background: none;
-  border: none;
-  color: #999;
-  padding: 0 15px;
-  height: 100%;
-  cursor: pointer;
-  font-size: 0.9em;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.nav-button::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
   width: 100%;
-  height: 3px;
-  background-color: transparent;
-  transition: background-color 0.2s ease;
+  height: 80px;
+  align-items: center;
 }
 
-.nav-button.active {
-  color: #ffffff;
+:deep(.el-avatar) {
+  font-size: 22px;
+  transition: all 0.2s ease;
+  border-radius: 10px !important;
 }
 
-.nav-button.active::after {
-  background-color: #e74c3c;
+:deep(.el-avatar:hover) {
+  transform: scale(1.05);
 }
 
-.nav-button:hover {
-  background-color: #1a1a1a;
+:deep(.el-menu-item .el-icon) {
+  color: var(--color-theme-text-light) !important;
 }
 
-.icon {
-  margin-right: 20px; /* Restored original */
-  left: 20px;
-  top: 50%;
-  font-size: 1.1em;
+:deep(.el-menu-item:hover .el-icon) {
+  color: white !important;
 }
 
-/* Removed settings icon positioning styles */
-
-/* Removed .nav-left */
-/* Removed .icon-button styles */
-/* Removed .icon-button.active styles */
+.cet-drag-region {
+  top: 0;
+  left: 0;
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 25px !important;
+  z-index: -1;
+  -webkit-app-region: drag;
+}
 </style>

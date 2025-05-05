@@ -96,7 +96,8 @@ onUnmounted(() => {
 <style>
 /* Make the title bar draggable */
 .nav-container {
-  height: 65px !important;
+    height: 84px !important;
+    border-bottom: 1px solid #272727;
 }
 
 .app-title.cet-drag-region {

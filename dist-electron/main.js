@@ -165513,6 +165513,9 @@ function getAuthStatus() {
     userId: (loggedInUser == null ? void 0 : loggedInUser.userId) ?? null
   };
 }
+function getLoggedInUser() {
+  return loggedInUser;
+}
 async function login(identifier, password) {
   info(MODULE_NAME$5, `Attempting login for identifier: ${identifier}`);
   try {
@@ -165528,6 +165531,10 @@ async function login(identifier, password) {
     }
     const data2 = await response2.json();
     debug$b(MODULE_NAME$5, "Received login response data:", JSON.stringify(data2));
+    debug$b(MODULE_NAME$5, "Login response includes user data:", !!data2.user);
+    if (data2.user) {
+      debug$b(MODULE_NAME$5, "Login response user data:", JSON.stringify(data2.user));
+    }
     if (data2.access_token) {
       const tempRefreshToken = data2.refresh_token;
       if (!tempRefreshToken) {
@@ -165537,8 +165544,16 @@ async function login(identifier, password) {
       await storeTokens(data2.access_token, tempRefreshToken);
       guestToken = null;
       if (data2.user && data2.user.id && data2.user.username) {
-        loggedInUser = { userId: data2.user.id, username: data2.user.username };
+        loggedInUser = {
+          userId: data2.user.id,
+          username: data2.user.username,
+          rsiHandle: data2.user.rsiHandle || null,
+          // Assuming these fields are in the login response
+          rsiMoniker: data2.user.rsiMoniker || null,
+          avatar: data2.user.avatar || null
+        };
         info(MODULE_NAME$5, `Login successful for ${loggedInUser.username} (ID: ${loggedInUser.userId}) from server response.`);
+        debug$b(MODULE_NAME$5, `Stored loggedInUser profile: ${JSON.stringify(loggedInUser)}`);
       } else {
         error(MODULE_NAME$5, "User info missing from login response data.");
         await clearTokens();
@@ -165619,7 +165634,16 @@ async function refreshToken() {
       try {
         const decoded = JSON.parse(Buffer.from(data2.access_token.split(".")[1], "base64").toString());
         if (decoded.sub && decoded.username) {
-          loggedInUser = { userId: decoded.sub, username: decoded.username };
+          loggedInUser = {
+            userId: decoded.sub,
+            username: decoded.username,
+            rsiHandle: (loggedInUser == null ? void 0 : loggedInUser.rsiHandle) || null,
+            // Keep existing or set null
+            rsiMoniker: (loggedInUser == null ? void 0 : loggedInUser.rsiMoniker) || null,
+            // Keep existing or set null
+            avatar: (loggedInUser == null ? void 0 : loggedInUser.avatar) || null
+            // Keep existing or set null
+          };
           info(MODULE_NAME$5, `Tokens refreshed successfully for ${loggedInUser.username}`);
         } else {
           throw new Error("Invalid token payload structure");
@@ -166190,6 +166214,18 @@ function registerIpcHandlers() {
   });
   ipcMain$1.handle("get-last-logged-in-user", () => {
     return getCurrentUsername();
+  });
+  ipcMain$1.handle("get-profile", () => {
+    debug$b(MODULE_NAME$2, "Received 'get-profile' request.");
+    const loggedInUser2 = getLoggedInUser();
+    if (loggedInUser2) {
+      debug$b(MODULE_NAME$2, `Returning profile for user: ${loggedInUser2.username}`);
+      debug$b(MODULE_NAME$2, `Profile data being returned: ${JSON.stringify(loggedInUser2)}`);
+      return loggedInUser2;
+    } else {
+      debug$b(MODULE_NAME$2, "No logged-in user found. Returning null profile.");
+      return null;
+    }
   });
   ipcMain$1.handle("get-notification-settings", () => {
     return getShowNotifications();
