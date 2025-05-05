@@ -79,7 +79,7 @@ export function connectToServer(): void {
   }
 
   socket = io(SERVER_URL, {
-    path: '/api/socket.io/', // Specify the custom path
+    // path: '/api/socket.io/', // REMOVED: Use default path for default adapter
     reconnection: false, // Disable automatic reconnection
     // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
     transports: ['websocket'],
@@ -117,7 +117,8 @@ export function connectToServer(): void {
 
   // Listen for custom 'authenticated' event from server
   socket.on('authenticated', () => {
-      logger.info(MODULE_NAME, `Server confirmed authentication for socket: ${socket?.id}`);
+      // ---> ADDED DETAILED LOG <---
+      logger.info(MODULE_NAME, `>>> Received 'authenticated' event from server for socket: ${socket?.id}. Setting isAuthenticated = true.`);
       isAuthenticated = true;
       sendConnectionStatus('connected'); // Update status: Connected (after auth confirmation)
       flushLogBuffer(); // Attempt to send any buffered logs

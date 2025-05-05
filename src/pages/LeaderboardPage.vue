@@ -136,7 +136,7 @@ const webviewSrc = computed(() => {
   //   url = initUrl.toString();
   // } else {
     // Always use the guest logic for now
-    url = `${webAppBaseUrl}/leaderboard`;
+    url = `${webAppBaseUrl}/leaderboard?source=electron`;
   // }
   console.log(`[LeaderboardPage] Computed webviewSrc: ${url}`); // Log the computed URL
   return url;

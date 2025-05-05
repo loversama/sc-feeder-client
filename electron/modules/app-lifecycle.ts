@@ -1,4 +1,4 @@
-import { app, globalShortcut, BrowserWindow } from 'electron'; // Keep base electron imports
+import { app, globalShortcut, BrowserWindow, session } from 'electron'; // Keep base electron imports, add session
 import { autoUpdater, UpdateCheckResult } from 'electron-updater'; // Import autoUpdater and types from electron-updater
 import { createMainWindow, getMainWindow, closeAllWindows } from './window-manager.ts'; // Added .ts
 import { createTrayMenu, destroyTray } from './tray-manager.ts'; // Added .ts
@@ -42,6 +42,13 @@ async function onReady() {
     logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
     // logger.info(MODULE_NAME, `MAIN_DIST calculated as: ${MAIN_DIST}`); // Log if MAIN_DIST is kept
 
+
+    // --- Set Custom User Agent ---
+    const currentUA = session.defaultSession.getUserAgent();
+    const appVersion = app.getVersion();
+    const customUA = `${currentUA} SC-Feeder-Client/${appVersion}`;
+    session.defaultSession.setUserAgent(customUA);
+    logger.info(MODULE_NAME, `Set User-Agent to: ${customUA}`);
 
     // Register IPC handlers first (can now potentially use paths if needed)
     registerIpcHandlers(); // Register general handlers

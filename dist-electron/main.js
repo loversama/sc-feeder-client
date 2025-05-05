@@ -11,7 +11,7 @@ var __privateAdd = (obj, member, value2) => member.has(obj) ? __typeError("Canno
 var __privateSet = (obj, member, value2, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value2) : member.set(obj, value2), value2);
 var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
 var _validator, _encryptionKey, _options, _defaultValues, _dispatcher, _dispatch, _a2;
-import require$$1$7, { screen, app as app$1, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, ipcMain as ipcMain$1, dialog, globalShortcut } from "electron";
+import require$$1$7, { screen, app as app$1, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, ipcMain as ipcMain$1, dialog, session, globalShortcut } from "electron";
 import require$$1$4, { unwatchFile, watchFile, watch as watch$1, stat as stat$7 } from "fs";
 import require$$0$2 from "constants";
 import Stream$1 from "stream";
@@ -141578,12 +141578,12 @@ if (commonjsGlobal.FinalizationRegistry && !(process.env.NODE_V8_COVERAGE || pro
       const ref2 = this._sessionCache.get(sessionKey);
       return ref2 ? ref2.deref() : null;
     }
-    set(sessionKey, session) {
+    set(sessionKey, session2) {
       if (this._maxCachedSessions === 0) {
         return;
       }
-      this._sessionCache.set(sessionKey, new WeakRef(session));
-      this._sessionRegistry.register(session, sessionKey);
+      this._sessionCache.set(sessionKey, new WeakRef(session2));
+      this._sessionRegistry.register(session2, sessionKey);
     }
   };
 } else {
@@ -141595,7 +141595,7 @@ if (commonjsGlobal.FinalizationRegistry && !(process.env.NODE_V8_COVERAGE || pro
     get(sessionKey) {
       return this._sessionCache.get(sessionKey);
     }
-    set(sessionKey, session) {
+    set(sessionKey, session2) {
       if (this._maxCachedSessions === 0) {
         return;
       }
@@ -141603,7 +141603,7 @@ if (commonjsGlobal.FinalizationRegistry && !(process.env.NODE_V8_COVERAGE || pro
         const { value: oldestKey } = this._sessionCache.keys().next();
         this._sessionCache.delete(oldestKey);
       }
-      this._sessionCache.set(sessionKey, session);
+      this._sessionCache.set(sessionKey, session2);
     }
   };
 }
@@ -141624,14 +141624,14 @@ function buildConnector$2({ allowH2, maxCachedSessions, socketPath, timeout, ses
       servername = servername || options.servername || util$k.getServerName(host) || null;
       const sessionKey = servername || hostname;
       assert$b(sessionKey);
-      const session = customSession || sessionCache.get(sessionKey) || null;
+      const session2 = customSession || sessionCache.get(sessionKey) || null;
       port = port || 443;
       socket2 = tls$1.connect({
         highWaterMark: 16384,
         // TLS in node can't have bigger HWM anyway...
         ...options,
         servername,
-        session,
+        session: session2,
         localAddress,
         // TODO(HTTP/2): Add support for h2c
         ALPNProtocols: allowH2 ? ["http/1.1", "h2"] : ["http/1.1"],
@@ -141640,8 +141640,8 @@ function buildConnector$2({ allowH2, maxCachedSessions, socketPath, timeout, ses
         port,
         host: hostname
       });
-      socket2.on("session", function(session2) {
-        sessionCache.set(sessionKey, session2);
+      socket2.on("session", function(session22) {
+        sessionCache.set(sessionKey, session22);
       });
     } else {
       assert$b(!httpSocket, "httpSocket can only be sent on TLS update");
@@ -145836,18 +145836,18 @@ async function connectH2$1(client2, socket2) {
       code: "UNDICI-H2"
     });
   }
-  const session = http2.connect(client2[kUrl$4], {
+  const session2 = http2.connect(client2[kUrl$4], {
     createConnection: () => socket2,
     peerMaxConcurrentStreams: client2[kMaxConcurrentStreams$1]
   });
-  session[kOpenStreams] = 0;
-  session[kClient$1] = client2;
-  session[kSocket] = socket2;
-  util$h.addListener(session, "error", onHttp2SessionError);
-  util$h.addListener(session, "frameError", onHttp2FrameError);
-  util$h.addListener(session, "end", onHttp2SessionEnd);
-  util$h.addListener(session, "goaway", onHTTP2GoAway);
-  util$h.addListener(session, "close", function() {
+  session2[kOpenStreams] = 0;
+  session2[kClient$1] = client2;
+  session2[kSocket] = socket2;
+  util$h.addListener(session2, "error", onHttp2SessionError);
+  util$h.addListener(session2, "frameError", onHttp2FrameError);
+  util$h.addListener(session2, "end", onHttp2SessionEnd);
+  util$h.addListener(session2, "goaway", onHTTP2GoAway);
+  util$h.addListener(session2, "close", function() {
     const { [kClient$1]: client3 } = this;
     const { [kSocket]: socket3 } = client3;
     const err = this[kSocket][kError$3] || this[kError$3] || new SocketError$2("closed", util$h.getSocketInfo(socket3));
@@ -145861,9 +145861,9 @@ async function connectH2$1(client2, socket2) {
       }
     }
   });
-  session.unref();
-  client2[kHTTP2Session] = session;
-  socket2[kHTTP2Session] = session;
+  session2.unref();
+  client2[kHTTP2Session] = session2;
+  socket2[kHTTP2Session] = session2;
   util$h.addListener(socket2, "error", function(err) {
     assert$9(err.code !== "ERR_TLS_CERT_ALTNAME_INVALID");
     this[kError$3] = err;
@@ -145964,7 +145964,7 @@ function shouldSendContentLength(method) {
   return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
 }
 function writeH2(client2, request2) {
-  const session = client2[kHTTP2Session];
+  const session2 = client2[kHTTP2Session];
   const { method, path: path2, host, upgrade: upgrade2, expectContinue, signal, headers: reqHeaders } = request2;
   let { body: body2 } = request2;
   if (upgrade2) {
@@ -146013,22 +146013,22 @@ function writeH2(client2, request2) {
     return false;
   }
   if (method === "CONNECT") {
-    session.ref();
-    stream2 = session.request(headers2, { endStream: false, signal });
+    session2.ref();
+    stream2 = session2.request(headers2, { endStream: false, signal });
     if (stream2.id && !stream2.pending) {
       request2.onUpgrade(null, null, stream2);
-      ++session[kOpenStreams];
+      ++session2[kOpenStreams];
       client2[kQueue$2][client2[kRunningIdx$1]++] = null;
     } else {
       stream2.once("ready", () => {
         request2.onUpgrade(null, null, stream2);
-        ++session[kOpenStreams];
+        ++session2[kOpenStreams];
         client2[kQueue$2][client2[kRunningIdx$1]++] = null;
       });
     }
     stream2.once("close", () => {
-      session[kOpenStreams] -= 1;
-      if (session[kOpenStreams] === 0) session.unref();
+      session2[kOpenStreams] -= 1;
+      if (session2[kOpenStreams] === 0) session2.unref();
     });
     return true;
   }
@@ -146063,20 +146063,20 @@ function writeH2(client2, request2) {
     assert$9(body2, "no body must not have content length");
     headers2[HTTP2_HEADER_CONTENT_LENGTH] = `${contentLength}`;
   }
-  session.ref();
+  session2.ref();
   const shouldEndStream = method === "GET" || method === "HEAD" || body2 === null;
   if (expectContinue) {
     headers2[HTTP2_HEADER_EXPECT] = "100-continue";
-    stream2 = session.request(headers2, { endStream: shouldEndStream, signal });
+    stream2 = session2.request(headers2, { endStream: shouldEndStream, signal });
     stream2.once("continue", writeBodyH2);
   } else {
-    stream2 = session.request(headers2, {
+    stream2 = session2.request(headers2, {
       endStream: shouldEndStream,
       signal
     });
     writeBodyH2();
   }
-  ++session[kOpenStreams];
+  ++session2[kOpenStreams];
   stream2.once("response", (headers3) => {
     const { [HTTP2_HEADER_STATUS]: statusCode, ...realHeaders } = headers3;
     request2.onResponseStarted();
@@ -146100,8 +146100,8 @@ function writeH2(client2, request2) {
     if (((_a3 = stream2.state) == null ? void 0 : _a3.state) == null || stream2.state.state < 6) {
       request2.onComplete([]);
     }
-    if (session[kOpenStreams] === 0) {
-      session.unref();
+    if (session2[kOpenStreams] === 0) {
+      session2.unref();
     }
     abort2(new InformationalError$2("HTTP/2: stream half-closed (remote)"));
     client2[kQueue$2][client2[kRunningIdx$1]++] = null;
@@ -146109,9 +146109,9 @@ function writeH2(client2, request2) {
     client2[kResume$2]();
   });
   stream2.once("close", () => {
-    session[kOpenStreams] -= 1;
-    if (session[kOpenStreams] === 0) {
-      session.unref();
+    session2[kOpenStreams] -= 1;
+    if (session2[kOpenStreams] === 0) {
+      session2.unref();
     }
   });
   stream2.once("error", function(err) {
@@ -165793,8 +165793,7 @@ function connectToServer() {
     return;
   }
   socket = lookup(SERVER_URL, {
-    path: "/api/socket.io/",
-    // Specify the custom path
+    // path: '/api/socket.io/', // REMOVED: Use default path for default adapter
     reconnection: false,
     // Disable automatic reconnection
     // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
@@ -165825,7 +165824,7 @@ function connectToServer() {
     }
   });
   socket.on("authenticated", () => {
-    info(MODULE_NAME$4, `Server confirmed authentication for socket: ${socket == null ? void 0 : socket.id}`);
+    info(MODULE_NAME$4, `>>> Received 'authenticated' event from server for socket: ${socket == null ? void 0 : socket.id}. Setting isAuthenticated = true.`);
     isAuthenticated = true;
     sendConnectionStatus("connected");
     flushLogBuffer();
@@ -166417,6 +166416,11 @@ async function onReady() {
   const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
   process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$m.join(process.env.APP_ROOT, "public") : path$m.join(process.env.APP_ROOT, "dist");
   info(MODULE_NAME$1, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
+  const currentUA = session.defaultSession.getUserAgent();
+  const appVersion = app$1.getVersion();
+  const customUA = `${currentUA} SC-Feeder-Client/${appVersion}`;
+  session.defaultSession.setUserAgent(customUA);
+  info(MODULE_NAME$1, `Set User-Agent to: ${customUA}`);
   registerIpcHandlers();
   registerAuthIpcHandlers();
   if (!getOfflineMode()) {

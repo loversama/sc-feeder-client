@@ -166,7 +166,7 @@ const webviewSrc = computed(() => {
   const usernameToUse = accessToken.value ? currentUsername.value : lastUsername.value;
 
   if (usernameToUse) {
-    url = `${webAppBaseUrl}/user/${usernameToUse}`;
+    url = `${webAppBaseUrl}/user/${usernameToUse}?source=electron`;
   } else {
     // Fallback if no username is available (neither current nor last)
     console.warn('No username available for profile view.');
