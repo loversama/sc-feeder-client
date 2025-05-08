@@ -54,6 +54,8 @@ const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}
 const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<EnemyPilot>[^']+)' \[\d+\] in zone '(?<EnemyShip>[^']+)' killed by '(?<Player>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
 const environmentDeathRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<playerName>[^']+)' .*? damage type '(?<damageType>BleedOut|SuffocationDamage)'/;
+const systemQuitRegex = /<SystemQuit>|System Fast Shutdown/i;
+
 
 // --- Helper Functions for Mode Detection ---
 
@@ -126,6 +128,10 @@ export async function parseLogContent(content: string, silentMode = false) {
                 updateStableGameMode('AC'); // Update directly
             } else if (line.match(frontendModeRegex)) { // Use new frontendModeRegex
                 updateStableGameMode('Unknown'); // Treat Frontend as 'Unknown' for now
+            } else if (line.match(systemQuitRegex)) {
+                logger.info(MODULE_NAME, 'Game quit/shutdown detected.');
+                updateStableGameMode('Unknown');
+                currentLocation = "Unknown"; // Set location to Unknown
             }
             // Note: The debounce logic in handleRawModeDetection is now bypassed for these specific lines.
             // Consider removing handleRawModeDetection if no longer needed elsewhere.
