@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, app, screen, Rectangle } from 'electron'; // Import screen and Rectangle
+import { BrowserWindow, shell, app, screen, Rectangle, ipcMain } from 'electron'; // Import screen and Rectangle, and ipcMain
 import path from 'node:path';
 import url from 'node:url'; // Import the url module
 import fsSync from 'node:fs';
@@ -144,46 +144,55 @@ export function getIconPath(): string {
     return iconPath; // Return found path or empty string
 }
 
-function getPreloadPath(filename: string = 'preload.mjs'): string {
+function getPreloadPath(filename: string): string {
     const appRoot = process.env.APP_ROOT;
     if (!appRoot) {
         logger.error(MODULE_NAME, "APP_ROOT not set when trying to get preload path. Cannot proceed.");
-        // Return a dummy path or throw an error, as preload is critical
-        return ''; // Or throw new Error("APP_ROOT not set");
+        throw new Error("APP_ROOT environment variable is not set.");
     }
 
-    // Calculate MAIN_DIST path dynamically here
     const mainDist = path.join(appRoot, 'dist-electron');
     logger.debug(MODULE_NAME, `Calculated mainDist for preload: ${mainDist}`);
 
-    let preloadPath: string | undefined;
-    const possiblePaths = [
-        path.join(__dirname, '..', filename), // Relative to modules dir -> electron dir (Dev path)
-        path.join(mainDist, filename),        // Production path using dynamically calculated mainDist
-        path.join(appRoot, 'dist-electron', filename) // Alternative production path (redundant but safe fallback)
-    ];
+    let resolvedPath: string | undefined;
 
-    if (app.isPackaged) {
-        preloadPath = possiblePaths[1]; // Use MAIN_DIST first in production
-        if (!fsSync.existsSync(preloadPath)) {
-            preloadPath = possiblePaths[2]; // Fallback
+    if (!app.isPackaged) { // Development
+      // Path when running directly from source (e.g., with Vite dev server)
+      const devPath = path.join(appRoot, 'electron', filename);
+      logger.info(MODULE_NAME, `[Dev Mode] Resolving preload path for: ${filename}. Checking: ${devPath}`);
+      if (fsSync.existsSync(devPath)) {
+        resolvedPath = devPath;
+        logger.info(MODULE_NAME, `[Dev Mode] Preload path FOUND: ${resolvedPath}`);
+      } else {
+        logger.warn(MODULE_NAME, `[Dev Mode] Preload path NOT FOUND: ${devPath}. Attempting fallback.`);
+        // Fallback for some dev scenarios or if mainDist is preferred (e.g., if built to dist-electron in dev)
+        const devPathFallback = path.join(mainDist, filename);
+        logger.info(MODULE_NAME, `[Dev Mode] Checking fallback preload path: ${devPathFallback}`);
+        if (fsSync.existsSync(devPathFallback)) {
+          resolvedPath = devPathFallback;
+          logger.info(MODULE_NAME, `[Dev Mode] Fallback preload path FOUND: ${resolvedPath}`);
+        } else {
+          logger.error(MODULE_NAME, `[Dev Mode] Fallback preload path NOT FOUND: ${devPathFallback}. Preload script will likely fail to load.`);
         }
-    } else {
-        // Development: Check common locations
-        preloadPath = possiblePaths[0]; // Check relative path first
-        if (!fsSync.existsSync(preloadPath)) {
-            preloadPath = possiblePaths[2]; // Fallback to dist-electron (might exist during dev build)
-        }
+      }
+    } else { // Production
+      resolvedPath = path.join(mainDist, filename);
+      logger.info(MODULE_NAME, `[Prod Mode] Resolving preload path for: ${filename}. Checking: ${resolvedPath}`);
+      if (!fsSync.existsSync(resolvedPath)) {
+        logger.error(MODULE_NAME, `[Prod Mode] Preload path NOT FOUND: ${resolvedPath}. Preload script will fail to load.`);
+      } else {
+        logger.info(MODULE_NAME, `[Prod Mode] Preload path FOUND: ${resolvedPath}`);
+      }
     }
 
-    // Final fallback if still not found
-    if (!preloadPath || !fsSync.existsSync(preloadPath)) {
-        logger.warn(MODULE_NAME, `Preload script '${filename}' not found at expected locations. Using default path: ${possiblePaths[1]}`);
-        preloadPath = possiblePaths[1]; // Default to MAIN_DIST path
+    if (!resolvedPath) {
+      const errorMessage = `Failed to resolve preload path for ${filename}. It will not be loaded.`;
+      logger.error(MODULE_NAME, errorMessage);
+      throw new Error(errorMessage);
     }
 
-    logger.info(MODULE_NAME, `Resolved preload path for ${filename}: ${preloadPath}`);
-    return preloadPath;
+    logger.info(MODULE_NAME, `Resolved preload path for ${filename}: ${resolvedPath}`);
+    return resolvedPath;
 }
 
 
@@ -216,7 +225,7 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
         x: undefined, // Default position (centered)
         y: undefined,
         webPreferences: {
-            preload: getPreloadPath(),
+            preload: getPreloadPath('preload.mjs'),
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged, // Enable DevTools only in development
@@ -394,7 +403,7 @@ export function createSettingsWindow(): BrowserWindow | null {
         title: 'SC KillFeeder - Settings',
         modal: false,
         webPreferences: {
-            preload: getPreloadPath(),
+            preload: getPreloadPath('preload.mjs'),
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged,
@@ -491,7 +500,6 @@ export function createSettingsWindow(): BrowserWindow | null {
     // Handle external links in settings window
     settingsWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (url.startsWith('http:') || url.startsWith('https:')) {
-            logger.info(MODULE_NAME, `Opening external link from settings window: ${url}`);
             shell.openExternal(url);
             return { action: 'deny' };
         }
@@ -501,141 +509,128 @@ export function createSettingsWindow(): BrowserWindow | null {
     return settingsWindow;
 }
 
-
 export function createEventDetailsWindow(eventData: KillEvent, currentUsername: string | null): BrowserWindow | null {
-     logger.info(MODULE_NAME, 'Request received to create event details window for event:', eventData?.id);
+    if (!mainWindow) {
+        logger.error(MODULE_NAME, "Cannot create event details window: Main window does not exist.");
+        return null;
+    }
 
-     // Add current player information to the event data before storing
-     const enhancedEventData = {
-       ...eventData,
-       playerName: currentUsername || '' // Add current player name for "YOU" badge
-     };
-     activeEventDataForWindow = enhancedEventData; // Store temporarily
+    // Store the event data for retrieval by the renderer process
+    activeEventDataForWindow = eventData;
 
-     // --- Event Details Window Bounds ---
-     const savedEventDetailsBounds = store.get('eventDetailsWindowBounds');
-     const detailsWindowOptions: Electron.BrowserWindowConstructorOptions = {
-       width: 1260,
-       height: 940,
-       x: undefined,
-       y: undefined,
-       webPreferences: {
-         preload: getPreloadPath(),
-         nodeIntegration: false,
-         contextIsolation: true,
-         devTools: true,
-         spellcheck: false
-       },
-       frame: false,
-       titleBarStyle: 'hidden',
-       titleBarOverlay: true,
-       title: `Event Details - ${eventData.deathType} (${new Date(eventData.timestamp).toLocaleTimeString()})`,
-       backgroundColor: '#1a1a1a',
-       show: false,
-       autoHideMenuBar: true,
-       minWidth: 800, // Add reasonable min dimensions
-       minHeight: 600,
-       icon: getIconPath() || undefined, // Use centralized function
-       // center: true, // Position is now managed by saved bounds
-       // alwaysOnTop: true
-     };
+    // --- Event Details Window Bounds ---
+    const savedDetailsBounds = store.get('eventDetailsWindowBounds');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const screenWidth = primaryDisplay.workAreaSize.width;
+    const defaultDetailsWidth = Math.floor(screenWidth * 0.45); // Calculate 45% of screen width
 
-     // Validate and apply saved bounds
-     if (savedEventDetailsBounds) {
-         const displays = screen.getAllDisplays();
-         const isVisible = displays.some(display => {
-             const displayBounds = display.workArea;
-             return (
-                 savedEventDetailsBounds.x < displayBounds.x + displayBounds.width &&
-                 savedEventDetailsBounds.x + savedEventDetailsBounds.width > displayBounds.x &&
-                 savedEventDetailsBounds.y < displayBounds.y + displayBounds.height &&
-                 savedEventDetailsBounds.y + savedEventDetailsBounds.height > displayBounds.y
-             );
-         });
+    const detailsWindowOptions: Electron.BrowserWindowConstructorOptions = {
+        width: defaultDetailsWidth,
+        height: 700,
+        x: undefined,
+        y: undefined,
+        title: 'SC KillFeeder - Event Details',
+        modal: false, // Changed to false to allow interaction with main window
+        webPreferences: {
+            preload: getPreloadPath('preload.mjs'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: !app.isPackaged,
+            spellcheck: false
+        },
+        frame: false,
+        titleBarStyle: 'hidden',
+        titleBarOverlay: true,
+        autoHideMenuBar: true,
+        show: false,
+        icon: getIconPath() || undefined,
+        minWidth: 600,
+        minHeight: 500
+    };
 
-         if (isVisible) {
-             logger.info(MODULE_NAME, 'Applying saved event details window bounds:', savedEventDetailsBounds);
-             detailsWindowOptions.x = savedEventDetailsBounds.x;
-             detailsWindowOptions.y = savedEventDetailsBounds.y;
-             detailsWindowOptions.width = savedEventDetailsBounds.width;
-             detailsWindowOptions.height = savedEventDetailsBounds.height;
-         } else {
-             logger.warn(MODULE_NAME, 'Saved event details window bounds are outside visible screen area. Using defaults.');
-             store.delete('eventDetailsWindowBounds'); // Clear invalid bounds
-         }
-     } else {
-          logger.info(MODULE_NAME, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
-     }
+    // Validate and apply saved bounds
+    if (savedDetailsBounds) {
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+            const displayBounds = display.workArea;
+            return (
+                savedDetailsBounds.x < displayBounds.x + displayBounds.width &&
+                savedDetailsBounds.x + savedDetailsBounds.width > displayBounds.x &&
+                savedDetailsBounds.y < displayBounds.y + displayBounds.height &&
+                savedDetailsBounds.y + savedDetailsBounds.height > displayBounds.y
+            );
+        });
 
-     const detailsWindow = new BrowserWindow(detailsWindowOptions);
+        if (isVisible) {
+            logger.info(MODULE_NAME, 'Applying saved event details window bounds:', savedDetailsBounds);
+            detailsWindowOptions.x = savedDetailsBounds.x;
+            detailsWindowOptions.y = savedDetailsBounds.y;
+            detailsWindowOptions.width = savedDetailsBounds.width;
+            detailsWindowOptions.height = savedDetailsBounds.height;
+        } else {
+            logger.warn(MODULE_NAME, 'Saved event details window bounds are outside visible screen area. Using defaults.');
+            store.delete('eventDetailsWindowBounds'); // Clear invalid bounds
+        }
+    } else {
+         logger.info(MODULE_NAME, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
+    }
 
-   attachTitlebarToWindow(detailsWindow); // Attach the custom title bar
+    const detailsWindow = new BrowserWindow(detailsWindowOptions);
+    attachTitlebarToWindow(detailsWindow);
 
-     // detailsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
+    // Handle external links in event details window
+    detailsWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('http:') || url.startsWith('https:')) {
+            shell.openExternal(url);
+            return { action: 'deny' };
+        }
+        return { action: 'deny' };
+    });
 
-     // Intercept navigation requests and open external links
-     detailsWindow.webContents.setWindowOpenHandler(({ url }) => {
-       if (url.startsWith('http:') || url.startsWith('https:')) {
-         logger.info(MODULE_NAME, `Opening external link from details window: ${url}`);
-         shell.openExternal(url);
-         return { action: 'deny' };
-       }
-       logger.warn(MODULE_NAME, `Denying window open request for non-external URL: ${url}`);
-       return { action: 'deny' };
-     });
+    const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
+    if (devServerUrl) {
+        const eventDetailsUrl = `${devServerUrl}/event-details.html`;
+        logger.info(MODULE_NAME, `Loading event details window from dev server: ${eventDetailsUrl}`);
+        detailsWindow.loadURL(eventDetailsUrl)
+            .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html from dev server:', err));
+    } else {
+        const productionEventDetailsUrl = url.format({
+            pathname: path.join(__dirname, '..', 'dist', 'event-details.html'),
+            protocol: 'file:',
+            slashes: true
+        });
+        logger.info(MODULE_NAME, `Loading event details window from URL: ${productionEventDetailsUrl}`);
+        detailsWindow.loadURL(productionEventDetailsUrl)
+            .catch(err => {
+                logger.error(MODULE_NAME, `Failed to load event-details.html from ${productionEventDetailsUrl}:`, err);
+                if (detailsWindow) {
+                    detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${productionEventDetailsUrl}.</p><p>${err}</p>`)}`);
+                }
+            });
+    }
 
-     // Load event details content
-     const devServerUrlForDetails = process.env['VITE_DEV_SERVER_URL']; // Read env var inside function
-     if (devServerUrlForDetails) {
-         const detailsUrl = `${devServerUrlForDetails}/event-details.html`;
-         logger.info(MODULE_NAME, `Loading event details window from dev server: ${detailsUrl}`);
-       detailsWindow.loadURL(detailsUrl)
-         .catch(err => logger.error(MODULE_NAME, 'Failed to load event-details.html from dev server:', err));
-     } else {
-       // Production: Load file using url.format relative to __dirname
-       const productionDetailsUrl = url.format({
-           pathname: path.join(__dirname, '..', 'dist', 'event-details.html'),
-           protocol: 'file:',
-           slashes: true
-       });
-       logger.info(MODULE_NAME, `Loading event details window from URL: ${productionDetailsUrl}`);
-       detailsWindow.loadURL(productionDetailsUrl)
-           .catch(err => {
-               logger.error(MODULE_NAME, `Failed to load event-details.html from ${productionDetailsUrl}:`, err);
-               detailsWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load event details page from ${productionDetailsUrl}.</p><p>${err}</p>`)}`);
-           });
-     }
+    detailsWindow.once('ready-to-show', () => {
+        detailsWindow?.show();
+        if (!app.isPackaged) {
+            detailsWindow?.webContents.openDevTools();
+        }
+    });
 
-     detailsWindow.once('ready-to-show', () => {
-       logger.info(MODULE_NAME, 'Event details window ready-to-show');
-       detailsWindow.show();
-       detailsWindow.focus();
-       // Always open DevTools for this window
-       detailsWindow.webContents.openDevTools();
-     });
-
-     // Clear the stored data when the window is closed
-     detailsWindow.on('closed', () => {
-       // Check if the closed window was holding the currently active data
-       if (activeEventDataForWindow?.id === eventData.id) {
-         activeEventDataForWindow = null;
-         logger.debug(MODULE_NAME, `Cleared activeEventDataForWindow for event ${eventData.id}`);
-       }
-     });
+    detailsWindow.on('closed', () => {
+        activeEventDataForWindow = null; // Clear the stored data
+        logger.info(MODULE_NAME, 'Event details window closed. Cleared active event data.');
+    });
 
     // --- Save Event Details Window Bounds ---
-    const saveEventDetailsBounds = createSaveBoundsHandler(detailsWindow, 'eventDetailsWindowBounds');
-    detailsWindow.on('resize', saveEventDetailsBounds);
-    detailsWindow.on('move', saveEventDetailsBounds);
+    const saveDetailsBounds = createSaveBoundsHandler(detailsWindow, 'eventDetailsWindowBounds');
+    detailsWindow.on('resize', saveDetailsBounds);
+    detailsWindow.on('move', saveDetailsBounds);
 
     return detailsWindow;
 }
 
-// --- NEW Web Content Window ---
 export function createWebContentWindow(section?: 'profile' | 'leaderboard'): BrowserWindow | null {
-    // --- Handle Existing Window ---
-    if (webContentWindow && !webContentWindow.isDestroyed()) {
-        logger.info(MODULE_NAME, `Web content window already exists. Focusing and checking section: ${section}`);
+    if (webContentWindow) {
         if (webContentWindow.isMinimized()) {
             webContentWindow.restore(); // Restore if minimized
         }
@@ -674,7 +669,7 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
         y: undefined,
         title: 'SC Feeder - Web Content',
         webPreferences: {
-            preload: getPreloadPath(),
+            preload: getPreloadPath('webview-preload.mjs'),
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged,
@@ -734,39 +729,31 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
     } else {
         // Production: Load file using url.format
         const productionWebContentUrl = url.format({
-            pathname: path.join(__dirname, '..', 'dist', 'web-content.html'), // Base path
+            pathname: path.join(__dirname, '..', 'dist', 'web-content.html'),
             protocol: 'file:',
-            slashes: true,
-            hash: section ? section : '' // Append hash if provided
+            slashes: true
         });
         logger.info(MODULE_NAME, `Loading web content window from URL: ${productionWebContentUrl}`);
         webContentWindow.loadURL(productionWebContentUrl)
             .catch(err => {
                 logger.error(MODULE_NAME, `Failed to load web-content.html from ${productionWebContentUrl}:`, err);
-                if (webContentWindow) { // Add null check
+                if (webContentWindow) {
                     webContentWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load web content page from ${productionWebContentUrl}.</p><p>${err}</p>`)}`);
                 }
             });
     }
 
     webContentWindow.once('ready-to-show', () => {
-        logger.info(MODULE_NAME, 'Web content window ready-to-show');
         webContentWindow?.show();
-        // Emit status update when shown, reflecting the initially loaded section
-        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
-        logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${currentWebContentSection} }`);
         if (!app.isPackaged) {
-            webContentWindow?.webContents.openDevTools(); // Open dev tools in dev
+            webContentWindow?.webContents.openDevTools();
         }
     });
 
     webContentWindow.on('closed', () => {
         webContentWindow = null; // Dereference the window object
-        currentWebContentSection = null; // Reset the active section
-        logger.debug(MODULE_NAME, 'Web content window closed, dereferenced, and section reset.');
-        // Emit status update when closed
-        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: false, activeSection: null });
-        logger.info(MODULE_NAME, 'Sent web-content-window-status { isOpen: false, activeSection: null }');
+        currentWebContentSection = null; // Clear active section
+        logger.info(MODULE_NAME, 'Web content window closed. Cleared active section.');
     });
 
     // --- Save Web Content Window Bounds ---
@@ -774,99 +761,57 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
     webContentWindow.on('resize', saveWebContentBounds);
     webContentWindow.on('move', saveWebContentBounds);
 
-    // Handle external links in web content window
-    webContentWindow.webContents.setWindowOpenHandler(({ url }) => {
-        if (url.startsWith('http:') || url.startsWith('https:')) {
-            logger.info(MODULE_NAME, `Opening external link from web content window: ${url}`);
-            shell.openExternal(url);
-            return { action: 'deny' };
-        }
-        logger.warn(MODULE_NAME, `Denying window open request for non-external URL: ${url}`);
-        return { action: 'deny' };
-    });
-
     return webContentWindow;
 }
 
-
-// --- Window Closing Functions ---
-
 export function closeSettingsWindow() {
-    if (settingsWindow && !settingsWindow.isDestroyed()) {
-        logger.info(MODULE_NAME, "Closing settings window programmatically.");
-        settingsWindow.close(); // This will trigger the 'closed' event and status update
-    } else {
-        logger.info(MODULE_NAME, "Close settings window requested, but window not found or already destroyed.");
+    if (settingsWindow) {
+        settingsWindow.close();
+        settingsWindow = null;
     }
 }
 
 export function closeWebContentWindow() {
-    if (webContentWindow && !webContentWindow.isDestroyed()) {
-        logger.info(MODULE_NAME, "Closing web content window programmatically.");
-        webContentWindow.close(); // This will trigger the 'closed' event and status update
-    } else {
-        logger.info(MODULE_NAME, "Close web content window requested, but window not found or already destroyed.");
+    if (webContentWindow) {
+        webContentWindow.close();
+        webContentWindow = null;
     }
 }
-
-// --- Status Getters (Synchronous) ---
-
-/**
- * Gets the current status of the Settings window.
- * @returns {{ isOpen: boolean }}
- */
-export function getSettingsStatus(): { isOpen: boolean } {
-    const isOpen = !!settingsWindow && !settingsWindow.isDestroyed();
-    logger.debug(MODULE_NAME, `Getting settings status: ${isOpen}`);
-    return { isOpen };
-}
-
-/**
- * Gets the current status of the Web Content window, including the active section.
- * @returns {{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }}
- */
-export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null } {
-    const isOpen = !!webContentWindow && !webContentWindow.isDestroyed();
-    const section = isOpen ? currentWebContentSection : null;
-    logger.debug(MODULE_NAME, `Getting web content status: isOpen=${isOpen}, activeSection=${section}`);
-    return { isOpen, activeSection: section };
-}
-
-// --- Accessor Functions ---
 
 export function getMainWindow(): BrowserWindow | null {
     return mainWindow;
 }
 
-export function getSettingsWindow(): BrowserWindow | null {
-    return settingsWindow;
+export function getSettingsStatus(): { isOpen: boolean } {
+    return { isOpen: settingsWindow !== null };
 }
 
-export function getWebContentWindow(): BrowserWindow | null { // Added accessor
-    return webContentWindow;
+export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null } {
+    return { isOpen: webContentWindow !== null, activeSection: currentWebContentSection };
 }
 
 export function getActiveEventDataForWindow(): KillEvent | null {
-    // This function is called by the IPC handler when the details window requests data
-    const dataToReturn = activeEventDataForWindow;
-    // Optionally clear it after retrieval if it's meant to be consumed once,
-    // but keeping it allows refresh or reopening without passing again.
-    // activeEventDataForWindow = null;
-    logger.debug(MODULE_NAME, 'Providing activeEventDataForWindow:', dataToReturn?.id);
-    return dataToReturn;
+    return activeEventDataForWindow;
 }
 
 export function closeAllWindows() {
     BrowserWindow.getAllWindows().forEach(window => {
-        // Check if it's one of our managed windows before closing forcefully
-        // Updated to include webContentWindow
-        if (window === mainWindow || window === settingsWindow || window === webContentWindow /* add details window if needed */) {
-             window.close();
+        if (!window.isDestroyed()) {
+            window.close();
         }
-        // Or simply close all: window.close();
     });
-    mainWindow = null;
-    settingsWindow = null;
-    webContentWindow = null; // Added dereference
-    activeEventDataForWindow = null;
 }
+
+// Add this IPC Handler
+ipcMain.handle('get-preload-path', (_event, filename: string) => {
+  try {
+    const preloadPath = getPreloadPath(filename);
+    logger.info(MODULE_NAME, `IPC 'get-preload-path' resolved '${filename}' to: ${preloadPath}`);
+    return preloadPath;
+  } catch (error) {
+    logger.error(MODULE_NAME, `IPC 'get-preload-path' failed for '${filename}':`, error);
+    throw error; // Or return null/undefined and handle in renderer
+  }
+});
+
+// Add this IPC Handler

@@ -1,17 +1,19 @@
 import { IpcRendererEvent } from 'electron';
 import { KillEvent } from '../shared/types';
 
-interface Profile {
-  username: string
-  rsiHandle: string
-  rsiMoniker: string | null
-  avatar: string
+// Re-define a more specific Profile type for the API, matching loggedInUser structure
+interface UserProfile {
+  userId: string;
+  username: string;
+  rsiHandle: string | null;
+  rsiMoniker: string | null;
+  avatar: string | null;
 }
 
 // Define the structure of the API exposed by preload.ts
 export interface LogMonitorApi {
   // Profile
-  getProfile: () => Promise<Profile>;
+  getProfile: () => Promise<UserProfile | null>; // Updated to return UserProfile or null
 
   // Log Path
   getLogPath: () => Promise<string>;
@@ -33,7 +35,7 @@ export interface LogMonitorApi {
   closeCurrentWindow: () => Promise<boolean>;
 
   // Settings
-  getLastLoggedInUser: () => Promise<string>;
+  getLastLoggedInUser: () => Promise<string>; // This might be just username, consider if UserProfile is better
   getNotificationSettings: () => Promise<boolean>;
   setNotificationSettings: (value: boolean) => Promise<boolean>;
   getLastActivePage: () => Promise<string>;
@@ -53,16 +55,16 @@ export interface LogMonitorApi {
 
   // Window Actions
   openSettingsWindow: () => Promise<void>;
-  openWebContentWindow: (section: 'profile' | 'leaderboard') => Promise<void>;
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/') => Promise<void>; // Expanded
   closeSettingsWindow: () => Promise<boolean>;
   closeWebContentWindow: () => Promise<boolean>;
   windowMinimize: () => void;
   windowToggleMaximize: () => void;
   windowClose: () => void;
 
-  // Window Status (Synchronous Getters)
+  // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
-  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }>;
+  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }>; // Expanded
 
   // Debug Actions
   resetSessions: () => Promise<boolean>;
@@ -73,10 +75,14 @@ export interface LogMonitorApi {
   authLogin: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
   authLogout: () => Promise<boolean>;
   authGetStatus: () => Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }>;
-  authGetAccessToken: () => Promise<string | null>;
+  authGetAccessToken: () => Promise<string | null>; // May deprecate in favor of authGetTokens
+  authGetTokens: () => Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }>; // New
+  authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }) => Promise<{ success: boolean; error?: string }>; // New
+  authRefreshToken: () => Promise<UserProfile | null>; // Renamed from ipc-handler's 'auth:refreshToken'
 
   // Resource Path
   getResourcePath: () => Promise<string>;
+  getPreloadPath: (scriptName: string) => Promise<string>;
 
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;
@@ -85,10 +91,11 @@ export interface LogMonitorApi {
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void) => () => void;
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
+  // For webview, it will listen to 'auth-tokens-updated' directly via window.ipcRenderer.on
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => () => void;
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void) => () => void; // Expanded
   
   // Cleanup
   removeAllListeners: () => void;
@@ -96,14 +103,20 @@ export interface LogMonitorApi {
 
 declare global {
   interface Window {
-    ipcRenderer: {
-      on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => void;
-      off: (channel: string, listener: (...args: any[]) => void) => void;
+    ipcRenderer: { // Standard Electron IpcRenderer type
+      on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => Electron.IpcRenderer;
+      off: (channel: string, listener: (...args: any[]) => void) => Electron.IpcRenderer;
       send: (channel: string, ...args: any[]) => void;
-      invoke: (channel: string, ...args: any[]) => Promise<any>;
-      removeListener: (channel: string, listener: (...args: any[]) => void) => void;
-      removeAllListeners: (channel: string) => void;
+      invoke: <T>(channel: string, ...args: any[]) => Promise<T>;
+      removeListener: (channel: string, listener: (...args: any[]) => void) => Electron.IpcRenderer;
+      removeAllListeners: (channel: string) => Electron.IpcRenderer;
+      sendToHost: (channel: string, ...args: any[]) => void; // For webview preload
     };
     logMonitorApi: LogMonitorApi;
+    // For webview preload to communicate back to Electron host (WebContentPage.vue)
+    electronAuthBridge?: {
+      notifyElectronOfNewTokens: (tokens: { accessToken: string; refreshToken: string; user: UserProfile }) => void;
+      // Potentially other methods if needed
+    }
   }
 }

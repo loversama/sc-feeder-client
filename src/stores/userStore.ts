@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 
 export interface UserProfile {
   username: string
-  rsiHandle: string
-  avatar: string
+  rsiHandle: string | null
+  avatar: string | null
   isAuthenticated: boolean
   lastLoggedInUser: string
 }

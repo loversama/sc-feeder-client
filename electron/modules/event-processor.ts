@@ -7,6 +7,7 @@ import { logKillToCsv } from './csv-logger.ts'; // Add .ts
 import { getMainWindow } from './window-manager';
 import { getCurrentUsername } from './log-parser.ts'; // To check involvement - Added .ts
 import * as logger from './logger'; // Import the logger utility
+import { getEntityName } from './definitionsService'; // Import for readable names
 
 const MODULE_NAME = 'EventProcessor'; // Define module name for logger
 
@@ -163,20 +164,30 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         playerName: currentUsername || ''
     };
 
-    // 3. Format Description
+    // 3. Resolve Entity Names before formatting description
+    // Ensure we are working with copies if direct modification is not intended,
+    // but for this case, modifying fullEvent directly before description formatting is fine.
+    fullEvent.killers = fullEvent.killers.map(id => getEntityName(id));
+    fullEvent.victims = fullEvent.victims.map(id => getEntityName(id));
+    // If vehicleType or vehicleModel can also be entity IDs, resolve them too:
+    // fullEvent.vehicleType = getEntityName(fullEvent.vehicleType || 'Unknown');
+    // fullEvent.vehicleModel = getEntityName(fullEvent.vehicleModel || 'Unknown');
+    // For now, assuming only killers and victims are entity IDs needing resolution.
+
+    // 4. Format Description
     fullEvent.eventDescription = formatKillEventDescription(
-        fullEvent.killers,
-        fullEvent.victims,
+        fullEvent.killers, // Now contains resolved names
+        fullEvent.victims, // Now contains resolved names
         fullEvent.vehicleType || 'Unknown',
         fullEvent.vehicleModel || 'Unknown',
         fullEvent.deathType,
         destructionLevel // Pass destruction level for context
     );
 
-    // 4. Add/Update Event in Lists & Send to Renderer
+    // 5. Add/Update Event in Lists & Send to Renderer
     const { isNew } = addOrUpdateEvent(fullEvent); // This also sends 'kill-feed-event' IPC
 
-    // 5. Trigger Side Effects (Notifications, API, CSV)
+    // 6. Trigger Side Effects (Notifications, API, CSV)
     // Only trigger for significant events (e.g., hard death, collision, combat kill)
     // and potentially only for new events or significant updates?
     const isSignificantEvent = ['Hard', 'Combat', 'Collision', 'Crash', 'BleedOut', 'Suffocation'].includes(fullEvent.deathType);
@@ -246,9 +257,11 @@ export async function correlateDeathWithDestruction(timestamp: string, playerNam
 
     // --- Update the Found Event ---
     const originalVictimPlaceholder = targetEvent.victims[0]; // Should be vehicleType
-    targetEvent.victims = [playerName]; // Replace placeholder with actual player name
+    // Resolve playerName just in case it's an ID, though typically it's a name here.
+    // More importantly, ensure killers are resolved if they haven't been already.
+    targetEvent.victims = [getEntityName(playerName)]; // Replace placeholder with actual player name (resolved)
 
-    logger.info(MODULE_NAME, 'Updated victim in event', { id: targetEvent.id }, 'from', { ship: originalVictimPlaceholder }, 'to', { victim: playerName });
+    logger.info(MODULE_NAME, 'Updated victim in event', { id: targetEvent.id }, 'from', { ship: originalVictimPlaceholder }, 'to', { victim: targetEvent.victims[0] });
 
     // Fetch RSI data for the newly identified player victim (async)
     fetchRsiProfileData([playerName], []).then(profileDataMap => {
@@ -265,13 +278,17 @@ export async function correlateDeathWithDestruction(timestamp: string, playerNam
      }).catch(err => logger.error(MODULE_NAME, 'Error fetching RSI data for correlated victim', { victim: playerName }, ':', err));
 
 
-    // Update description based on new victim info
+    // Resolve killer names for the correlated event as well, as they might not have been if the event was processed before definitions were ready
+    // or if this is an older event being updated.
+    targetEvent.killers = targetEvent.killers.map(id => getEntityName(id));
+
+    // Update description based on new victim info (and potentially resolved killer names)
     const destructionLevel = ['Hard', 'Combat', 'Collision', 'Crash'].includes(targetEvent.deathType) ? 2 : (targetEvent.deathType === 'Soft' ? 1 : 0);
     targetEvent.eventDescription = formatKillEventDescription(
-        targetEvent.killers,
-        targetEvent.victims, // Now contains player name
-        targetEvent.vehicleType || 'Unknown Vehicle',
-        targetEvent.vehicleModel || 'Unknown Model',
+        targetEvent.killers, // Now contains resolved names
+        targetEvent.victims, // Now contains resolved player name
+        targetEvent.vehicleType || 'Unknown Vehicle', // Potentially resolve if it can be an ID: getEntityName(targetEvent.vehicleType || 'Unknown Vehicle')
+        targetEvent.vehicleModel || 'Unknown Model',   // Potentially resolve: getEntityName(targetEvent.vehicleModel || 'Unknown Model')
         targetEvent.deathType,
         destructionLevel
     );

@@ -221,7 +221,14 @@ export function setIsQuitting(value: boolean) {
 export function initialize() {
 
     // Main lifecycle listeners
-    app.whenReady().then(onReady).catch(err => logger.error(MODULE_NAME, "Error during app ready:", err));
+    app.whenReady().then(onReady).catch(err => {
+        logger.error(MODULE_NAME, "Error during app ready:", err);
+        if (err instanceof Error) {
+            logger.error(MODULE_NAME, "Error details:", err.message, err.stack);
+        } else if (typeof err === 'object' && err !== null) {
+            logger.error(MODULE_NAME, "Non-Error object caught:", JSON.stringify(err));
+        }
+    });
     app.on('window-all-closed', onWindowAllClosed);
     app.on('activate', onActivate);
 

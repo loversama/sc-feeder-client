@@ -1,26 +1,48 @@
-import { ipcRenderer, contextBridge } from 'electron'
-import { Titlebar, TitlebarColor } from "custom-electron-titlebar"; // Import TitlebarColor as well
+import { ipcRenderer, contextBridge, IpcRendererEvent } from 'electron' // Added IpcRendererEvent
+import { Titlebar, TitlebarColor } from "custom-electron-titlebar";
+import type { KillEvent } from '../shared/types'; // For onKillFeedEvent - Corrected path
+
+// Define UserProfile type matching preload.d.ts for clarity in this file
+interface UserProfile {
+  userId: string;
+  username: string;
+  rsiHandle: string | null;
+  rsiMoniker: string | null;
+  avatar: string | null;
+}
+
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
   on(...args: Parameters<typeof ipcRenderer.on>) {
     const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
+    ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
+    return ipcRenderer; // Return ipcRenderer for chaining if needed, or void
   },
   off(...args: Parameters<typeof ipcRenderer.off>) {
     const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
+    ipcRenderer.off(channel, ...omit)
+    return ipcRenderer;
   },
   send(...args: Parameters<typeof ipcRenderer.send>) {
     const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
+    ipcRenderer.send(channel, ...omit)
   },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
+  invoke<T>(...args: Parameters<typeof ipcRenderer.invoke>): Promise<T> { // Generic type for invoke
     const [channel, ...omit] = args
     return ipcRenderer.invoke(channel, ...omit)
   },
-
-  // You can expose other APTs you need here.
-  // ...
+  removeListener(...args: Parameters<typeof ipcRenderer.removeListener>) {
+    const [channel, listener] = args;
+    ipcRenderer.removeListener(channel, listener);
+    return ipcRenderer;
+  },
+  removeAllListeners(channel: string) {
+    ipcRenderer.removeAllListeners(channel);
+    return ipcRenderer;
+  },
+  sendToHost(channel: string, ...args: any[]) { // For webview preload
+    ipcRenderer.sendToHost(channel, ...args);
+  }
 })
 
 // --------- Log Monitor Specific API ---------
@@ -32,25 +54,21 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getSessions: (limit?: number): Promise<any[]> => ipcRenderer.invoke('get-sessions', limit),
 
   // Kill Feed API
-  getKillEvents: (limit?: number): Promise<any[]> => ipcRenderer.invoke('get-kill-events', limit),
-  getGlobalKillEvents: (limit?: number): Promise<any[]> => ipcRenderer.invoke('get-global-kill-events', limit),
+  getKillEvents: (limit?: number): Promise<KillEvent[]> => ipcRenderer.invoke('get-kill-events', limit),
+  getGlobalKillEvents: (limit?: number): Promise<KillEvent[]> => ipcRenderer.invoke('get-global-kill-events', limit),
   setFeedMode: (mode: 'player' | 'global'): Promise<boolean> => ipcRenderer.invoke('set-feed-mode', mode),
   getFeedMode: (): Promise<'player' | 'global'> => ipcRenderer.invoke('get-feed-mode'),
   
   // Event Details API
-  openEventDetailsWindow: (eventData: any): Promise<boolean> => {
+  openEventDetailsWindow: (eventData: KillEvent): Promise<boolean> => {
     console.log('Preload: Calling openEventDetailsWindow with event ID:', eventData?.id);
     try {
-      // Make sure we're passing a serializable object (avoiding any potential proxies/refs)
-      // First stringify to remove functions and non-serializable data
       const jsonString = JSON.stringify(eventData);
-      // Then parse back to a clean object
       const serializedData = JSON.parse(jsonString);
       console.log('Preload: Serialized event data successfully');
       return ipcRenderer.invoke('open-event-details-window', serializedData);
     } catch (error) {
       console.error('Preload: Error serializing event data:', error);
-      // Try with minimal data if serialization fails
       const minimalData = {
         id: eventData?.id || 'unknown-id',
         timestamp: eventData?.timestamp || new Date().toISOString(),
@@ -60,7 +78,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
       return ipcRenderer.invoke('open-event-details-window', minimalData);
     }
   },
-  getPassedEventData: (): Promise<any> => {
+  getPassedEventData: (): Promise<KillEvent | null> => {
     console.log('Preload: Getting passed event data');
     return ipcRenderer.invoke('get-passed-event-data');
   },
@@ -84,8 +102,6 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getLaunchOnStartup: (): Promise<boolean> => ipcRenderer.invoke('get-launch-on-startup'),
   setLaunchOnStartup: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-launch-on-startup', value),
   
-  // API/CSV Settings - Add these back if they were removed
-  // Updated: Only offlineMode is relevant now
   getApiSettings: (): Promise<{ offlineMode: boolean }> => ipcRenderer.invoke('get-api-settings'),
   setApiSettings: (settings: { offlineMode: boolean }): Promise<boolean> => ipcRenderer.invoke('set-api-settings', settings),
   getCsvLogPath: (): Promise<string> => ipcRenderer.invoke('get-csv-log-path'),
@@ -93,10 +109,9 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   
   // Window Actions
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
-  openWebContentWindow: (section: 'profile' | 'leaderboard'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section), // Added for Profile/Leaderboard
-  closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'), // Added for toggle-close
-  closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'), // Added for toggle-close
-  // Custom Title Bar / Window Controls
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section),
+  closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'),
+  closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'),
   windowMinimize: (): void => ipcRenderer.send('window:minimize'),
   windowToggleMaximize: (): void => ipcRenderer.send('window:toggleMaximize'),
   windowClose: (): void => ipcRenderer.send('window:close'),
@@ -110,86 +125,88 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authLogin: (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:login', identifier, password),
   authLogout: (): Promise<boolean> => ipcRenderer.invoke('auth:logout'),
   authGetStatus: (): Promise<{ isAuthenticated: boolean; username: string | null; userId: string | null }> => ipcRenderer.invoke('auth:getStatus'),
-  authGetAccessToken: (): Promise<string | null> => ipcRenderer.invoke('auth:getAccessToken'), // Added
-  // Profile Action
-  getProfile: (): Promise<{ userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null> => ipcRenderer.invoke('get-profile'), // Added
+  authGetAccessToken: (): Promise<string | null> => ipcRenderer.invoke('auth:getAccessToken'),
+  authGetTokens: (): Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }> => ipcRenderer.invoke('auth:get-tokens'),
+  authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:store-tokens', tokens),
+  authRefreshToken: (): Promise<UserProfile | null> => ipcRenderer.invoke('auth:refreshToken'),
 
-  // Window Status Getters (Synchronous)
+  // Profile Action
+  getProfile: (): Promise<UserProfile | null> => ipcRenderer.invoke('get-profile'),
+
+  // Window Status Getters
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => ipcRenderer.invoke('get-settings-window-status'),
-  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
+  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
 
   // Resource Path
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
+  getPreloadPath: (scriptName: string): Promise<string> => ipcRenderer.invoke('get-preload-path', scriptName),
+
+  onMainAuthUpdate: (callback: (authData: any) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, authData: any) => callback(authData);
+    ipcRenderer.on('main-auth-update', listener);
+    return () => { // Return a cleanup function
+      ipcRenderer.removeListener('main-auth-update', listener);
+    };
+  },
 
   // Main to Renderer (Receive)
-  onLogUpdate: (callback: (event: Electron.IpcRendererEvent, content: string) => void) => {
+  onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void): (() => void) => {
     ipcRenderer.on('log-update', callback)
-    // Return a cleanup function
     return () => ipcRenderer.removeListener('log-update', callback)
   },
-  onLogReset: (callback: (event: Electron.IpcRendererEvent) => void) => {
+  onLogReset: (callback: (event: IpcRendererEvent) => void): (() => void) => {
     ipcRenderer.on('log-reset', callback)
     return () => ipcRenderer.removeListener('log-reset', callback)
   },
-  onLogStatus: (callback: (event: Electron.IpcRendererEvent, status: string) => void) => {
+  onLogStatus: (callback: (event: IpcRendererEvent, status: string) => void): (() => void) => {
     ipcRenderer.on('log-status', callback)
     return () => ipcRenderer.removeListener('log-status', callback)
   },
-  onLogPathUpdated: (callback: (event: Electron.IpcRendererEvent, newPath: string) => void) => {
+  onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void): (() => void) => {
     ipcRenderer.on('log-path-updated', callback)
     return () => ipcRenderer.removeListener('log-path-updated', callback)
   },
-  onKillFeedEvent: (callback: (event: Electron.IpcRendererEvent, killEvent: any) => void) => {
+  onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void): (() => void) => {
     ipcRenderer.on('kill-feed-event', callback)
     return () => ipcRenderer.removeListener('kill-feed-event', callback)
   },
-  // Listener for auth status changes from main process
-  onAuthStatusChanged: (callback: (event: Electron.IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => {
+  onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void): (() => void) => {
     ipcRenderer.on('auth-status-changed', callback);
     return () => ipcRenderer.removeListener('auth-status-changed', callback);
   },
-  // Listener for server connection status changes
-  onConnectionStatusChanged: (callback: (event: Electron.IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
+  onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void): (() => void) => {
     ipcRenderer.on('connection-status-changed', callback);
     return () => ipcRenderer.removeListener('connection-status-changed', callback);
   },
-  // Listener for stable game mode updates
-  onGameModeUpdate: (callback: (event: Electron.IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => {
+  onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void): (() => void) => {
     ipcRenderer.on('game-mode-update', callback);
-    return () => ipcRenderer.removeListener('game-mode-update', callback); // Return cleanup function
+    return () => ipcRenderer.removeListener('game-mode-update', callback);
   },
-  // Listener for Settings window status
-  onSettingsWindowStatus: (callback: (event: Electron.IpcRendererEvent, status: { isOpen: boolean }) => void) => {
+  onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void): (() => void) => {
     ipcRenderer.on('settings-window-status', callback);
     return () => ipcRenderer.removeListener('settings-window-status', callback);
   },
-  // Listener for Web Content window status
-  onWebContentWindowStatus: (callback: (event: Electron.IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => void) => {
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void): (() => void) => {
     ipcRenderer.on('web-content-window-status', callback);
     return () => ipcRenderer.removeListener('web-content-window-status', callback);
   },
 
-  // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
-    ipcRenderer.removeAllListeners('log-update')
-    ipcRenderer.removeAllListeners('log-reset')
-    ipcRenderer.removeAllListeners('log-status')
-    ipcRenderer.removeAllListeners('log-path-updated')
-    ipcRenderer.removeAllListeners('kill-feed-event')
-    ipcRenderer.removeAllListeners('auth-status-changed') // Clean up new listener
-    ipcRenderer.removeAllListeners('connection-status-changed') // Clean up connection status listener
-    ipcRenderer.removeAllListeners('game-mode-update') // Clean up game mode listener
-    ipcRenderer.removeAllListeners('settings-window-status') // Clean up settings status listener
-    ipcRenderer.removeAllListeners('web-content-window-status') // Clean up web content status listener
+    const channels = [
+      'log-update', 'log-reset', 'log-status', 'log-path-updated',
+      'kill-feed-event', 'auth-status-changed', 'connection-status-changed',
+      'game-mode-update', 'settings-window-status', 'web-content-window-status'
+    ];
+    channels.forEach(channel => ipcRenderer.removeAllListeners(channel));
   }
 })
 
 // --- Custom Title Bar Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
-  // Title bar implementation
   new Titlebar({
-    iconSize: 60,
+    iconSize: 60, // Consider making this smaller if it looks too large
     enableMnemonics: true,
     backgroundColor: TitlebarColor.TRANSPARENT,
+    // menu: null, // Hides the default menu if you are using a custom one or none
   });
 });

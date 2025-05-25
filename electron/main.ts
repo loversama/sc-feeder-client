@@ -8,6 +8,7 @@ import * as logger from './modules/logger'; // Import the logger utility
 import { setupTitlebar } from "custom-electron-titlebar/main"; // Import for custom title bar
 import { URL } from 'node:url'; // Import URL for parsing deep links
 import { SERVER_API_URL } from './modules/server-config.ts'; // Import API_BASE_URL
+import { initializeDefinitions } from './modules/definitionsService.ts';
 const MODULE_NAME = 'Main'; // Define module name for logger
 
 // --- Basic Setup ---
@@ -104,6 +105,9 @@ if (!app.requestSingleInstanceLock()) {
   // The initialize function now sets up all app event listeners,
   // creates windows, tray, registers IPC handlers, etc.
   AppLifecycle.initialize();
+  initializeDefinitions(SERVER_API_URL).catch(err => {
+    logger.error(MODULE_NAME, 'Failed to initialize definitions on startup:', err);
+  });
 }
 
 // --- Auto Updater Event Listeners ---

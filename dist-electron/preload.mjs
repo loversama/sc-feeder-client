@@ -11411,22 +11411,34 @@ var customElectronTitlebarExports = customElectronTitlebar.exports;
 require$$0.contextBridge.exposeInMainWorld("ipcRenderer", {
   on(...args) {
     const [channel, listener] = args;
-    return require$$0.ipcRenderer.on(channel, (event2, ...args2) => listener(event2, ...args2));
+    require$$0.ipcRenderer.on(channel, (event2, ...args2) => listener(event2, ...args2));
+    return require$$0.ipcRenderer;
   },
   off(...args) {
     const [channel, ...omit] = args;
-    return require$$0.ipcRenderer.off(channel, ...omit);
+    require$$0.ipcRenderer.off(channel, ...omit);
+    return require$$0.ipcRenderer;
   },
   send(...args) {
     const [channel, ...omit] = args;
-    return require$$0.ipcRenderer.send(channel, ...omit);
+    require$$0.ipcRenderer.send(channel, ...omit);
   },
   invoke(...args) {
     const [channel, ...omit] = args;
     return require$$0.ipcRenderer.invoke(channel, ...omit);
+  },
+  removeListener(...args) {
+    const [channel, listener] = args;
+    require$$0.ipcRenderer.removeListener(channel, listener);
+    return require$$0.ipcRenderer;
+  },
+  removeAllListeners(channel) {
+    require$$0.ipcRenderer.removeAllListeners(channel);
+    return require$$0.ipcRenderer;
+  },
+  sendToHost(channel, ...args) {
+    require$$0.ipcRenderer.sendToHost(channel, ...args);
   }
-  // You can expose other APTs you need here.
-  // ...
 });
 require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   // Renderer to Main (Invoke/Send)
@@ -11479,8 +11491,6 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   // Launch on Startup
   getLaunchOnStartup: () => require$$0.ipcRenderer.invoke("get-launch-on-startup"),
   setLaunchOnStartup: (value) => require$$0.ipcRenderer.invoke("set-launch-on-startup", value),
-  // API/CSV Settings - Add these back if they were removed
-  // Updated: Only offlineMode is relevant now
   getApiSettings: () => require$$0.ipcRenderer.invoke("get-api-settings"),
   setApiSettings: (settings) => require$$0.ipcRenderer.invoke("set-api-settings", settings),
   getCsvLogPath: () => require$$0.ipcRenderer.invoke("get-csv-log-path"),
@@ -11488,12 +11498,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   // Window Actions
   openSettingsWindow: () => require$$0.ipcRenderer.invoke("open-settings-window"),
   openWebContentWindow: (section) => require$$0.ipcRenderer.invoke("open-web-content-window", section),
-  // Added for Profile/Leaderboard
   closeSettingsWindow: () => require$$0.ipcRenderer.invoke("close-settings-window"),
-  // Added for toggle-close
   closeWebContentWindow: () => require$$0.ipcRenderer.invoke("close-web-content-window"),
-  // Added for toggle-close
-  // Custom Title Bar / Window Controls
   windowMinimize: () => require$$0.ipcRenderer.send("window:minimize"),
   windowToggleMaximize: () => require$$0.ipcRenderer.send("window:toggleMaximize"),
   windowClose: () => require$$0.ipcRenderer.send("window:close"),
@@ -11506,15 +11512,24 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authLogout: () => require$$0.ipcRenderer.invoke("auth:logout"),
   authGetStatus: () => require$$0.ipcRenderer.invoke("auth:getStatus"),
   authGetAccessToken: () => require$$0.ipcRenderer.invoke("auth:getAccessToken"),
-  // Added
+  authGetTokens: () => require$$0.ipcRenderer.invoke("auth:get-tokens"),
+  authStoreTokens: (tokens) => require$$0.ipcRenderer.invoke("auth:store-tokens", tokens),
+  authRefreshToken: () => require$$0.ipcRenderer.invoke("auth:refreshToken"),
   // Profile Action
   getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
-  // Added
-  // Window Status Getters (Synchronous)
+  // Window Status Getters
   getSettingsWindowStatus: () => require$$0.ipcRenderer.invoke("get-settings-window-status"),
   getWebContentWindowStatus: () => require$$0.ipcRenderer.invoke("get-web-content-window-status"),
   // Resource Path
   getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
+  getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),
+  onMainAuthUpdate: (callback) => {
+    const listener = (_event, authData) => callback(authData);
+    require$$0.ipcRenderer.on("main-auth-update", listener);
+    return () => {
+      require$$0.ipcRenderer.removeListener("main-auth-update", listener);
+    };
+  },
   // Main to Renderer (Receive)
   onLogUpdate: (callback) => {
     require$$0.ipcRenderer.on("log-update", callback);
@@ -11536,49 +11551,48 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     require$$0.ipcRenderer.on("kill-feed-event", callback);
     return () => require$$0.ipcRenderer.removeListener("kill-feed-event", callback);
   },
-  // Listener for auth status changes from main process
   onAuthStatusChanged: (callback) => {
     require$$0.ipcRenderer.on("auth-status-changed", callback);
     return () => require$$0.ipcRenderer.removeListener("auth-status-changed", callback);
   },
-  // Listener for server connection status changes
   onConnectionStatusChanged: (callback) => {
     require$$0.ipcRenderer.on("connection-status-changed", callback);
     return () => require$$0.ipcRenderer.removeListener("connection-status-changed", callback);
   },
-  // Listener for stable game mode updates
   onGameModeUpdate: (callback) => {
     require$$0.ipcRenderer.on("game-mode-update", callback);
     return () => require$$0.ipcRenderer.removeListener("game-mode-update", callback);
   },
-  // Listener for Settings window status
   onSettingsWindowStatus: (callback) => {
     require$$0.ipcRenderer.on("settings-window-status", callback);
     return () => require$$0.ipcRenderer.removeListener("settings-window-status", callback);
   },
-  // Listener for Web Content window status
   onWebContentWindowStatus: (callback) => {
     require$$0.ipcRenderer.on("web-content-window-status", callback);
     return () => require$$0.ipcRenderer.removeListener("web-content-window-status", callback);
   },
-  // Function to remove all listeners at once (optional, but good practice for component unmount)
   removeAllListeners: () => {
-    require$$0.ipcRenderer.removeAllListeners("log-update");
-    require$$0.ipcRenderer.removeAllListeners("log-reset");
-    require$$0.ipcRenderer.removeAllListeners("log-status");
-    require$$0.ipcRenderer.removeAllListeners("log-path-updated");
-    require$$0.ipcRenderer.removeAllListeners("kill-feed-event");
-    require$$0.ipcRenderer.removeAllListeners("auth-status-changed");
-    require$$0.ipcRenderer.removeAllListeners("connection-status-changed");
-    require$$0.ipcRenderer.removeAllListeners("game-mode-update");
-    require$$0.ipcRenderer.removeAllListeners("settings-window-status");
-    require$$0.ipcRenderer.removeAllListeners("web-content-window-status");
+    const channels = [
+      "log-update",
+      "log-reset",
+      "log-status",
+      "log-path-updated",
+      "kill-feed-event",
+      "auth-status-changed",
+      "connection-status-changed",
+      "game-mode-update",
+      "settings-window-status",
+      "web-content-window-status"
+    ];
+    channels.forEach((channel) => require$$0.ipcRenderer.removeAllListeners(channel));
   }
 });
 window.addEventListener("DOMContentLoaded", () => {
   new customElectronTitlebarExports.Titlebar({
     iconSize: 60,
+    // Consider making this smaller if it looks too large
     enableMnemonics: true,
     backgroundColor: customElectronTitlebarExports.TitlebarColor.TRANSPARENT
+    // menu: null, // Hides the default menu if you are using a custom one or none
   });
 });

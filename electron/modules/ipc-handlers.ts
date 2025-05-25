@@ -349,5 +349,6 @@ try {
         }
     });
 
+
     logger.success(MODULE_NAME, "IPC handlers registered.");
 }

@@ -1,6 +1,7 @@
 import EventEmitter from 'events';
 import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
+import os from 'node:os'; // Import os module for hostname
 // Import refreshToken along with other auth functions
 import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setGuestToken, clearGuestToken } from './auth-manager';
 import { getMainWindow } from './window-manager'; // Import window manager to send messages
@@ -62,15 +63,20 @@ export function connectToServer(): void {
 
   // Prepare handshake options
   let handshakeAuth: any = {};
-  let handshakeQuery: any = {};
+  const hostname = os.hostname(); // Get hostname
+  let handshakeQuery: any = { hostname }; // Add hostname to query
 
   if (accessToken) {
     handshakeAuth = { token: accessToken };
   } else if (guestToken) {
     handshakeAuth = { token: guestToken };
-  } else if (clientId) {
-    handshakeQuery = { clientId };
-  } else {
+  }
+
+  // ClientId should always be present, add it to the query regardless of token
+  handshakeQuery.clientId = clientId;
+
+
+  if (!accessToken && !guestToken && !clientId) { // Adjusted condition
     logger.warn(
       MODULE_NAME,
       'No access token, guest token, or clientId available. Cannot connect to server.',

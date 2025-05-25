@@ -2,7 +2,7 @@ import { ref, readonly, onMounted, onUnmounted } from 'vue'
 
 interface UserState {
   username: string
-  rsiHandle: string
+  rsiHandle: string | null
   rsiMoniker: string | null
   avatar: string
   isAuthenticated: boolean

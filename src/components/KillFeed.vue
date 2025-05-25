@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 
 // Using the interface from the main process instead
@@ -544,14 +545,16 @@ onMounted(async () => { // Make onMounted async
     // Add listener for Web Content window status
     (() => {
       if (window.logMonitorApi?.onWebContentWindowStatus) {
-        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null }) => {
+        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => {
           console.log('[KillFeed] Received web content window status update:', status);
           isProfileActive.value = status.isOpen && status.activeSection === 'profile';
           isLeaderboardActive.value = status.isOpen && status.activeSection === 'leaderboard';
-          // If web content window is closed, ensure both are inactive regardless of last section
+          // Add other active states here if needed for 'stats' or '/'
+          // If web content window is closed, ensure all relevant states are inactive
           if (!status.isOpen) {
             isProfileActive.value = false;
             isLeaderboardActive.value = false;
+            // Reset other active states too if they exist
           }
         });
         cleanupFunctions.push(cleanup);
@@ -815,16 +818,21 @@ onUnmounted(() => {
             </template>
             <!-- Standard layout for events with distinct attackers -->
             <template v-else>
-              <div class="attackers">
-                <span v-for="(attacker, index) in event.killers" :key="attacker">
-                  {{ attacker }}<span v-if="index < event.killers.length - 1"> + </span>
+              <div class="attackers player-info">
+                <span v-for="(attacker, index) in event.killers" :key="attacker" class="player-entry">
+                  <UserAvatar :user-handle="attacker" :size="20" class="avatar" />
+                  <span class="player-name">{{ attacker }}</span>
+                  <span v-if="index < event.killers.length - 1" class="operator"> + </span>
                 </span>
               </div>
               <span class="separator">{{ getSeparator(event.deathType) }}</span>
-              <div class="victims">
+              <div class="victims player-info">
                 <template v-for="(victim, index) in event.victims" :key="victim">
-                  <!-- Display cleaned vehicle name if victim is a ship ID -->
-                  <span class="victim">{{ victim.includes('_') ? cleanShipName(event.vehicleType || victim) : victim }}</span>
+                  <span class="player-entry">
+                    <UserAvatar :user-handle="victim" :size="20" class="avatar" />
+                    <!-- Display cleaned vehicle name if victim is a ship ID, otherwise the victim name -->
+                    <span class="player-name">{{ victim.includes('_') ? cleanShipName(event.vehicleType || victim) : victim }}</span>
+                  </span>
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
               </div>
@@ -1297,26 +1305,63 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 
-.attackers, .victims {
+/* Styling for containers of attackers and victims to align avatar and name */
+.player-info { /* This class is applied to .attackers and .victims divs in the template */
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0 5px; /* Only horizontal gap */
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.player-entry {
+  display: flex;
+  align-items: center;
+}
+
+.avatar {
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.player-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attackers, .victims { /* These divs now have .player-info class */
+  /* .player-info handles main flex properties. This rule can refine gaps or specific alignments for these containers. */
+  display: flex; /* Explicitly ensure flex, though .player-info also has it */
+  align-items: center;
+  gap: 0 5px; /* For spacing between multiple player entries or operators */
+}
+
+.env-cause span {
+  color: #9b59b6;
+  font-weight: bold;
+}
+
+.attackers .player-name {
+  color: #ff8a80; /* Reddish for attackers */
+  font-weight: 500;
+}
+
+.victims .player-name {
+  color: #80cbc4; /* Bluish-green for victims */
+  font-weight: 500;
 }
 
 .operator {
   color: #666;
   font-weight: normal;
+  margin: 0 4px; /* Added margin for operator spacing */
 }
 
 .separator {
   color: #888;
   font-size: 1.1em;
+  margin: 0 8px; /* Added margin for separator spacing */
 }
-
-.victim { color: #3498db; font-weight: bold; }
-.attackers span { color: #e74c3c; font-weight: bold; } /* Style attackers */
-.env-cause span { color: #9b59b6; font-weight: bold; } /* Style environmental causes */
 
 .vehicle-info {
   color: #888;
