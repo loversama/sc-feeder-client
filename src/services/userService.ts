@@ -44,7 +44,10 @@ export async function fetchUserAvatarUrl(userHandle: string): Promise<string | n
   const endpoint = `${API_BASE_URL}/users/${encodeURIComponent(userHandle)}`;
 
   try {
-    const response = await fetch(endpoint);
+    const response = await fetch(endpoint, {
+      headers: {
+      },
+    });
 
     if (!response.ok) {
       if (response.status === 404) {

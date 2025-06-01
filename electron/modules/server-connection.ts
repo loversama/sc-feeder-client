@@ -3,8 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
 import os from 'node:os'; // Import os module for hostname
 // Import refreshToken along with other auth functions
-import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setGuestToken, clearGuestToken } from './auth-manager';
+import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setGuestToken, clearGuestToken, requestAndStoreGuestToken, getRefreshToken } from './auth-manager';
 import { getMainWindow } from './window-manager'; // Import window manager to send messages
+import { getDetailedUserAgent } from './app-lifecycle';
 // Client ID logic moved to auth-manager
 
 const MODULE_NAME = 'ServerConnection';
@@ -22,6 +23,12 @@ const connectionEvents = new EventEmitter();
 const delays = [5000, 10000, 30000, 60000, 120000]; // Delays in ms
 let reconnectionAttempt = 0;
 let reconnectionTimeoutId: NodeJS.Timeout | null = null;
+
+// Authentication Retry Logic State
+let authRetryAttempt = 0;
+let authRetryTimeoutId: NodeJS.Timeout | null = null;
+let isRetryingAuth = false;
+const authRetryDelays = [2000, 5000, 10000, 30000, 60000]; // Authentication retry delays in ms
  
 // Helper function to send status updates to renderer
 function sendConnectionStatus(status: ConnectionStatus) {
@@ -32,6 +39,85 @@ function sendConnectionStatus(status: ConnectionStatus) {
     }
 }
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
+
+// Function to attempt authentication when connected but not authenticated
+async function attemptAuthentication(): Promise<void> {
+  if (isRetryingAuth) {
+    logger.debug(MODULE_NAME, 'Authentication retry already in progress, skipping.');
+    return;
+  }
+
+  isRetryingAuth = true;
+  logger.info(MODULE_NAME, 'Attempting authentication for connected but unauthenticated client...');
+
+  try {
+    const accessToken = getAccessToken();
+    const refreshTokenAvailable = !!getRefreshToken();
+
+    if (accessToken || refreshTokenAvailable) {
+      // If we have tokens, try to refresh them
+      logger.info(MODULE_NAME, 'Attempting token refresh for authentication...');
+      const refreshedUserInfo = await refreshToken();
+      
+      if (refreshedUserInfo) {
+        logger.info(MODULE_NAME, `Token refresh successful for ${refreshedUserInfo.username}. Reconnecting...`);
+        // Disconnect and reconnect with new tokens
+        disconnectFromServer();
+        setTimeout(connectToServer, 500);
+        return;
+      } else {
+        logger.warn(MODULE_NAME, 'Token refresh failed. Attempting guest registration...');
+      }
+    }
+
+    // If no tokens or refresh failed, try guest registration
+    logger.info(MODULE_NAME, 'Attempting guest token registration...');
+    const guestTokenObtained = await requestAndStoreGuestToken();
+    
+    if (guestTokenObtained) {
+      logger.info(MODULE_NAME, 'Guest token obtained. Reconnecting...');
+      // Disconnect and reconnect with guest token
+      disconnectFromServer();
+      setTimeout(connectToServer, 500);
+    } else {
+      logger.error(MODULE_NAME, 'Failed to obtain guest token. Scheduling retry...');
+      scheduleAuthRetry();
+    }
+  } catch (error: any) {
+    logger.error(MODULE_NAME, 'Error during authentication attempt:', error.message);
+    scheduleAuthRetry();
+  } finally {
+    isRetryingAuth = false;
+  }
+}
+
+// Function to schedule authentication retry with backoff
+function scheduleAuthRetry(): void {
+  if (authRetryTimeoutId) {
+    clearTimeout(authRetryTimeoutId);
+  }
+
+  const nextDelay = authRetryDelays[authRetryAttempt] ?? authRetryDelays[authRetryDelays.length - 1];
+  logger.warn(MODULE_NAME, `Scheduling authentication retry attempt ${authRetryAttempt + 1} in ${nextDelay / 1000}s`);
+
+  authRetryTimeoutId = setTimeout(() => {
+    if (isConnected() && !isAuthenticated) {
+      attemptAuthentication();
+    }
+    authRetryAttempt++;
+  }, nextDelay);
+}
+
+// Function to reset authentication retry state
+function resetAuthRetryState(): void {
+  authRetryAttempt = 0;
+  isRetryingAuth = false;
+  if (authRetryTimeoutId) {
+    clearTimeout(authRetryTimeoutId);
+    authRetryTimeoutId = null;
+  }
+}
+
 export function connectToServer(): void {
   // Determine which token to use for auth handshake
   const accessToken = getAccessToken();
@@ -64,7 +150,7 @@ export function connectToServer(): void {
   // Prepare handshake options
   let handshakeAuth: any = {};
   const hostname = os.hostname(); // Get hostname
-  let handshakeQuery: any = { hostname }; // Add hostname to query
+  let handshakeQuery: any = { hostname, userAgent: getDetailedUserAgent() }; // Add hostname to query
 
   if (accessToken) {
     handshakeAuth = { token: accessToken };
@@ -126,6 +212,7 @@ export function connectToServer(): void {
       // ---> ADDED DETAILED LOG <---
       logger.info(MODULE_NAME, `>>> Received 'authenticated' event from server for socket: ${socket?.id}. Setting isAuthenticated = true.`);
       isAuthenticated = true;
+      resetAuthRetryState(); // Reset authentication retry state on successful auth
       sendConnectionStatus('connected'); // Update status: Connected (after auth confirmation)
       flushLogBuffer(); // Attempt to send any buffered logs
   });
@@ -133,6 +220,7 @@ export function connectToServer(): void {
   socket.on('disconnect', (reason: Socket.DisconnectReason) => { // Add type for reason
     logger.warn(MODULE_NAME, `Disconnected from server: ${reason}`);
     isAuthenticated = false; // Reset auth status on disconnect
+    resetAuthRetryState(); // Reset authentication retry state on disconnect
     sendConnectionStatus('disconnected'); // Update status: Disconnected
  
     // Custom reconnection logic
@@ -189,6 +277,7 @@ export function connectToServer(): void {
   socket.on('retry_auth', async (data: { reason?: string }) => { // Make handler async
       logger.warn(MODULE_NAME, `Received 'retry_auth' event from server. Reason: ${data?.reason || 'No reason provided'}. Authentication failed.`);
       isAuthenticated = false; // Mark as not authenticated
+      resetAuthRetryState(); // Reset authentication retry state when server requests retry
       sendConnectionStatus('connecting'); // Show user we are trying again
 
       // Explicitly disconnect the current socket instance.
@@ -228,6 +317,7 @@ export function disconnectFromServer(): void {
     logger.info(MODULE_NAME, 'Disconnecting from server...');
     socket.disconnect();
     socket = null;
+    resetAuthRetryState(); // Reset authentication retry state on manual disconnect
     sendConnectionStatus('disconnected'); // Ensure status is updated on manual disconnect
   }
 }
@@ -252,7 +342,7 @@ export function sendLogChunk(chunk: string): void {
     if (ack?.error) {
        logger.error(MODULE_NAME, `Server acknowledgement error: ${ack.error}`);
     } else if (ack?.message) {
-       logger.debug(MODULE_NAME, `Server acknowledgement: ${ack.message}`);
+       logger.debug(MODULE_NAME, 'Server acknowledgement: ${ack.message}');
     } else {
        logger.debug(MODULE_NAME, 'Server acknowledged log chunk (no specific message).');
     }
@@ -309,9 +399,12 @@ export function ensureConnectedAndSendLogChunk(chunk: string): void {
     logChunkBuffer.push(chunk);
     connectToServer(); // Attempt connection (checks for token internally)
   } else if (!isAuthenticated) {
-     logger.info(MODULE_NAME, 'Connected but not authenticated. Buffering log chunk.');
+     logger.info(MODULE_NAME, 'Connected but not authenticated. Buffering log chunk and attempting authentication...');
      logChunkBuffer.push(chunk);
-     // No need to call connectToServer again if already connected but waiting for auth
+     // Trigger authentication attempt for connected but unauthenticated state
+     if (!isRetryingAuth) {
+       attemptAuthentication();
+     }
   } else {
     // Connected and authenticated, send immediately
     // Also attempt to flush buffer in case connection dropped and re-established

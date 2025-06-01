@@ -3,7 +3,7 @@
     <webview
       ref="webviewRef"
       :src="webviewSrc"
-      :preload="guestPreloadScriptPath" <!-- CHANGED -->
+      :preload="guestPreloadScriptPath"
       style="width: 100%; height: 100vh;"
       partition="persist:logmonitorweb"
       allowpopups
@@ -19,6 +19,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import type { IpcRendererEvent } from 'electron'; // Explicitly import IpcRendererEvent
+import type { AuthData, UserProfile } from '../preload'; // Import AuthData and UserProfile from preload.d.ts
 // import { useRoute } from 'vue-router'; // No longer using route from here for initial path
 // import path from 'path'; // window.logMonitorApi.getPreloadPath will handle path resolution
 
@@ -147,7 +149,7 @@ onMounted(async () => {
   }
   // Alternative: Main process sends an IPC to this window when auth state changes.
   if (window.logMonitorApi && window.logMonitorApi.onMainAuthUpdate) {
-    window.logMonitorApi.onMainAuthUpdate(async (_event, authData) => {
+    window.logMonitorApi.onMainAuthUpdate(async (_event: IpcRendererEvent, authData: AuthData) => {
         console.log('[WebContentPage] Received "main-auth-update" from main process with data:', authData);
         // Now send this to the guest
         if (webviewRef.value && isGuestPreloadReady) {
@@ -184,19 +186,23 @@ const handleIpcMessage = async (event: Electron.IpcMessageEvent) => {
     await sendAuthDataToWebviewGuest('guest-preload-loaded');
 
   } else if (channel === 'guest-new-tokens') {
-    const tokens = args[0] as { accessToken: string; refreshToken: string; user: any };
+    const tokens = args[0] as AuthData;
     // Pass these tokens up to the main process via the MAIN electronAuthBridge
-    if (tokens && window.electronAuthBridge && window.electronAuthBridge.notifyElectronOfNewTokens) {
+    if (tokens && tokens.accessToken && tokens.refreshToken && window.electronAuthBridge && window.electronAuthBridge.notifyElectronOfNewTokens) {
       console.log('[WebContentPage] Received new tokens from GUEST, forwarding to MAIN bridge:', tokens);
       try {
         // No await needed if notifyElectronOfNewTokens is fire-and-forget IPC send
-        window.electronAuthBridge.notifyElectronOfNewTokens(tokens);
+        window.electronAuthBridge.notifyElectronOfNewTokens({
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          user: tokens.user ?? undefined
+        });
         console.log('[WebContentPage] Successfully forwarded new tokens to MAIN bridge.');
       } catch (error) {
         console.error('[WebContentPage] Error forwarding new tokens to MAIN bridge:', error);
       }
     } else {
-      console.error('[WebContentPage] Cannot forward tokens from GUEST: main bridge or method not available.');
+      console.error('[WebContentPage] Cannot forward tokens from GUEST: main bridge or method not available, or tokens are incomplete.');
     }
 
   } else if (channel === 'guest-requests-auth-data') {
@@ -243,3 +249,5 @@ onUnmounted(() => {
 .web-content-container { /* ... */ }
 webview { /* ... */ }
 </style>
+
+<!-- Dummy comment to trigger TypeScript re-evaluation -->

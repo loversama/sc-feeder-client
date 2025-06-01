@@ -10,6 +10,12 @@ interface UserProfile {
   avatar: string | null;
 }
 
+interface AuthData {
+  accessToken: string | null;
+  refreshToken: string | null;
+  user: UserProfile | null;
+}
+
 // Define the structure of the API exposed by preload.ts
 export interface LogMonitorApi {
   // Profile
@@ -96,7 +102,8 @@ export interface LogMonitorApi {
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
   onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void) => () => void; // Expanded
-  
+  onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: AuthData) => void) => () => void; // Added
+
   // Cleanup
   removeAllListeners: () => void;
 }
@@ -114,9 +121,10 @@ declare global {
     };
     logMonitorApi: LogMonitorApi;
     // For webview preload to communicate back to Electron host (WebContentPage.vue)
-    electronAuthBridge?: {
-      notifyElectronOfNewTokens: (tokens: { accessToken: string; refreshToken: string; user: UserProfile }) => void;
-      // Potentially other methods if needed
+    electronAuthBridge: { // Changed to required as it's always exposed
+      getStoredAuthData: () => Promise<AuthData>; // Added
+      notifyElectronOfNewTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }) => void; // Updated user to optional
+      onTokensUpdated: (callback: (event: IpcRendererEvent, tokens: AuthData) => void) => () => void; // Added
     }
   }
 }

@@ -11440,6 +11440,21 @@ require$$0.contextBridge.exposeInMainWorld("ipcRenderer", {
     require$$0.ipcRenderer.sendToHost(channel, ...args);
   }
 });
+require$$0.contextBridge.exposeInMainWorld("electronAuthBridge", {
+  getStoredAuthData: () => {
+    return require$$0.ipcRenderer.invoke("auth:get-tokens");
+  },
+  notifyElectronOfNewTokens: (tokens) => {
+    require$$0.ipcRenderer.send("auth:store-tokens", tokens);
+  },
+  onTokensUpdated: (callback) => {
+    const listener = (_event, tokens) => callback(_event, tokens);
+    require$$0.ipcRenderer.on("auth:tokens-updated", listener);
+    return () => {
+      require$$0.ipcRenderer.removeListener("auth:tokens-updated", listener);
+    };
+  }
+});
 require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   // Renderer to Main (Invoke/Send)
   getLogPath: () => require$$0.ipcRenderer.invoke("get-log-path"),
@@ -11524,7 +11539,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
   getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),
   onMainAuthUpdate: (callback) => {
-    const listener = (_event, authData) => callback(authData);
+    const listener = (_event, authData) => callback(_event, authData);
     require$$0.ipcRenderer.on("main-auth-update", listener);
     return () => {
       require$$0.ipcRenderer.removeListener("main-auth-update", listener);

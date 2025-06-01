@@ -4,6 +4,7 @@ import { ipcMain, BrowserWindow, webContents } from 'electron'; // Import Browse
 import os from 'node:os'; // Import os module for hostname
 import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
+import { getDetailedUserAgent } from './app-lifecycle';
 
 const MODULE_NAME = 'AuthManager';
 import { SERVER_API_URL } from './server-config';
@@ -164,7 +165,10 @@ export async function login(identifier: string, password: string): Promise<{ suc
     try {
         const response = await fetch(`${SERVER_API_URL}/api/auth/login`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': getDetailedUserAgent(),
+            },
             body: JSON.stringify({ identifier, password, hostname, clientId: currentClientId }),
         });
 
@@ -214,7 +218,10 @@ export async function logout(): Promise<boolean> {
         try {
             const response = await fetch(`${SERVER_API_URL}/api/auth/logout`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'User-Agent': getDetailedUserAgent(),
+                },
                 body: JSON.stringify({ refreshToken: currentRefreshToken })
             });
             if (!response.ok) {
@@ -244,7 +251,10 @@ export async function refreshToken(): Promise<{ userId: string; username: string
      try {
          const response = await fetch(`${SERVER_API_URL}/api/auth/refresh`, {
              method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
+             headers: {
+                 'Content-Type': 'application/json',
+                 'User-Agent': getDetailedUserAgent(),
+             },
              body: JSON.stringify({ refreshToken: currentRefreshToken })
          });
 
@@ -296,7 +306,10 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
     try {
         const response = await fetch(`${SERVER_API_URL}/api/auth/register-guest`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': getDetailedUserAgent(),
+            },
             body: JSON.stringify({ clientId: currentClientId, hostname: currentHostname }),
         });
 

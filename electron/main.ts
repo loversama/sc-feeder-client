@@ -9,6 +9,7 @@ import { setupTitlebar } from "custom-electron-titlebar/main"; // Import for cus
 import { URL } from 'node:url'; // Import URL for parsing deep links
 import { SERVER_API_URL } from './modules/server-config.ts'; // Import API_BASE_URL
 import { initializeDefinitions } from './modules/definitionsService.ts';
+import { getDetailedUserAgent } from './modules/app-lifecycle.ts';
 const MODULE_NAME = 'Main'; // Define module name for logger
 
 // --- Basic Setup ---
@@ -56,7 +57,9 @@ if (!app.requestSingleInstanceLock()) {
           logger.info(MODULE_NAME, `Making GET request to: ${serverEndpoint}`);
 
           // Make the GET request to the server
-          fetch(serverEndpoint)
+          fetch(serverEndpoint, {
+            headers: { 'User-Agent': getDetailedUserAgent() },
+          })
             .then(response => {
               if (response.ok) {
                 logger.info(MODULE_NAME, `Server request to ${serverEndpoint} successful.`);

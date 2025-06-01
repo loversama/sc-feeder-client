@@ -45,6 +45,23 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   }
 })
 
+// --------- Electron Auth Bridge API ---------
+contextBridge.exposeInMainWorld('electronAuthBridge', {
+  getStoredAuthData: (): Promise<{ accessToken: string | null; refreshToken: string | null; user: any | null }> => {
+    return ipcRenderer.invoke('auth:get-tokens');
+  },
+  notifyElectronOfNewTokens: (tokens: { accessToken: string; refreshToken: string; user?: any }): void => {
+    ipcRenderer.send('auth:store-tokens', tokens);
+  },
+  onTokensUpdated: (callback: (event: IpcRendererEvent, tokens: { accessToken: string | null; refreshToken: string | null; user: any | null }) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, tokens: { accessToken: string | null; refreshToken: string | null; user: any | null }) => callback(_event, tokens);
+    ipcRenderer.on('auth:tokens-updated', listener);
+    return () => {
+      ipcRenderer.removeListener('auth:tokens-updated', listener);
+    };
+  },
+});
+
 // --------- Log Monitor Specific API ---------
 contextBridge.exposeInMainWorld('logMonitorApi', {
   // Renderer to Main (Invoke/Send)
@@ -141,8 +158,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
   getPreloadPath: (scriptName: string): Promise<string> => ipcRenderer.invoke('get-preload-path', scriptName),
 
-  onMainAuthUpdate: (callback: (authData: any) => void): (() => void) => {
-    const listener = (_event: IpcRendererEvent, authData: any) => callback(authData);
+  onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: any) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, authData: any) => callback(_event, authData);
     ipcRenderer.on('main-auth-update', listener);
     return () => { // Return a cleanup function
       ipcRenderer.removeListener('main-auth-update', listener);

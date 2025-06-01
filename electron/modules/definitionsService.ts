@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { app } from 'electron';
 import * as logger from './logger'; // Import all logger functions
+import { getDetailedUserAgent } from './app-lifecycle';
 
 const DEFINITIONS_API_URL = '/api/definitions'; // Placeholder, confirm actual server URL
 const LOCAL_DEFINITIONS_PATH = path.join(app.getPath('userData'), 'local-definitions.json');
@@ -43,7 +44,9 @@ async function fetchDefinitions(serverBaseUrl: string): Promise<EntityDefinition
   const url = `${serverBaseUrl}${DEFINITIONS_API_URL}`;
   logger.info(`[DefinitionsService] Fetching definitions from ${url}`);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { 'User-Agent': getDetailedUserAgent() },
+    });
     if (!response.ok) {
       logger.error(`[DefinitionsService] Error fetching definitions: ${response.status} ${response.statusText}`);
       //   throw new Error(`Failed to fetch definitions: ${response.status}`);

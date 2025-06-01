@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import * as cheerio from 'cheerio';
 import { store, getFetchProfileData, getProfileCache, setProfileCache } from './config-manager.ts'; // Added .ts
+import { getDetailedUserAgent } from './app-lifecycle';
 import { ProfileData } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
@@ -41,8 +42,8 @@ async function scrapeSingleProfile(username: string, isAttacker: boolean = false
     try {
         logger.info(MODULE_NAME, `Scraping RSI profile for ${isAttacker ? 'attacker' : 'victim'}: ${username} at ${profileUrl}`);
         const response = await fetch(profileUrl, {
-            headers: { // Use a realistic User-Agent
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36'
             },
             timeout: 15000 // 15 second timeout
         });

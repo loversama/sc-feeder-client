@@ -1,4 +1,5 @@
 import { app, globalShortcut, BrowserWindow, session } from 'electron'; // Keep base electron imports, add session
+import * as os from 'os'; // Import os for hostname
 import { autoUpdater, UpdateCheckResult } from 'electron-updater'; // Import autoUpdater and types from electron-updater
 import { createMainWindow, getMainWindow, closeAllWindows } from './window-manager.ts'; // Added .ts
 import { createTrayMenu, destroyTray } from './tray-manager.ts'; // Added .ts
@@ -9,8 +10,15 @@ import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
-import { registerAuthIpcHandlers, initializeAuth } from './auth-manager'; // Import initializeAuth
+import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import { getOfflineMode } from './config-manager'; // Import offline mode getter
+
+export function getDetailedUserAgent(): string {
+  const appVersion = app.getVersion();
+  const hostname = os.hostname();
+  const clientId = getPersistedClientId(); // Assuming this is synchronous
+  return `VoidLogClient-${appVersion} (User Hostname: ${hostname}, Client ID: ${clientId})`;
+}
 
 const MODULE_NAME = 'AppLifecycle'; // Define module name for logger
 
@@ -44,11 +52,18 @@ async function onReady() {
 
 
     // --- Set Custom User Agent ---
-    const currentUA = session.defaultSession.getUserAgent();
-    const appVersion = app.getVersion();
-    const customUA = `${currentUA} SC-Feeder-Client/${appVersion}`;
-    session.defaultSession.setUserAgent(customUA);
-    logger.info(MODULE_NAME, `Set User-Agent to: ${customUA}`);
+    // const appVersion = app.getVersion();
+    // const hostname = os.hostname();
+    // const clientId = getPersistedClientId(); // Retrieve the client ID
+
+    // const userAgentString = `VoidLogClient-${appVersion} (User Hostname: ${hostname}, Client ID: ${clientId})`;
+
+    // session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    //     details.requestHeaders['User-Agent'] = userAgentString;
+    //     // logger.info(MODULE_NAME, `[AppLifecycle] Attempting to set User-Agent to: ${userAgentString}`);
+    //     callback({ requestHeaders: details.requestHeaders });
+    // });
+    // logger.info(MODULE_NAME, `Set global User-Agent interceptor to '${userAgentString}'.`);
 
     // Register IPC handlers first (can now potentially use paths if needed)
     registerIpcHandlers(); // Register general handlers
@@ -187,7 +202,7 @@ async function performCleanup() {
 
 function registerGlobalShortcuts() {
     // DevTools Toggle (CmdOrCtrl+Shift+I)
-    const devToolsRet = globalShortcut.register('CommandOrControl+Shift+I', () => {
+    const devToolsRet = globalShortcut.register('CommandOrCtrl+Shift+I', () => {
         const focusedWindow = BrowserWindow.getFocusedWindow();
         if (focusedWindow) {
             logger.debug(MODULE_NAME, 'DevTools shortcut pressed.');
