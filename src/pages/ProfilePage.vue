@@ -6,6 +6,7 @@
       ref="webviewRef"
       :src="webviewSrc || ''"
       style="width:100%; height:100%; border:none;"
+      :preload="`file:${preloadPath}`"
       webpreferences="contextIsolation=true,devTools=true"
    ></webview>
    <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-theme-bg-dark bg-opacity-80">Loading...</div>
@@ -14,6 +15,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'; // Import watch
+
+const preloadPath = ref('');
+window.logMonitorApi.getPreloadPath('webview-preload.mjs').then(path => {
+  preloadPath.value = path;
+});
 
 const webviewRef = ref<Electron.WebviewTag | null>(null);
 const accessToken = ref<string | null>(null);

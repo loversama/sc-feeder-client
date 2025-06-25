@@ -1,7 +1,15 @@
 import { app, globalShortcut, BrowserWindow, session } from 'electron'; // Keep base electron imports, add session
 import * as os from 'os'; // Import os for hostname
 import { autoUpdater, UpdateCheckResult } from 'electron-updater'; // Import autoUpdater and types from electron-updater
-import { createMainWindow, getMainWindow, closeAllWindows } from './window-manager.ts'; // Added .ts
+import {
+  createMainWindow,
+  getMainWindow,
+  closeAllWindows,
+  createLoginWindow,
+  closeLoginWindow,
+  getLoginWindow,
+  createMainWindowAfterAuth // Import the new function
+} from './window-manager.ts'; // Added .ts
 import { createTrayMenu, destroyTray } from './tray-manager.ts'; // Added .ts
 import { startWatchingLogFile, stopWatchingLogFile } from './log-watcher.ts'; // Added .ts
 import { endCurrentSession } from './session-manager.ts'; // Added .ts
@@ -10,8 +18,13 @@ import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
-import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId } from './auth-manager'; // Import initializeAuth and getPersistedClientId
-import { getOfflineMode } from './config-manager'; // Import offline mode getter
+import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, refreshToken, setGuestModeAndRemember, getRefreshTokenFromStore } from './auth-manager'; // Import initializeAuth and getPersistedClientId
+import {
+  getOfflineMode,
+  getGuestModePreference,
+  getHasShownInitialLogin
+} from './config-manager';
+import { ipcMain } from 'electron'; // Import ipcMain for login popup
 
 export function getDetailedUserAgent(): string {
   const appVersion = app.getVersion();
@@ -30,105 +43,186 @@ export let isQuitting = false; // Export flag
 
 import path from 'node:path'; // Ensure path is imported
 
-async function onReady() {
-    logger.info(MODULE_NAME, "App ready.");
+async function determineAuthState(): Promise<{
+  requiresLoginPopup: boolean;
+  authMode: 'authenticated' | 'guest' | 'unknown';
+}> {
+  // Force login window in development mode
+  if (!app.isPackaged) {
+    logger.info(MODULE_NAME, 'Development mode detected, forcing login popup');
+    return { requiresLoginPopup: true, authMode: 'unknown' };
+  }
+  
+  // Check for existing valid session
+  const existingRefreshToken = getRefreshTokenFromStore();
+  if (existingRefreshToken) {
+    const refreshResult = await refreshToken();
+    if (refreshResult) {
+      logger.info(MODULE_NAME, 'Valid session found, skipping login popup');
+      return { requiresLoginPopup: false, authMode: 'authenticated' };
+    }
+  }
+  
+  // Check for guest preference
+  if (getGuestModePreference()) {
+    logger.info(MODULE_NAME, 'Guest mode preference found, skipping login popup');
+    return { requiresLoginPopup: false, authMode: 'guest' };
+  }
+  
+  // First run or session expired - show login popup
+  logger.info(MODULE_NAME, 'No valid auth state, login popup required');
+  return { requiresLoginPopup: true, authMode: 'unknown' };
+}
 
-    // --- Environment Setup (Moved here for app.getAppPath()) ---
-    process.env.APP_ROOT = app.getAppPath();
-    logger.info(MODULE_NAME, `APP_ROOT set using app.getAppPath(): ${process.env.APP_ROOT}`);
-
-    if (typeof process.env.APP_ROOT !== 'string' || !process.env.APP_ROOT) {
-        logger.error(MODULE_NAME, `FATAL: process.env.APP_ROOT is not a valid string after app.getAppPath()! Value: ${process.env.APP_ROOT}. Cannot proceed.`);
-        // Consider quitting: app.quit();
-        return; // Stop further execution in onReady if APP_ROOT is invalid
+async function showLoginPopup(): Promise<void> {
+  return new Promise((resolve) => {
+    // Create login window - no main window dependency required
+    const loginWindow = createLoginWindow();
+    
+    if (!loginWindow) {
+      logger.error(MODULE_NAME, 'Failed to create login window');
+      resolve();
+      return;
     }
 
-    const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
-    // MAIN_DIST is not exported/used globally, calculate locally if needed or remove if unused
-    // const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
-    process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist');
-    logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
-    // logger.info(MODULE_NAME, `MAIN_DIST calculated as: ${MAIN_DIST}`); // Log if MAIN_DIST is kept
+    // Listen for login completion
+    const handleLoginComplete = () => {
+      logger.info(MODULE_NAME, 'Login popup completed');
+      closeLoginWindow();
+      resolve(); // This allows main window creation to proceed
+    };
 
+    // Listen for authentication events
+    ipcMain.once('login-completed', handleLoginComplete);
+    ipcMain.once('guest-mode-selected', handleLoginComplete);
+    
+    // Handle window close (treat as guest mode)
+    loginWindow.on('closed', () => {
+      logger.info(MODULE_NAME, 'Login window closed, defaulting to guest mode');
+      setGuestModeAndRemember();
+      ipcMain.removeListener('login-completed', handleLoginComplete);
+      ipcMain.removeListener('guest-mode-selected', handleLoginComplete);
+      resolve();
+    });
+  });
+}
 
-    // --- Set Custom User Agent ---
-    // const appVersion = app.getVersion();
-    // const hostname = os.hostname();
-    // const clientId = getPersistedClientId(); // Retrieve the client ID
-
-    // const userAgentString = `VoidLogClient-${appVersion} (User Hostname: ${hostname}, Client ID: ${clientId})`;
-
-    // session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    //     details.requestHeaders['User-Agent'] = userAgentString;
-    //     // logger.info(MODULE_NAME, `[AppLifecycle] Attempting to set User-Agent to: ${userAgentString}`);
-    //     callback({ requestHeaders: details.requestHeaders });
-    // });
-    // logger.info(MODULE_NAME, `Set global User-Agent interceptor to '${userAgentString}'.`);
-
-    // Register IPC handlers first (can now potentially use paths if needed)
-    registerIpcHandlers(); // Register general handlers
-    registerAuthIpcHandlers(); // Register auth handlers
-
-    // Initialize authentication and connect to server only if NOT in offline mode
-    if (!getOfflineMode()) {
-        logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
-        const canConnect = await initializeAuth(); // Wait and check if we have a token
-
-        // Connect to backend server only if initial auth state allows
-        if (canConnect) {
-            logger.info(MODULE_NAME, "Auth initialized with a token. Attempting server connection...");
-            connectToServer();
-        } else {
-            logger.warn(MODULE_NAME, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
-            // No initial connection attempt if no token
-        }
+async function connectToLogServer(mainWindow: BrowserWindow) {
+  // Initialize authentication based on final state
+  if (!getOfflineMode()) {
+    logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
+    const canConnect = await initializeAuth();
+    
+    if (canConnect) {
+      logger.info(MODULE_NAME, "Auth state allows connection. Connecting to server...");
+      connectToServer();
     } else {
-        logger.info(MODULE_NAME, "Offline mode enabled. Skipping initial authentication and server connection.");
-        // Ensure server is disconnected if previously connected (e.g., mode changed while running)
-        disconnectFromServer();
+      logger.warn(MODULE_NAME, "No auth token available. Will connect as guest if guest token obtained.");
     }
+  } else {
+    logger.info(MODULE_NAME, "Offline mode enabled. Skipping server connection.");
+    disconnectFromServer();
+  }
+}
 
-    // Create UI components
-    createTrayMenu(); // Create tray icon and menu
-    createMainWindow(async () => {
-        // This callback runs after the main window's 'did-finish-load' event
-        logger.info(MODULE_NAME, "Main window finished loading.");
+async function loadHistoricData(mainWindow: BrowserWindow) {
+  // Load historic tally *after* window is ready and IPC is registered
+  try {
+      await loadHistoricKillTally();
+  } catch (err: any) {
+      logger.error(MODULE_NAME, "Error loading historic kill tally:", err.message);
+  }
 
-        // Check for updates after window is loaded (with a delay)
-        logger.info(MODULE_NAME, "Scheduling update check...");
-        setTimeout(() => {
-            logger.info(MODULE_NAME, "Checking for updates...");
-            autoUpdater.checkForUpdatesAndNotify()
-              .then((result: UpdateCheckResult | null) => { // Add type for result
-                // Result might be null if no update is available or if the check failed silently
-                // The 'update-available' or 'update-not-available' events handle the outcome.
-                logger.info(MODULE_NAME, `Update check promise resolved. Update available: ${result?.updateInfo?.version ?? 'No'}`);
-              })
-              .catch((err: Error) => { // Add type for error
-                // Error event listener in main.ts will also catch this
-                logger.error(MODULE_NAME, `Error invoking checkForUpdatesAndNotify: ${err.message}`);
-              });
-        }, 10000); // 10-second delay
+  // Start watching log file *after* window is ready and tally is loaded
+  try {
+      await startWatchingLogFile();
+      mainWindow.webContents.send('log-status', 'Log monitoring active.');
+  } catch (err: any) {
+      logger.error(MODULE_NAME, "Error starting log watcher:", err.message);
+      mainWindow.webContents.send('log-status', `Error starting log monitoring: ${err.message}`);
+  }
+}
 
-        // Load historic tally *after* window is ready and IPC is registered
-        try {
-            await loadHistoricKillTally();
-        } catch (err: any) {
-            logger.error(MODULE_NAME, "Error loading historic kill tally:", err.message);
-        }
+function registerGlobalShortcuts(mainWindow: BrowserWindow) {
+  // DevTools Toggle (CmdOrCtrl+Shift+I)
+  const devToolsRet = globalShortcut.register('CommandOrCtrl+Shift+I', () => {
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      if (focusedWindow) {
+          logger.debug(MODULE_NAME, 'DevTools shortcut pressed.');
+          focusedWindow.webContents.toggleDevTools();
+      }
+  });
+  if (!devToolsRet) {
+      logger.warn(MODULE_NAME, 'Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).');
+  }
 
-        // Start watching log file *after* window is ready and tally is loaded
-        try {
-            await startWatchingLogFile();
-            getMainWindow()?.webContents.send('log-status', 'Log monitoring active.');
-        } catch (err: any) {
-            logger.error(MODULE_NAME, "Error starting log watcher:", err.message);
-            getMainWindow()?.webContents.send('log-status', `Error starting log monitoring: ${err.message}`);
-        }
-    }); // Create the main window and pass callback
+  // F12 as backup DevTools toggle
+  const f12Ret = globalShortcut.register('F12', () => {
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      if (focusedWindow) {
+          logger.debug(MODULE_NAME, 'F12 pressed - toggling DevTools.');
+          focusedWindow.webContents.toggleDevTools();
+      }
+  });
+  if (!f12Ret) {
+      logger.warn(MODULE_NAME, 'Failed to register F12 shortcut.');
+  }
+}
 
-    // Register global shortcuts
-    registerGlobalShortcuts();
+// This is the new, correct onReady function
+async function onReady() {
+  logger.info('App is ready, initializing...');
+  
+  // Environment setup
+  process.env.APP_ROOT = app.getAppPath();
+  logger.info(MODULE_NAME, `APP_ROOT set using app.getAppPath(): ${process.env.APP_ROOT}`);
+
+  if (typeof process.env.APP_ROOT !== 'string' || !process.env.APP_ROOT) {
+      logger.error(MODULE_NAME, `FATAL: process.env.APP_ROOT is not a valid string after app.getAppPath()! Value: ${process.env.APP_ROOT}. Cannot proceed.`);
+      return;
+  }
+
+  const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
+  process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist');
+  logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
+  
+  // Register IPC handlers first
+  registerIpcHandlers();
+  registerAuthIpcHandlers();
+
+  // 1. Determine if login is required. This MUST be the first step.
+  const authState = await determineAuthState();
+
+  // 2. If login is required, show the popup and WAIT for it to finish.
+  if (authState.requiresLoginPopup) {
+    await showLoginPopup();
+  }
+
+  // 3. ONLY AFTER the entire auth flow is complete, create the main UI.
+  createTrayMenu();
+  const mainWindow = createMainWindow();
+
+  // 4. Continue with the rest of the app initialization.
+  if (mainWindow) {
+    await connectToLogServer(mainWindow);
+    await loadHistoricData(mainWindow);
+    registerGlobalShortcuts(mainWindow);
+  }
+
+  // Check for updates after window is loaded (with a delay)
+  logger.info(MODULE_NAME, "Scheduling update check...");
+  setTimeout(() => {
+      logger.info(MODULE_NAME, "Checking for updates...");
+      autoUpdater.checkForUpdatesAndNotify()
+        .then((result: UpdateCheckResult | null) => {
+          logger.info(MODULE_NAME, `Update check promise resolved. Update available: ${result?.updateInfo?.version ?? 'No'}`);
+        })
+        .catch((err: Error) => {
+          logger.error(MODULE_NAME, `Error invoking checkForUpdatesAndNotify: ${err.message}`);
+        });
+  }, 10000); // 10-second delay
+
+  logger.info('App initialization complete.');
 }
 
 async function onWindowAllClosed() {
@@ -200,31 +294,6 @@ async function performCleanup() {
     logger.info(MODULE_NAME, "Cleanup operations complete.");
 }
 
-function registerGlobalShortcuts() {
-    // DevTools Toggle (CmdOrCtrl+Shift+I)
-    const devToolsRet = globalShortcut.register('CommandOrCtrl+Shift+I', () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (focusedWindow) {
-            logger.debug(MODULE_NAME, 'DevTools shortcut pressed.');
-            focusedWindow.webContents.toggleDevTools();
-        }
-    });
-    if (!devToolsRet) {
-        logger.warn(MODULE_NAME, 'Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).');
-    }
-
-    // F12 as backup DevTools toggle
-    const f12Ret = globalShortcut.register('F12', () => {
-        const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (focusedWindow) {
-            logger.debug(MODULE_NAME, 'F12 pressed - toggling DevTools.');
-            focusedWindow.webContents.toggleDevTools();
-        }
-    });
-    if (!f12Ret) {
-        logger.warn(MODULE_NAME, 'Failed to register F12 shortcut.');
-    }
-}
 // --- Initialization ---
 
 // Function to explicitly set the quitting flag (called by tray manager)

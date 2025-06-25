@@ -85,10 +85,17 @@ export interface LogMonitorApi {
   authGetTokens: () => Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }>; // New
   authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }) => Promise<{ success: boolean; error?: string }>; // New
   authRefreshToken: () => Promise<UserProfile | null>; // Renamed from ipc-handler's 'auth:refreshToken'
+  
+  // Authentication Actions for Login Popup
+  authLoginSuccess: () => Promise<void>;
+  authContinueAsGuest: () => Promise<void>;
+  authCloseLoginWindow: () => Promise<void>;
 
   // Resource Path
   getResourcePath: () => Promise<string>;
   getPreloadPath: (scriptName: string) => Promise<string>;
+  getAppVersion: () => Promise<string>;
+  getGuestModeStatus: () => Promise<boolean>;
 
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;

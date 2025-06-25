@@ -63,6 +63,14 @@ const schema = {
   launchOnStartup: {
     type: 'boolean',
     default: true
+  },
+  guestModePreference: {
+    type: 'boolean',
+    default: false
+  },
+  hasShownInitialLogin: {
+    type: 'boolean',
+    default: false
   }
 } as const; // Use 'as const' for stronger type inference if Store supports it well, otherwise define schema type explicitly
 
@@ -99,6 +107,28 @@ export function getLaunchOnStartup(): boolean {
 }
 export function setLaunchOnStartup(value: boolean): void {
   store.set('launchOnStartup', !!value);
+}
+
+export function getGuestModePreference(): boolean {
+  return store.get('guestModePreference');
+}
+
+export function setGuestModePreference(value: boolean): void {
+  store.set('guestModePreference', !!value);
+  logger.info(MODULE_NAME, `Guest Mode Preference set to: ${!!value}`);
+}
+
+export function clearGuestModePreference(): void {
+  store.delete('guestModePreference');
+  logger.info(MODULE_NAME, 'Guest Mode Preference cleared');
+}
+
+export function getHasShownInitialLogin(): boolean {
+  return store.get('hasShownInitialLogin');
+}
+
+export function setHasShownInitialLogin(value: boolean): void {
+  store.set('hasShownInitialLogin', !!value);
 }
 
 // Getters and Setters for other settings (Example)

@@ -10,6 +10,13 @@ import * as logger from './logger'; // Import the logger utility
 import { attachTitlebarToWindow } from "custom-electron-titlebar/main"; // Import for custom title bar
 const MODULE_NAME = 'WindowManager'; // Define module name for logger
 
+// Type for auth tokens
+interface AuthTokens {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: any;
+}
+
 // Define __dirname for ES module scope
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,9 +26,102 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let webContentWindow: BrowserWindow | null = null; // Added for Web Content Window
+let loginWindow: BrowserWindow | null = null;
 let currentWebContentSection: 'profile' | 'leaderboard' | null = null; // Track active section
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
+
+// WindowManager class
+class WindowManager {
+    private webContentWindow: BrowserWindow | null = null;
+    private webAppUrl: string = '';
+
+    constructor() {
+        // Initialize webAppUrl from environment
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        this.webAppUrl = isDevelopment
+            ? 'http://localhost:3001'
+            : 'https://killfeed.sinfulshadows.com';
+    }
+
+    // Method to send auth tokens to web content window
+    public sendAuthTokensToWebContentWindow(tokens: AuthTokens | null): void {
+        this.webContentWindow = webContentWindow; // Use the module-level webContentWindow
+        
+        if (this.webContentWindow && !this.webContentWindow.isDestroyed()) {
+            this.webContentWindow.webContents.send('auth-tokens-updated', tokens);
+            this._handleAuthTokensForCookie(tokens);
+        }
+    }
+
+    // Private method to handle auth tokens for cookie setting
+    private async _handleAuthTokensForCookie(tokens: AuthTokens | null): Promise<void> {
+        console.log('[WindowManager CookieDebug] Entered _handleAuthTokensForCookie. Tokens:', tokens ? 'present' : 'null or undefined');
+        
+        if (!tokens) {
+            logger.info(MODULE_NAME, 'No tokens provided to _handleAuthTokensForCookie');
+            return;
+        }
+
+        if (!this.webContentWindow || this.webContentWindow.isDestroyed()) {
+            logger.warn(MODULE_NAME, 'WebContentWindow is null or destroyed in _handleAuthTokensForCookie');
+            return;
+        }
+
+        logger.info(MODULE_NAME, 'Setting auth cookies for web content window');
+        
+        try {
+            const cookieUrl = this.webAppUrl;
+            logger.info(MODULE_NAME, `[WindowManager CookieDebug] Attempting to set cookies for URL: ${cookieUrl}`);
+
+            if (tokens.accessToken) {
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Setting access token cookie');
+                await this.webContentWindow.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'access_token',
+                    value: tokens.accessToken,
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Successfully set access token cookie');
+            }
+
+            if (tokens.refreshToken) {
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Setting refresh token cookie');
+                await this.webContentWindow.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'refresh_token',
+                    value: tokens.refreshToken,
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Successfully set refresh token cookie');
+            }
+
+            if (tokens.user) {
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Setting user data cookie');
+                await this.webContentWindow.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'user_data',
+                    value: JSON.stringify(tokens.user),
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager CookieDebug] Successfully set user data cookie');
+            }
+
+            logger.info(MODULE_NAME, '[WindowManager CookieDebug] All cookies set successfully');
+        } catch (error) {
+            logger.error(MODULE_NAME, '[WindowManager CookieDebug] Error setting cookies:', error);
+        }
+    }
+}
+
+// Create a singleton instance
+const windowManager = new WindowManager();
 
 // electron-store setup for window state
 // Define the type for the store schema explicitly
@@ -375,6 +475,13 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     mainWindow.on('move', saveMainWindowBounds);
 
     return mainWindow;
+}
+
+export function createMainWindowAfterAuth(): BrowserWindow {
+  // This function is called ONLY after authentication is complete
+  // Ensures main window never appears before user authentication
+  logger.info(MODULE_NAME, 'Creating main window after authentication complete');
+  return createMainWindow();
 }
 
 export function createSettingsWindow(): BrowserWindow | null {
@@ -771,11 +878,87 @@ export function closeSettingsWindow() {
     }
 }
 
-export function closeWebContentWindow() {
-    if (webContentWindow) {
-        webContentWindow.close();
-        webContentWindow = null;
-    }
+export function closeWebContentWindow(): void {
+  if (webContentWindow && !webContentWindow.isDestroyed()) {
+    webContentWindow.close();
+    webContentWindow = null;
+  }
+}
+
+export function createLoginWindow(): BrowserWindow | null {
+  if (loginWindow) {
+    loginWindow.focus();
+    return loginWindow;
+  }
+
+  // Ensure main window exists before setting parent
+  if (!mainWindow) {
+    logger.error(MODULE_NAME, "Cannot create login window: Main window does not exist.");
+    return null;
+  }
+
+  const appIconPath = getIconPath();
+  
+  const loginWindowOptions: Electron.BrowserWindowConstructorOptions = {
+    width: 400,
+    height: 500,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    alwaysOnTop: true,
+    modal: true,
+    icon: appIconPath || undefined,
+    title: 'SC Kill Feed - Login',
+    webPreferences: {
+      preload: getPreloadPath('preload.mjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: !app.isPackaged,
+      spellcheck: false
+    },
+    titleBarStyle: 'hidden',
+    titleBarOverlay: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#222',
+    show: false,
+    center: true
+  };
+
+  loginWindow = new BrowserWindow(loginWindowOptions);
+  attachTitlebarToWindow(loginWindow);
+
+  // Load login page
+  const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
+  if (devServerUrl) {
+    loginWindow.loadURL(`${devServerUrl}/login.html`);
+  } else {
+    const loginUrl = url.format({
+      pathname: path.join(__dirname, '..', 'dist', 'login.html'),
+      protocol: 'file:',
+      slashes: true
+    });
+    loginWindow.loadURL(loginUrl);
+  }
+
+  loginWindow.once('ready-to-show', () => {
+    loginWindow?.show();
+  });
+
+  loginWindow.on('closed', () => {
+    loginWindow = null;
+  });
+
+  return loginWindow;
+}
+
+export function closeLoginWindow(): void {
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.close();
+  }
+}
+
+export function getLoginWindow(): BrowserWindow | null {
+  return loginWindow;
 }
 
 export function getMainWindow(): BrowserWindow | null {
@@ -800,6 +983,13 @@ export function closeAllWindows() {
             window.close();
         }
     });
+}
+
+// --- Public API Functions ---
+
+// Function to send auth tokens to web content window using WindowManager
+export function sendAuthTokensToWebContentWindow(tokens: AuthTokens | null): void {
+    windowManager.sendAuthTokensToWebContentWindow(tokens);
 }
 
 // Add this IPC Handler

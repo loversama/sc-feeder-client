@@ -21,7 +21,13 @@ export default defineConfig({
         entry: 'electron/main.ts',
       },
       preload: {
-        input: path.join(__dirname, 'electron/preload.ts'),
+        // Preload scripts for different windows
+        input: {
+          // Preload for main window, settings, etc.
+          preload: path.join(__dirname, 'electron/preload.ts'),
+          // Preload specifically for the webview
+          'webview-preload': path.join(__dirname, 'electron/webview-preload.ts'),
+        },
       },
       renderer: process.env.NODE_ENV === 'test'
         ? undefined
@@ -35,6 +41,7 @@ export default defineConfig({
         eventDetails: path.resolve(__dirname, 'event-details.html'),
         settings: path.resolve(__dirname, 'settings.html'),
         webContent: path.resolve(__dirname, 'web-content.html'),
+        login: path.resolve(__dirname, 'login.html'),
       },
     },
   },

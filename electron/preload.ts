@@ -146,6 +146,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authGetTokens: (): Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }> => ipcRenderer.invoke('auth:get-tokens'),
   authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:store-tokens', tokens),
   authRefreshToken: (): Promise<UserProfile | null> => ipcRenderer.invoke('auth:refreshToken'),
+  
+  // Authentication Actions for Login Popup
+  authLoginSuccess: (): Promise<void> => ipcRenderer.invoke('auth:loginSuccess'),
+  authContinueAsGuest: (): Promise<void> => ipcRenderer.invoke('auth:continueAsGuest'),
+  authCloseLoginWindow: (): Promise<void> => ipcRenderer.invoke('auth:closeLoginWindow'),
 
   // Profile Action
   getProfile: (): Promise<UserProfile | null> => ipcRenderer.invoke('get-profile'),
@@ -157,6 +162,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   // Resource Path
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
   getPreloadPath: (scriptName: string): Promise<string> => ipcRenderer.invoke('get-preload-path', scriptName),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  getGuestModeStatus: (): Promise<boolean> => ipcRenderer.invoke('app:get-guest-mode-status'),
 
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: any) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, authData: any) => callback(_event, authData);

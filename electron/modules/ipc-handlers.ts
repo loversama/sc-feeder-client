@@ -12,8 +12,11 @@ import {
     closeSettingsWindow,
     closeWebContentWindow,
     getSettingsStatus, // Added
-    getWebContentStatus // Added
+    getWebContentStatus, // Added
+    closeLoginWindow,
+    createLoginWindow // Added
 } from './window-manager.ts'; // Added close functions and status getters
+import { setGuestModeAndRemember } from './auth-manager';
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
@@ -221,6 +224,17 @@ try {
      // Decide if the app should quit or continue without this functionality
 } // End of try...catch
 
+// --- App Version Handler ---
+logger.debug(MODULE_NAME, "Attempting to register handler for 'get-app-version'...");
+try {
+    ipcMain.handle('get-app-version', () => {
+        return app.getVersion();
+    });
+    logger.info(MODULE_NAME, "Successfully registered handler for 'get-app-version'.");
+} catch (error: any) {
+     logger.error(MODULE_NAME, `FATAL: Failed to register handler for 'get-app-version': ${error.message}`, error.stack);
+}
+
     // --- Window Management Handlers ---
     ipcMain.handle('open-settings-window', () => {
         createSettingsWindow();
@@ -290,6 +304,57 @@ try {
         return getWebContentStatus(); // Call the function from window-manager
     });
 
+    // Login popup handlers
+    ipcMain.handle('auth:continueAsGuest', async () => {
+      try {
+        setGuestModeAndRemember();
+        ipcMain.emit('guest-mode-selected');
+        return { success: true };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Error setting guest mode:', error);
+        return { success: false, error: 'Failed to set guest mode' };
+      }
+    });
+
+    ipcMain.handle('auth:loginSuccess', async () => {
+      try {
+        ipcMain.emit('login-completed');
+        return { success: true };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Error handling login success:', error);
+        return { success: false, error: 'Failed to handle login success' };
+      }
+    });
+
+    ipcMain.handle('auth:closeLoginWindow', () => {
+      closeLoginWindow();
+      return { success: true };
+    });
+
+ipcMain.handle('auth:show-login', () => {
+  logger.info(MODULE_NAME, "Received 'auth:show-login' request. Opening login window.");
+  createLoginWindow();
+  return { success: true };
+});
+
+    ipcMain.on('auth:reset-guest-mode', async () => {
+      logger.info(MODULE_NAME, "Received 'auth:reset-guest-mode' request. Resetting guest mode and restarting app.");
+      // 1. Set guestMode preference to false
+      ConfigManager.setGuestModePreference(false); // Use the existing function
+
+      // 2. Restart the application
+      // This will close all windows and trigger the app's 'ready' event again,
+      // which should then re-evaluate the login state and show the login window.
+      app.relaunch({ args: process.argv.slice(1).concat(['--relaunch']) });
+      app.exit();
+    });
+
+    // Get guest mode status
+    ipcMain.handle('app:get-guest-mode-status', () => {
+      logger.info(MODULE_NAME, "Received 'app:get-guest-mode-status' request.");
+      return ConfigManager.getGuestModePreference();
+    });
+
     // --- Custom Title Bar Window Controls ---
     ipcMain.on('window:minimize', (event) => {
         const win = getMainWindow(); // Or get window from event sender if needed
@@ -331,6 +396,11 @@ try {
     ipcMain.handle('reset-sessions', () => {
         SessionManager.clearSessionHistory();
         return true;
+    });
+
+    ipcMain.handle('app:get-version', () => {
+        logger.info(MODULE_NAME, "Received 'app:get-version' request.");
+        return app.getVersion();
     });
 
     ipcMain.handle('reset-events', () => {

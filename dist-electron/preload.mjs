@@ -11530,6 +11530,10 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authGetTokens: () => require$$0.ipcRenderer.invoke("auth:get-tokens"),
   authStoreTokens: (tokens) => require$$0.ipcRenderer.invoke("auth:store-tokens", tokens),
   authRefreshToken: () => require$$0.ipcRenderer.invoke("auth:refreshToken"),
+  // Authentication Actions for Login Popup
+  authLoginSuccess: () => require$$0.ipcRenderer.invoke("auth:loginSuccess"),
+  authContinueAsGuest: () => require$$0.ipcRenderer.invoke("auth:continueAsGuest"),
+  authCloseLoginWindow: () => require$$0.ipcRenderer.invoke("auth:closeLoginWindow"),
   // Profile Action
   getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
   // Window Status Getters
@@ -11538,6 +11542,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   // Resource Path
   getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
   getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),
+  getAppVersion: () => require$$0.ipcRenderer.invoke("get-app-version"),
+  getGuestModeStatus: () => require$$0.ipcRenderer.invoke("app:get-guest-mode-status"),
   onMainAuthUpdate: (callback) => {
     const listener = (_event, authData) => callback(_event, authData);
     require$$0.ipcRenderer.on("main-auth-update", listener);

@@ -5,6 +5,12 @@ import os from 'node:os'; // Import os module for hostname
 import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
 import { getDetailedUserAgent } from './app-lifecycle';
+import {
+  getGuestModePreference,
+  setGuestModePreference,
+  clearGuestModePreference,
+  setHasShownInitialLogin
+} from './config-manager';
 
 const MODULE_NAME = 'AuthManager';
 import { SERVER_API_URL } from './server-config';
@@ -48,7 +54,7 @@ async function storeTokensAndUser(
     }
 }
 
-function getRefreshTokenFromStore(): string | null {
+export function getRefreshTokenFromStore(): string | null {
     try {
         return store.get('refreshToken') as string | null;
     } catch (error) {
@@ -191,6 +197,10 @@ export async function login(identifier: string, password: string): Promise<{ suc
             };
             await storeTokensAndUser(data.access_token, data.refresh_token, userProfile);
             guestToken = null;
+            
+            // Clear guest preference when user successfully logs in
+            clearGuestModePreference();
+            setHasShownInitialLogin(true);
 
             logger.info(MODULE_NAME, `Login successful for ${userProfile.username} (ID: ${userProfile.userId}).`);
             disconnectFromServer();
@@ -213,6 +223,9 @@ export async function logout(): Promise<boolean> {
     const currentRefreshToken = getRefreshTokenFromStore();
     await clearAllTokensAndUser();
     disconnectFromServer();
+    
+    // Clear guest preference to force login popup on next launch
+    clearGuestModePreference();
 
     if (currentRefreshToken) {
         try {
@@ -335,6 +348,12 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
         guestToken = null;
         return false;
     }
+}
+
+export function setGuestModeAndRemember(): void {
+  setGuestModePreference(true);
+  setHasShownInitialLogin(true);
+  logger.info(MODULE_NAME, 'Guest mode preference set and remembered');
 }
 
 

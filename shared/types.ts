@@ -49,6 +49,8 @@ export interface StoreSchema {
   playSoundEffects: boolean;
   // Feed mode preference ('player' or 'global')
   feedMode?: 'player' | 'global'; // Added optional feedMode
+  guestModePreference: boolean;
+  hasShownInitialLogin: boolean;
 }
 
 // Defines the structure for a processed kill/destruction event

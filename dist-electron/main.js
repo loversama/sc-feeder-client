@@ -16828,9 +16828,9 @@ function commentKeyword$1({ gen, schemaEnv, schema: schema2, errSchemaPath, opts
   }
 }
 function returnResults$1(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError3}(${names_1$d.default.vErrors})`));
+    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError2}(${names_1$d.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$X._)`${validateName2}.errors`, names_1$d.default.vErrors);
     if (opts.unevaluated)
@@ -17175,14 +17175,14 @@ function getData$1($data, { dataLevel, dataNames, dataPathArr }) {
 validate$1.getData = getData$1;
 var validation_error$1 = {};
 Object.defineProperty(validation_error$1, "__esModule", { value: true });
-let ValidationError$1 = class ValidationError extends Error {
+class ValidationError extends Error {
   constructor(errors2) {
     super("validation failed");
     this.errors = errors2;
     this.ajv = this.validation = true;
   }
-};
-validation_error$1.default = ValidationError$1;
+}
+validation_error$1.default = ValidationError;
 var ref_error$1 = {};
 Object.defineProperty(ref_error$1, "__esModule", { value: true });
 const resolve_1$4 = resolve$4;
@@ -23654,9 +23654,9 @@ function commentKeyword({ gen, schemaEnv, schema: schema2, errSchemaPath, opts }
   }
 }
 function returnResults(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError3}(${names_1$3.default.vErrors})`));
+    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError2}(${names_1$3.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$n._)`${validateName2}.errors`, names_1$3.default.vErrors);
     if (opts.unevaluated)
@@ -24000,15 +24000,21 @@ function getData($data, { dataLevel, dataNames, dataPathArr }) {
 }
 validate.getData = getData;
 var validation_error = {};
-Object.defineProperty(validation_error, "__esModule", { value: true });
-class ValidationError2 extends Error {
-  constructor(errors2) {
-    super("validation failed");
-    this.errors = errors2;
-    this.ajv = this.validation = true;
+var hasRequiredValidation_error;
+function requireValidation_error() {
+  if (hasRequiredValidation_error) return validation_error;
+  hasRequiredValidation_error = 1;
+  Object.defineProperty(validation_error, "__esModule", { value: true });
+  class ValidationError2 extends Error {
+    constructor(errors2) {
+      super("validation failed");
+      this.errors = errors2;
+      this.ajv = this.validation = true;
+    }
   }
+  validation_error.default = ValidationError2;
+  return validation_error;
 }
-validation_error.default = ValidationError2;
 var ref_error = {};
 Object.defineProperty(ref_error, "__esModule", { value: true });
 const resolve_1$1 = resolve$1;
@@ -24024,7 +24030,7 @@ var compile$1 = {};
 Object.defineProperty(compile$1, "__esModule", { value: true });
 compile$1.resolveSchema = compile$1.getCompilingSchema = compile$1.resolveRef = compile$1.compileSchema = compile$1.SchemaEnv = void 0;
 const codegen_1$m = codegen;
-const validation_error_1 = validation_error;
+const validation_error_1 = requireValidation_error();
 const names_1$2 = names$1;
 const resolve_1 = resolve$1;
 const util_1$k = util$n;
@@ -24297,7 +24303,7 @@ uri$1.default = uri;
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  const validation_error_12 = validation_error;
+  const validation_error_12 = requireValidation_error();
   const ref_error_12 = ref_error;
   const rules_12 = rules;
   const compile_12 = compile$1;
@@ -26750,7 +26756,7 @@ const require$$3$1 = {
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  var validation_error_12 = validation_error;
+  var validation_error_12 = requireValidation_error();
   Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function() {
     return validation_error_12.default;
   } });
@@ -31528,8 +31534,82 @@ const __dirname$2 = path$m.dirname(__filename$3);
 let mainWindow = null;
 let settingsWindow = null;
 let webContentWindow = null;
+let loginWindow = null;
 let currentWebContentSection = null;
 let activeEventDataForWindow = null;
+class WindowManager {
+  constructor() {
+    __publicField(this, "webContentWindow", null);
+    __publicField(this, "webAppUrl", "");
+    const isDevelopment = process.env.NODE_ENV === "development";
+    this.webAppUrl = isDevelopment ? "http://localhost:3001" : "https://killfeed.sinfulshadows.com";
+  }
+  // Method to send auth tokens to web content window
+  sendAuthTokensToWebContentWindow(tokens) {
+    this.webContentWindow = webContentWindow;
+    if (this.webContentWindow && !this.webContentWindow.isDestroyed()) {
+      this.webContentWindow.webContents.send("auth-tokens-updated", tokens);
+      this._handleAuthTokensForCookie(tokens);
+    }
+  }
+  // Private method to handle auth tokens for cookie setting
+  async _handleAuthTokensForCookie(tokens) {
+    console.log("[WindowManager CookieDebug] Entered _handleAuthTokensForCookie. Tokens:", tokens ? "present" : "null or undefined");
+    if (!tokens) {
+      info(MODULE_NAME$e, "No tokens provided to _handleAuthTokensForCookie");
+      return;
+    }
+    if (!this.webContentWindow || this.webContentWindow.isDestroyed()) {
+      warn(MODULE_NAME$e, "WebContentWindow is null or destroyed in _handleAuthTokensForCookie");
+      return;
+    }
+    info(MODULE_NAME$e, "Setting auth cookies for web content window");
+    try {
+      const cookieUrl = this.webAppUrl;
+      info(MODULE_NAME$e, `[WindowManager CookieDebug] Attempting to set cookies for URL: ${cookieUrl}`);
+      if (tokens.accessToken) {
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Setting access token cookie");
+        await this.webContentWindow.webContents.session.cookies.set({
+          url: cookieUrl,
+          name: "access_token",
+          value: tokens.accessToken,
+          httpOnly: false,
+          secure: cookieUrl.startsWith("https"),
+          sameSite: "lax"
+        });
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Successfully set access token cookie");
+      }
+      if (tokens.refreshToken) {
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Setting refresh token cookie");
+        await this.webContentWindow.webContents.session.cookies.set({
+          url: cookieUrl,
+          name: "refresh_token",
+          value: tokens.refreshToken,
+          httpOnly: false,
+          secure: cookieUrl.startsWith("https"),
+          sameSite: "lax"
+        });
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Successfully set refresh token cookie");
+      }
+      if (tokens.user) {
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Setting user data cookie");
+        await this.webContentWindow.webContents.session.cookies.set({
+          url: cookieUrl,
+          name: "user_data",
+          value: JSON.stringify(tokens.user),
+          httpOnly: false,
+          secure: cookieUrl.startsWith("https"),
+          sameSite: "lax"
+        });
+        info(MODULE_NAME$e, "[WindowManager CookieDebug] Successfully set user data cookie");
+      }
+      info(MODULE_NAME$e, "[WindowManager CookieDebug] All cookies set successfully");
+    } catch (error$12) {
+      error(MODULE_NAME$e, "[WindowManager CookieDebug] Error setting cookies:", error$12);
+    }
+  }
+}
+new WindowManager();
 const store$2 = new ElectronStore({
   defaults: {
     windowBounds: void 0,
@@ -32099,9 +32179,69 @@ function closeSettingsWindow() {
   }
 }
 function closeWebContentWindow() {
-  if (webContentWindow) {
+  if (webContentWindow && !webContentWindow.isDestroyed()) {
     webContentWindow.close();
     webContentWindow = null;
+  }
+}
+function createLoginWindow() {
+  if (loginWindow) {
+    loginWindow.focus();
+    return loginWindow;
+  }
+  if (!mainWindow) {
+    error(MODULE_NAME$e, "Cannot create login window: Main window does not exist.");
+    return null;
+  }
+  const appIconPath = getIconPath();
+  const loginWindowOptions = {
+    width: 400,
+    height: 500,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    alwaysOnTop: true,
+    modal: true,
+    icon: appIconPath || void 0,
+    title: "SC Kill Feed - Login",
+    webPreferences: {
+      preload: getPreloadPath("preload.mjs"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: !app$1.isPackaged,
+      spellcheck: false
+    },
+    titleBarStyle: "hidden",
+    titleBarOverlay: false,
+    autoHideMenuBar: true,
+    backgroundColor: "#222",
+    show: false,
+    center: true
+  };
+  loginWindow = new BrowserWindow(loginWindowOptions);
+  mainExports.attachTitlebarToWindow(loginWindow);
+  const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
+  if (devServerUrl) {
+    loginWindow.loadURL(`${devServerUrl}/login.html`);
+  } else {
+    const loginUrl = url$1.format({
+      pathname: path$m.join(__dirname$2, "..", "dist", "login.html"),
+      protocol: "file:",
+      slashes: true
+    });
+    loginWindow.loadURL(loginUrl);
+  }
+  loginWindow.once("ready-to-show", () => {
+    loginWindow == null ? void 0 : loginWindow.show();
+  });
+  loginWindow.on("closed", () => {
+    loginWindow = null;
+  });
+  return loginWindow;
+}
+function closeLoginWindow() {
+  if (loginWindow && !loginWindow.isDestroyed()) {
+    loginWindow.close();
   }
 }
 function getMainWindow() {
@@ -34000,6 +34140,14 @@ const schema = {
   launchOnStartup: {
     type: "boolean",
     default: true
+  },
+  guestModePreference: {
+    type: "boolean",
+    default: false
+  },
+  hasShownInitialLogin: {
+    type: "boolean",
+    default: false
   }
 };
 const store$1 = new ElectronStore({ schema });
@@ -34024,6 +34172,20 @@ function getLaunchOnStartup() {
 }
 function setLaunchOnStartup(value2) {
   store$1.set("launchOnStartup", !!value2);
+}
+function getGuestModePreference() {
+  return store$1.get("guestModePreference");
+}
+function setGuestModePreference(value2) {
+  store$1.set("guestModePreference", !!value2);
+  info(MODULE_NAME$c, `Guest Mode Preference set to: ${!!value2}`);
+}
+function clearGuestModePreference() {
+  store$1.delete("guestModePreference");
+  info(MODULE_NAME$c, "Guest Mode Preference cleared");
+}
+function setHasShownInitialLogin(value2) {
+  store$1.set("hasShownInitialLogin", true);
 }
 function getShowNotifications() {
   return store$1.get("showNotifications");
@@ -165719,6 +165881,8 @@ async function login(identifier, password) {
       };
       await storeTokensAndUser(data2.access_token, data2.refresh_token, userProfile);
       guestToken = null;
+      clearGuestModePreference();
+      setHasShownInitialLogin(true);
       info(MODULE_NAME$5, `Login successful for ${userProfile.username} (ID: ${userProfile.userId}).`);
       disconnectFromServer();
       connectToServer();
@@ -165738,6 +165902,7 @@ async function logout() {
   const currentRefreshToken = getRefreshTokenFromStore();
   await clearAllTokensAndUser();
   disconnectFromServer();
+  clearGuestModePreference();
   if (currentRefreshToken) {
     try {
       const response2 = await fetch(`${SERVER_API_URL}/api/auth/logout`, {
@@ -165847,6 +166012,11 @@ async function requestAndStoreGuestToken() {
     guestToken = null;
     return false;
   }
+}
+function setGuestModeAndRemember() {
+  setGuestModePreference(true);
+  setHasShownInitialLogin();
+  info(MODULE_NAME$5, "Guest mode preference set and remembered");
 }
 function registerAuthIpcHandlers() {
   ipcMain$1.handle("auth:login", async (_event, identifier, password) => {
@@ -166562,6 +166732,15 @@ function registerIpcHandlers() {
   } catch (error$12) {
     error(MODULE_NAME$2, `FATAL: Failed to register handler for 'get-resource-path': ${error$12.message}`, error$12.stack);
   }
+  debug$b(MODULE_NAME$2, "Attempting to register handler for 'get-app-version'...");
+  try {
+    ipcMain$1.handle("get-app-version", () => {
+      return app$1.getVersion();
+    });
+    info(MODULE_NAME$2, "Successfully registered handler for 'get-app-version'.");
+  } catch (error$12) {
+    error(MODULE_NAME$2, `FATAL: Failed to register handler for 'get-app-version': ${error$12.message}`, error$12.stack);
+  }
   ipcMain$1.handle("open-settings-window", () => {
     createSettingsWindow();
   });
@@ -166609,6 +166788,44 @@ function registerIpcHandlers() {
     info(MODULE_NAME$2, "Received 'get-web-content-window-status' request.");
     return getWebContentStatus();
   });
+  ipcMain$1.handle("auth:continueAsGuest", async () => {
+    try {
+      setGuestModeAndRemember();
+      ipcMain$1.emit("guest-mode-selected");
+      return { success: true };
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error setting guest mode:", error$12);
+      return { success: false, error: "Failed to set guest mode" };
+    }
+  });
+  ipcMain$1.handle("auth:loginSuccess", async () => {
+    try {
+      ipcMain$1.emit("login-completed");
+      return { success: true };
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error handling login success:", error$12);
+      return { success: false, error: "Failed to handle login success" };
+    }
+  });
+  ipcMain$1.handle("auth:closeLoginWindow", () => {
+    closeLoginWindow();
+    return { success: true };
+  });
+  ipcMain$1.handle("auth:show-login", () => {
+    info(MODULE_NAME$2, "Received 'auth:show-login' request. Opening login window.");
+    createLoginWindow();
+    return { success: true };
+  });
+  ipcMain$1.on("auth:reset-guest-mode", async () => {
+    info(MODULE_NAME$2, "Received 'auth:reset-guest-mode' request. Resetting guest mode and restarting app.");
+    setGuestModePreference(false);
+    app$1.relaunch({ args: process.argv.slice(1).concat(["--relaunch"]) });
+    app$1.exit();
+  });
+  ipcMain$1.handle("app:get-guest-mode-status", () => {
+    info(MODULE_NAME$2, "Received 'app:get-guest-mode-status' request.");
+    return getGuestModePreference();
+  });
   ipcMain$1.on("window:minimize", (event) => {
     const win = getMainWindow();
     if (win) {
@@ -166645,6 +166862,10 @@ function registerIpcHandlers() {
     clearSessionHistory();
     return true;
   });
+  ipcMain$1.handle("app:get-version", () => {
+    info(MODULE_NAME$2, "Received 'app:get-version' request.");
+    return app$1.getVersion();
+  });
   ipcMain$1.handle("reset-events", () => {
     clearEvents();
     return true;
@@ -166668,8 +166889,103 @@ function getDetailedUserAgent() {
 }
 const MODULE_NAME$1 = "AppLifecycle";
 let isQuitting = false;
+async function determineAuthState() {
+  if (!app$1.isPackaged) {
+    info(MODULE_NAME$1, "Development mode detected, forcing login popup");
+    return { requiresLoginPopup: true, authMode: "unknown" };
+  }
+  const existingRefreshToken = getRefreshTokenFromStore();
+  if (existingRefreshToken) {
+    const refreshResult = await refreshToken();
+    if (refreshResult) {
+      info(MODULE_NAME$1, "Valid session found, skipping login popup");
+      return { requiresLoginPopup: false, authMode: "authenticated" };
+    }
+  }
+  if (getGuestModePreference()) {
+    info(MODULE_NAME$1, "Guest mode preference found, skipping login popup");
+    return { requiresLoginPopup: false, authMode: "guest" };
+  }
+  info(MODULE_NAME$1, "No valid auth state, login popup required");
+  return { requiresLoginPopup: true, authMode: "unknown" };
+}
+async function showLoginPopup() {
+  return new Promise((resolve2) => {
+    const loginWindow2 = createLoginWindow();
+    if (!loginWindow2) {
+      error(MODULE_NAME$1, "Failed to create login window");
+      resolve2();
+      return;
+    }
+    const handleLoginComplete = () => {
+      info(MODULE_NAME$1, "Login popup completed");
+      closeLoginWindow();
+      resolve2();
+    };
+    ipcMain$1.once("login-completed", handleLoginComplete);
+    ipcMain$1.once("guest-mode-selected", handleLoginComplete);
+    loginWindow2.on("closed", () => {
+      info(MODULE_NAME$1, "Login window closed, defaulting to guest mode");
+      setGuestModeAndRemember();
+      ipcMain$1.removeListener("login-completed", handleLoginComplete);
+      ipcMain$1.removeListener("guest-mode-selected", handleLoginComplete);
+      resolve2();
+    });
+  });
+}
+async function connectToLogServer(mainWindow2) {
+  if (!getOfflineMode()) {
+    info(MODULE_NAME$1, "Online mode: Initializing authentication...");
+    const canConnect = await initializeAuth();
+    if (canConnect) {
+      info(MODULE_NAME$1, "Auth state allows connection. Connecting to server...");
+      connectToServer();
+    } else {
+      warn(MODULE_NAME$1, "No auth token available. Will connect as guest if guest token obtained.");
+    }
+  } else {
+    info(MODULE_NAME$1, "Offline mode enabled. Skipping server connection.");
+    disconnectFromServer();
+  }
+}
+async function loadHistoricData(mainWindow2) {
+  try {
+    await loadHistoricKillTally();
+  } catch (err) {
+    error(MODULE_NAME$1, "Error loading historic kill tally:", err.message);
+  }
+  try {
+    await startWatchingLogFile();
+    mainWindow2.webContents.send("log-status", "Log monitoring active.");
+  } catch (err) {
+    error(MODULE_NAME$1, "Error starting log watcher:", err.message);
+    mainWindow2.webContents.send("log-status", `Error starting log monitoring: ${err.message}`);
+  }
+}
+function registerGlobalShortcuts(mainWindow2) {
+  const devToolsRet = globalShortcut.register("CommandOrCtrl+Shift+I", () => {
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (focusedWindow) {
+      debug$b(MODULE_NAME$1, "DevTools shortcut pressed.");
+      focusedWindow.webContents.toggleDevTools();
+    }
+  });
+  if (!devToolsRet) {
+    warn(MODULE_NAME$1, "Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).");
+  }
+  const f12Ret = globalShortcut.register("F12", () => {
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (focusedWindow) {
+      debug$b(MODULE_NAME$1, "F12 pressed - toggling DevTools.");
+      focusedWindow.webContents.toggleDevTools();
+    }
+  });
+  if (!f12Ret) {
+    warn(MODULE_NAME$1, "Failed to register F12 shortcut.");
+  }
+}
 async function onReady() {
-  info(MODULE_NAME$1, "App ready.");
+  info("App is ready, initializing...");
   process.env.APP_ROOT = app$1.getAppPath();
   info(MODULE_NAME$1, `APP_ROOT set using app.getAppPath(): ${process.env.APP_ROOT}`);
   if (typeof process.env.APP_ROOT !== "string" || !process.env.APP_ROOT) {
@@ -166681,47 +166997,28 @@ async function onReady() {
   info(MODULE_NAME$1, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
   registerIpcHandlers();
   registerAuthIpcHandlers();
-  if (!getOfflineMode()) {
-    info(MODULE_NAME$1, "Online mode: Initializing authentication...");
-    const canConnect = await initializeAuth();
-    if (canConnect) {
-      info(MODULE_NAME$1, "Auth initialized with a token. Attempting server connection...");
-      connectToServer();
-    } else {
-      warn(MODULE_NAME$1, "Auth initialized without a token. Connection will be attempted later if needed (e.g., by log watcher or login).");
-    }
-  } else {
-    info(MODULE_NAME$1, "Offline mode enabled. Skipping initial authentication and server connection.");
-    disconnectFromServer();
+  const authState = await determineAuthState();
+  if (authState.requiresLoginPopup) {
+    await showLoginPopup();
   }
   createTrayMenu();
-  createMainWindow(async () => {
-    var _a3, _b;
-    info(MODULE_NAME$1, "Main window finished loading.");
-    info(MODULE_NAME$1, "Scheduling update check...");
-    setTimeout(() => {
-      info(MODULE_NAME$1, "Checking for updates...");
-      main$2.autoUpdater.checkForUpdatesAndNotify().then((result) => {
-        var _a4;
-        info(MODULE_NAME$1, `Update check promise resolved. Update available: ${((_a4 = result == null ? void 0 : result.updateInfo) == null ? void 0 : _a4.version) ?? "No"}`);
-      }).catch((err) => {
-        error(MODULE_NAME$1, `Error invoking checkForUpdatesAndNotify: ${err.message}`);
-      });
-    }, 1e4);
-    try {
-      await loadHistoricKillTally();
-    } catch (err) {
-      error(MODULE_NAME$1, "Error loading historic kill tally:", err.message);
-    }
-    try {
-      await startWatchingLogFile();
-      (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("log-status", "Log monitoring active.");
-    } catch (err) {
-      error(MODULE_NAME$1, "Error starting log watcher:", err.message);
-      (_b = getMainWindow()) == null ? void 0 : _b.webContents.send("log-status", `Error starting log monitoring: ${err.message}`);
-    }
-  });
-  registerGlobalShortcuts();
+  const mainWindow2 = createMainWindow();
+  if (mainWindow2) {
+    await connectToLogServer();
+    await loadHistoricData(mainWindow2);
+    registerGlobalShortcuts();
+  }
+  info(MODULE_NAME$1, "Scheduling update check...");
+  setTimeout(() => {
+    info(MODULE_NAME$1, "Checking for updates...");
+    main$2.autoUpdater.checkForUpdatesAndNotify().then((result) => {
+      var _a3;
+      info(MODULE_NAME$1, `Update check promise resolved. Update available: ${((_a3 = result == null ? void 0 : result.updateInfo) == null ? void 0 : _a3.version) ?? "No"}`);
+    }).catch((err) => {
+      error(MODULE_NAME$1, `Error invoking checkForUpdatesAndNotify: ${err.message}`);
+    });
+  }, 1e4);
+  info("App initialization complete.");
 }
 async function onWindowAllClosed() {
   info(MODULE_NAME$1, "WindowAllClosed event.");
@@ -166763,28 +167060,6 @@ async function performCleanup() {
   destroyTray();
   closeAllWindows();
   info(MODULE_NAME$1, "Cleanup operations complete.");
-}
-function registerGlobalShortcuts() {
-  const devToolsRet = globalShortcut.register("CommandOrCtrl+Shift+I", () => {
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-    if (focusedWindow) {
-      debug$b(MODULE_NAME$1, "DevTools shortcut pressed.");
-      focusedWindow.webContents.toggleDevTools();
-    }
-  });
-  if (!devToolsRet) {
-    warn(MODULE_NAME$1, "Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).");
-  }
-  const f12Ret = globalShortcut.register("F12", () => {
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-    if (focusedWindow) {
-      debug$b(MODULE_NAME$1, "F12 pressed - toggling DevTools.");
-      focusedWindow.webContents.toggleDevTools();
-    }
-  });
-  if (!f12Ret) {
-    warn(MODULE_NAME$1, "Failed to register F12 shortcut.");
-  }
 }
 function setIsQuitting(value2) {
   isQuitting = value2;

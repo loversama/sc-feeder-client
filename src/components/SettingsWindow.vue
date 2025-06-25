@@ -29,6 +29,8 @@ const offlineMode = ref<boolean>(false);
 const csvLogPath = ref<string>('');
 const fetchProfileData = ref<boolean>(true);
 const launchOnStartup = ref<boolean>(true); // Launch on startup toggle
+const version = ref<string>('Loading...');
+const isGuestMode = ref<boolean>(false); // Guest mode status
 
 // --- Account State ---
 const loginIdentifier = ref<string>('');
@@ -158,6 +160,26 @@ onMounted(async () => {
     console.error('Failed to get launch on startup setting:', error);
     launchOnStartup.value = true; // Default
   }
+
+  // Load application version
+  try {
+    if (window.logMonitorApi?.getAppVersion) { // Assuming this is the correct IPC channel
+        version.value = await window.logMonitorApi.getAppVersion();
+    }
+  } catch (error) {
+    console.error('Failed to get app version:', error);
+    version.value = 'Error loading version';
+  }
+
+  // Load guest mode status
+  try {
+    if (window.logMonitorApi?.getGuestModeStatus) {
+      isGuestMode.value = await window.logMonitorApi.getGuestModeStatus();
+    }
+  } catch (error) {
+    console.error('Failed to get guest mode status:', error);
+  }
+
 });
 
 // --- Account Methods ---
@@ -504,11 +526,11 @@ const toggleLaunchOnStartup = async () => {
       <!-- About Section -->
       <section v-if="activeCategory === 'about'">
         <h3 class="content-title">ABOUT</h3>
-        <div class="about-content">
-          <p><strong>SC Feeder Client</strong></p>
-          <p>Version: 0.0.2-alpha.0</p>
-          <p>Developed by: SinfulShadows</p>
-          <p>This application monitors your Star Citizen Game.log file to provide a real-time feed of combat and other significant events.</p>
+        <div class="setting-item">
+          <label class="setting-name">Application Version</label>
+          <div class="setting-control">
+            <span>{{ version }}</span>
+          </div>
         </div>
       </section>
 
@@ -532,6 +554,19 @@ const toggleLaunchOnStartup = async () => {
                       <span>Logged in as: <strong>{{ loggedInUsername || 'Unknown' }}</strong></span>
                   </div>
               </div>
+              <!-- Guest Mode Status -->
+              <div class="setting-item">
+                  <label class="setting-name">Guest Mode Active</label>
+                  <div class="setting-control">
+                      <span :class="['status-indicator', isGuestMode ? 'guest-active' : 'authenticated']">
+                          {{ isGuestMode ? 'Yes' : 'No' }}
+                      </span>
+                  </div>
+              </div>
+              <div class="setting-description">
+                  Shows whether the application is currently running in guest mode.
+              </div>
+
               <div class="setting-item action-item">
                   <button @click="handleLogout" class="action-button danger-button">Logout</button>
               </div>
@@ -750,6 +785,30 @@ display: none !important;
 .action-button.danger-button:hover {
   background-color: #c0392b;
 }
+
+/* Status Indicator Styles */
+.status-indicator {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-indicator.guest-active {
+  background-color: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.status-indicator.authenticated {
+  background-color: rgba(40, 167, 69, 0.2);
+  color: #28a745;
+  border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
 .action-button:disabled {
   background-color: #555;
   cursor: not-allowed;
