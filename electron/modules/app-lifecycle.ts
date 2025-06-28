@@ -61,7 +61,7 @@ async function determineAuthState(): Promise<{
   return { requiresLoginPopup: true, authMode: 'unknown' };
 }
 
-async function showLoginPopup(): Promise<void> {
+async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
   logger.info(MODULE_NAME, 'showLoginPopup called - creating login window');
   return new Promise((resolve) => {
     // Create login window - no main window dependency required
@@ -69,7 +69,7 @@ async function showLoginPopup(): Promise<void> {
     
     if (!loginWindow) {
       logger.error(MODULE_NAME, 'Failed to create login window');
-      resolve();
+      resolve({ authAlreadyInitialized: false });
       return;
     }
     
@@ -77,37 +77,49 @@ async function showLoginPopup(): Promise<void> {
 
     // Listen for login completion
     const handleLoginComplete = () => {
-      logger.info(MODULE_NAME, 'Login popup completed');
+      logger.info(MODULE_NAME, 'Login popup completed with authentication');
       closeLoginWindow();
-      resolve(); // This allows main window creation to proceed
+      resolve({ authAlreadyInitialized: true }); // Auth was initialized by login popup
+    };
+
+    const handleGuestModeSelected = () => {
+      logger.info(MODULE_NAME, 'Login popup completed with guest mode');
+      closeLoginWindow();
+      resolve({ authAlreadyInitialized: true }); // Guest mode was set by popup
     };
 
     // Listen for authentication events
     ipcMain.once('login-completed', handleLoginComplete);
-    ipcMain.once('guest-mode-selected', handleLoginComplete);
+    ipcMain.once('guest-mode-selected', handleGuestModeSelected);
     
     // Handle window close (treat as guest mode)
     loginWindow.on('closed', () => {
       logger.info(MODULE_NAME, 'Login window closed, defaulting to guest mode');
       setGuestModeAndRemember();
       ipcMain.removeListener('login-completed', handleLoginComplete);
-      ipcMain.removeListener('guest-mode-selected', handleLoginComplete);
-      resolve();
+      ipcMain.removeListener('guest-mode-selected', handleGuestModeSelected);
+      resolve({ authAlreadyInitialized: true }); // Guest mode was set
     });
   });
 }
 
-async function connectToLogServer(mainWindow: BrowserWindow) {
+async function connectToLogServer(mainWindow: BrowserWindow, authAlreadyInitialized: boolean = false) {
   // Initialize authentication based on final state
   if (!getOfflineMode()) {
-    logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
-    const canConnect = await initializeAuth();
-    
-    if (canConnect) {
-      logger.info(MODULE_NAME, "Auth state allows connection. Connecting to server...");
+    if (authAlreadyInitialized) {
+      logger.info(MODULE_NAME, "Auth already initialized by login popup, skipping initializeAuth()");
+      // Auth was already initialized by login popup, just connect
       connectToServer();
     } else {
-      logger.warn(MODULE_NAME, "No auth token available. Will connect as guest if guest token obtained.");
+      logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
+      const canConnect = await initializeAuth();
+      
+      if (canConnect) {
+        logger.info(MODULE_NAME, "Auth state allows connection. Connecting to server...");
+        connectToServer();
+      } else {
+        logger.warn(MODULE_NAME, "No auth token available. Will connect as guest if guest token obtained.");
+      }
     }
   } else {
     logger.info(MODULE_NAME, "Offline mode enabled. Skipping server connection.");
@@ -184,8 +196,10 @@ async function onReady() {
   const authState = await determineAuthState();
 
   // 2. If login is required, show the popup and WAIT for it to finish.
+  let authAlreadyInitialized = false;
   if (authState.requiresLoginPopup) {
-    await showLoginPopup();
+    const loginResult = await showLoginPopup();
+    authAlreadyInitialized = loginResult.authAlreadyInitialized;
   }
 
   // 3. ONLY AFTER the entire auth flow is complete, create the main UI.
@@ -194,7 +208,7 @@ async function onReady() {
 
   // 4. Continue with the rest of the app initialization.
   if (mainWindow) {
-    await connectToLogServer(mainWindow);
+    await connectToLogServer(mainWindow, authAlreadyInitialized);
     await loadHistoricData(mainWindow);
     registerGlobalShortcuts(mainWindow);
   }

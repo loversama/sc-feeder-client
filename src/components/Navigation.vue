@@ -64,8 +64,20 @@ const handleCommand = async (command: string) => {
 
 // Set up auth status listener and load initial state
 onMounted(async () => {
+  console.log('[Navigation] Component mounted, checking auth status...')
   await updateAuthStatus()
-  window.ipcRenderer.on('auth-status-changed', updateAuthStatus)
+  console.log('[Navigation] Initial auth status loaded:', {
+    isAuthenticated: userState.value.isAuthenticated,
+    username: userState.value.username
+  })
+  
+  // Listen for auth status changes
+  if (window.logMonitorApi?.onAuthStatusChanged) {
+    window.logMonitorApi.onAuthStatusChanged((event, status) => {
+      console.log('[Navigation] Received auth-status-changed:', status)
+      updateAuthStatus()
+    })
+  }
 })
 
 const changePage = (page: string) => {

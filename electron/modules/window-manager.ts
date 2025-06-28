@@ -835,7 +835,7 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
         y: undefined,
         title: 'SC Feeder - Web Content',
         webPreferences: {
-            preload: getPreloadPath('webview-preload.mjs'),
+            preload: getPreloadPath('preload.mjs'), // Use standard preload for web content window
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged,

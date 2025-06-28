@@ -68,7 +68,9 @@ const handleLogin = async () => {
     const result = await window.logMonitorApi.authLogin(loginForm.identifier, loginForm.password)
     
     if (result.success) {
+      // Login successful - trigger main window creation and close login window
       await window.logMonitorApi.authLoginSuccess()
+      await window.logMonitorApi.authCloseLoginWindow()
     } else {
       error.value = result.error || 'Login failed. Please check your credentials.'
     }

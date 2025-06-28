@@ -318,6 +318,7 @@ try {
 
     ipcMain.handle('auth:loginSuccess', async () => {
       try {
+        logger.info(MODULE_NAME, 'Login successful - emitting login-completed event');
         ipcMain.emit('login-completed');
         return { success: true };
       } catch (error) {

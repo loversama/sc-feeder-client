@@ -1,55 +1,117 @@
 <template>
-  <div class="web-content-container">
-    <webview
-      ref="webviewRef"
-      :src="webviewSrc"
-      :preload="guestPreloadScriptPath"
-      style="width: 100%; height: 100vh;"
-      partition="persist:logmonitorweb"
-      allowpopups
-      @dom-ready="onWebviewDomReady"
-      @ipc-message="handleIpcMessage"
-      @console-message="handleConsoleMessage"
-      @did-fail-load="handleLoadFail"
-      @did-navigate="handleDidNavigate"
-      @did-frame-navigate="handleDidFrameNavigate"
-    ></webview>
+  <div class="flex flex-col h-screen overflow-hidden bg-theme-bg-dark text-theme-text-light">
+    <!-- Navigation Header -->
+    <header class="p-2 bg-[#171717] border-b border-[#262626] shadow-md shrink-0 h-[80px] flex items-center justify-between">
+      <nav class="mt-2 flex items-center">
+        <!-- Navigation Links -->
+        <button
+          @click="setActiveSection('profile')"
+          class="ml-[50px] p-2 rounded transition-colors duration-200"
+          :class="{ 
+            'text-[rgb(99,99,247)] bg-white/5': activeSection === 'profile',
+            'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'profile' 
+          }"
+        >
+          Profile
+        </button>
+        <button
+          @click="setActiveSection('leaderboard')"
+          class="ml-4 p-2 rounded transition-colors duration-200"
+          :class="{ 
+            'text-[rgb(99,99,247)] bg-white/5': activeSection === 'leaderboard',
+            'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'leaderboard' 
+          }"
+        >
+          Leaderboard
+        </button>
+      </nav>
+    </header>
+
+    <!-- Main Webview Content -->
+    <div class="flex-1 overflow-hidden">
+      <webview
+        ref="webviewRef"
+        :src="webviewSrc"
+        :preload="guestPreloadScriptPath"
+        style="width: 100%; height: 100%;"
+        partition="persist:logmonitorweb"
+        allowpopups
+        @dom-ready="onWebviewDomReady"
+        @ipc-message="handleIpcMessage"
+        @console-message="handleConsoleMessage"
+        @did-fail-load="handleLoadFail"
+        @did-navigate="handleDidNavigate"
+        @did-frame-navigate="handleDidFrameNavigate"
+      ></webview>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import type { IpcRendererEvent } from 'electron'; // Explicitly import IpcRendererEvent
-import type { AuthData, UserProfile } from '../preload'; // Import AuthData and UserProfile from preload.d.ts
-// import { useRoute } from 'vue-router'; // No longer using route from here for initial path
-// import path from 'path'; // window.logMonitorApi.getPreloadPath will handle path resolution
+import type { IpcRendererEvent } from 'electron';
+import type { AuthData, UserProfile } from '../preload';
 
 const webviewRef = ref<Electron.WebviewTag | null>(null);
-const baseWebUrl = import.meta.env.VITE_WEB_CONTENT_URL || 'http://localhost:3001'; // Ensure this is correct
-// const route = useRoute(); // Not used for initial path
+const activeSection = ref<'profile' | 'leaderboard'>('profile'); // Current active section
+const baseWebUrl = import.meta.env.VITE_WEB_CONTENT_URL || 'http://localhost:3001';
 
-// Determine the target path for the webview based on the route query parameter
-// or a prop if this component were to be used more generically.
-// The 'section' is passed via openWebContentWindow in main.ts and set as a query param.
-const targetPath = ref('/'); // Default to homepage, will be updated by main process status
+// State for authentication
+const isAuthenticated = ref(false);
+const currentUsername = ref<string | null>(null);
 
+// Computed webview URL based on active section and authentication status
 const webviewSrc = computed(() => {
-  const fullPath = `${baseWebUrl}${targetPath.value.startsWith('/') ? '' : '/'}${targetPath.value}`;
-  console.log(`[WebContentPage] Computed webviewSrc: ${fullPath}. Current targetPath: ${targetPath.value}`);
-  return fullPath;
+  const isDevelopment = import.meta.env.DEV;
+  const webAppBaseUrl = isDevelopment
+    ? 'http://localhost:3001'
+    : 'https://killfeed.sinfulshadows.com';
+  
+  let url = '';
+  
+  // Use different URLs based on authentication status
+  if (isAuthenticated.value) {
+    // Authenticated user URLs - token-based authentication
+    if (activeSection.value === 'profile') {
+      url = `${webAppBaseUrl}/profile?source=electron&auth=true`;
+    } else if (activeSection.value === 'leaderboard') {
+      url = `${webAppBaseUrl}/leaderboard?source=electron&auth=true`;
+    } else {
+      url = `${webAppBaseUrl}?source=electron&auth=true`;
+    }
+  } else {
+    // Guest mode URLs
+    if (activeSection.value === 'profile' && currentUsername.value) {
+      url = `${webAppBaseUrl}/user/${currentUsername.value}?source=electron`;
+    } else if (activeSection.value === 'leaderboard') {
+      url = `${webAppBaseUrl}/leaderboard?source=electron`;
+    } else {
+      url = `${webAppBaseUrl}?source=electron`;
+    }
+  }
+  
+  console.log(`[WebContentPage] Computed webviewSrc: ${url} for section: ${activeSection.value}, authenticated: ${isAuthenticated.value}`);
+  return url;
 });
 
-watch(targetPath, (newPath, oldPath) => {
-  console.log(`[WebContentPage] targetPath changed from "${oldPath}" to "${newPath}". Webview will attempt to navigate.`);
+// Function to change active section
+const setActiveSection = (section: 'profile' | 'leaderboard') => {
+  console.log(`[WebContentPage] Setting active section to: ${section}`);
+  activeSection.value = section;
+};
+
+// Watch for section changes and authentication changes to reload webview
+watch([activeSection, isAuthenticated, currentUsername], ([newSection, newAuth, newUsername], [oldSection, oldAuth, oldUsername]) => {
+  console.log(`[WebContentPage] State changed - section: "${oldSection}" -> "${newSection}", auth: ${oldAuth} -> ${newAuth}, username: "${oldUsername}" -> "${newUsername}"`);
   isGuestPreloadReady = false; // Reset guest preload readiness on navigation
-  if (webviewRef.value && webviewRef.value.getURL() !== webviewSrc.value) {
-    console.log(`[WebContentPage] Calling webviewRef.value.loadURL(${webviewSrc.value})`);
+  if (webviewRef.value) {
+    console.log(`[WebContentPage] Loading new URL: ${webviewSrc.value}`);
     webviewRef.value.loadURL(webviewSrc.value);
   }
 });
 
 const guestPreloadScriptPath = ref('');
-let isGuestPreloadReady = false; // Flag to track if the GUEST preload script has loaded
+let isGuestPreloadReady = false;
 
 // Function to fetch tokens using the MAIN bridge and send to webview guest
 const sendAuthDataToWebviewGuest = async (reason: string) => {
@@ -91,82 +153,90 @@ const sendAuthDataToWebviewGuest = async (reason: string) => {
 };
 
 
-onMounted(async () => {
-  console.log('[WebContentPage] Mounted. Checking for MAIN electronAuthBridge in host page:', typeof window.electronAuthBridge, window.electronAuthBridge);
-  if (window.electronAuthBridge) {
-    console.log('[WebContentPage] MAIN electronAuthBridge IS ACCESSIBLE in the host page!');
-  } else {
-    console.warn('[WebContentPage] MAIN electronAuthBridge IS NOT ACCESSIBLE in the host page. This is unexpected!');
+// Function to update authentication status
+const updateAuthStatus = async () => {
+  try {
+    if (window.logMonitorApi && window.logMonitorApi.authGetStatus) {
+      const status = await window.logMonitorApi.authGetStatus();
+      isAuthenticated.value = status.isAuthenticated;
+      currentUsername.value = status.username;
+      console.log(`[WebContentPage] Auth status updated: authenticated=${isAuthenticated.value}, username=${currentUsername.value}`);
+    }
+  } catch (error) {
+    console.error('[WebContentPage] Failed to get auth status:', error);
+    isAuthenticated.value = false;
+    currentUsername.value = null;
   }
+};
 
+onMounted(async () => {
+  console.log('[WebContentPage] Mounted.');
+
+  // Get authentication status first
+  await updateAuthStatus();
+
+  // Get guest preload script path
   if (window.logMonitorApi && window.logMonitorApi.getPreloadPath) {
     try {
-      // Get path for the GUEST preload script
-      guestPreloadScriptPath.value = await window.logMonitorApi.getPreloadPath('guest-preload.mjs'); // CHANGED filename
+      guestPreloadScriptPath.value = await window.logMonitorApi.getPreloadPath('guest-preload.mjs');
       console.log('[WebContentPage] Preload path for GUEST webview set to:', guestPreloadScriptPath.value);
-      if (!guestPreloadScriptPath.value) {
-        console.error("[WebContentPage] FATAL: getPreloadPath('guest-preload.mjs') returned empty or null!");
-      }
     } catch (error) {
       console.error('[WebContentPage] Failed to get GUEST webview preload path:', error);
     }
-  } else {
-    console.error('[WebContentPage] logMonitorApi.getPreloadPath not available. Cannot set guest preload.');
   }
 
+  // Get initial section from window status
   if (window.logMonitorApi && window.logMonitorApi.getWebContentWindowStatus) {
-    const status = await window.logMonitorApi.getWebContentWindowStatus();
-    if (status.isOpen && status.activeSection) {
-      targetPath.value = status.activeSection === '/' ? '/' : `/${status.activeSection}`;
-      console.log(`[WebContentPage] Initial targetPath set to: ${targetPath.value}`);
-    } else {
-      // Fallback if no active section is provided, e.g. load a default like homepage
-       targetPath.value = '/'; // Or some other sensible default
-       console.log(`[WebContentPage] No active section from main, defaulting targetPath to: ${targetPath.value}`);
+    try {
+      const status = await window.logMonitorApi.getWebContentWindowStatus();
+      if (status.isOpen && status.activeSection) {
+        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard') {
+          activeSection.value = status.activeSection;
+          console.log(`[WebContentPage] Initial section set to: ${activeSection.value}`);
+        }
+      }
+    } catch (error) {
+      console.error('[WebContentPage] Failed to get initial window status:', error);
     }
   }
 
-  if (window.logMonitorApi && window.logMonitorApi.onWebContentWindowStatus) {
-    window.logMonitorApi.onWebContentWindowStatus((_event, status) => {
-      console.log('[WebContentPage] Received webContentWindowStatus update:', status);
-      if (status.isOpen && status.activeSection) {
-        const newPath = status.activeSection === '/' ? '/' : `/${status.activeSection}`;
-        if (targetPath.value !== newPath) {
-          targetPath.value = newPath;
+  // Listen for navigation requests from main process
+  window.addEventListener('web-content-navigate', (event: any) => {
+    const section = event.detail?.section;
+    if (section === 'profile' || section === 'leaderboard') {
+      console.log(`[WebContentPage] Received navigation request for: ${section}`);
+      setActiveSection(section);
+    }
+  });
+
+  // Listen for auth status changes
+  if (window.logMonitorApi && window.logMonitorApi.onAuthStatusChanged) {
+    window.logMonitorApi.onAuthStatusChanged((_event: IpcRendererEvent, status: any) => {
+      console.log('[WebContentPage] Received auth-status-changed:', status);
+      isAuthenticated.value = status.isAuthenticated;
+      currentUsername.value = status.username;
+      // URL will automatically update due to computed property
+    });
+  }
+
+  // Listen for auth updates from main process
+  if (window.logMonitorApi && window.logMonitorApi.onMainAuthUpdate) {
+    window.logMonitorApi.onMainAuthUpdate(async (_event: IpcRendererEvent, authData: AuthData) => {
+      console.log('[WebContentPage] Received main-auth-update:', authData);
+      // Update local auth state
+      await updateAuthStatus();
+      
+      if (webviewRef.value && isGuestPreloadReady) {
+        if (authData && (authData.accessToken || authData.refreshToken || authData.user)) {
+          console.log('[WebContentPage] Forwarding auth data to guest webview');
+          webviewRef.value.send('to-guest-auth-data', authData);
+        } else {
+          console.log('[WebContentPage] Clearing auth data in guest webview');
+          webviewRef.value.send('to-guest-clear-auth-data');
         }
       }
     });
   }
-
-  // Listen for token updates from the MAIN Electron process (via webview-preload.mjs -> main bridge)
-  // This is if the main process pushes tokens down to this host page.
-  if (window.electronAuthBridge && typeof window.electronAuthBridge.onTokensUpdated === 'function') {
-      // This assumes webview-preload.mjs would be modified to provide an 'onTokensUpdated'
-      // For now, we'll rely on guest requesting or main bridge pushing via direct send.
-      // Let's simplify: when main auth state changes, main process should tell this window,
-      // and this window tells the guest.
-      // For now, we will use the guest-initiated request.
-  }
-  // Alternative: Main process sends an IPC to this window when auth state changes.
-  if (window.logMonitorApi && window.logMonitorApi.onMainAuthUpdate) {
-    window.logMonitorApi.onMainAuthUpdate(async (_event: IpcRendererEvent, authData: AuthData) => {
-        console.log('[WebContentPage] Received "main-auth-update" from main process with data:', authData);
-        // Now send this to the guest
-        if (webviewRef.value && isGuestPreloadReady) {
-             if (authData && (authData.accessToken || authData.refreshToken || authData.user)) {
-                console.log('[WebContentPage] Forwarding "to-guest-auth-data" to webview GUEST from main-auth-update:', authData);
-                webviewRef.value.send('to-guest-auth-data', authData);
-              } else {
-                console.warn('[WebContentPage] No auth data from main-auth-update. Sending clear signal to guest.');
-                webviewRef.value.send('to-guest-clear-auth-data');
-              }
-        } else {
-            console.warn('[WebContentPage] Cannot forward main-auth-update to guest: webview or guest preload not ready.');
-        }
-    });
-  }
-
-
 });
 
 const onWebviewDomReady = () => {
@@ -223,7 +293,22 @@ const handleLoadFail = (event: Electron.DidFailLoadEvent) => {
     validatedURL: event.validatedURL,
     isMainFrame: event.isMainFrame,
   });
-  // Potentially show an error message to the user
+  
+  // Handle specific error cases
+  if (event.errorCode === -3) { // ERR_ABORTED
+    console.warn('[WebContentPage] Load was aborted, possibly due to navigation or server unavailable');
+    // Don't retry automatically for aborted loads as they might be intentional
+  } else if (event.errorCode === -2) { // ERR_FAILED
+    console.error('[WebContentPage] Network error - server may be down');
+    // Could show user-friendly error message
+  } else if (event.errorCode === -105) { // ERR_NAME_NOT_RESOLVED
+    console.error('[WebContentPage] DNS resolution failed - check internet connection');
+  } else {
+    console.error('[WebContentPage] Unknown error loading webview content');
+  }
+  
+  // Reset guest preload readiness on load failure
+  isGuestPreloadReady = false;
 };
 
 const handleDidNavigate = (event: Electron.DidNavigateEvent) => {
@@ -246,8 +331,49 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.web-content-container { /* ... */ }
-webview { /* ... */ }
-</style>
+/* Custom titlebar styles */
+.cet-title.cet-title-center {
+  display: none !important;
+}
 
-<!-- Dummy comment to trigger TypeScript re-evaluation -->
+.cet-container {
+  position: relative !important;
+  top: 0px !important;
+  bottom: 0;
+  overflow: auto;
+  z-index: 1;
+}
+
+.cet-drag-region {
+  z-index: 1 !important;
+}
+
+.cet-menubar {
+  display: none !important;
+}
+
+.cet-icon {
+  display: none !important;
+}
+
+/* Ensure webview takes full space */
+webview {
+  border: none;
+  outline: none;
+}
+
+/* Navigation button states */
+button {
+  outline: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+button:focus {
+  outline: 2px solid rgba(99, 99, 247, 0.5);
+  outline-offset: 2px;
+}
+</style>
