@@ -172,13 +172,52 @@ export function registerIpcHandlers() {
         return ConfigManager.getLaunchOnStartup();
     });
     ipcMain.handle('set-launch-on-startup', (event, value: boolean) => {
-        ConfigManager.setLaunchOnStartup(!!value);
-        // Set OS login item
-        app.setLoginItemSettings({
-            openAtLogin: !!value,
-            args: ['--hidden'] // Electron convention for "start hidden/in tray"
-        });
-        return !!value;
+        const boolValue = !!value;
+        ConfigManager.setLaunchOnStartup(boolValue);
+        
+        try {
+            // Don't set up auto-launch in development mode
+            if (process.env.NODE_ENV === 'development') {
+                logger.debug(MODULE_NAME, 'Development mode detected, skipping OS login item setup');
+                return boolValue;
+            }
+
+            // Set OS login item with platform-specific configuration
+            const appFolder = path.dirname(process.execPath);
+            const exeName = path.basename(process.execPath);
+            
+            if (process.platform === 'win32' && app.isPackaged) {
+                // Windows production - use Squirrel-compatible path for auto-updater
+                const stubLauncher = path.resolve(appFolder, '..', exeName);
+                logger.info(MODULE_NAME, `Setting Windows startup (${boolValue}) with Squirrel path: ${stubLauncher}`);
+                
+                app.setLoginItemSettings({
+                    openAtLogin: boolValue,
+                    path: stubLauncher,
+                    args: [
+                        '--processStart', `"${exeName}"`,
+                        '--process-start-args', '"--hidden"'
+                    ]
+                });
+            } else {
+                // macOS, Linux, or development
+                logger.info(MODULE_NAME, `Setting startup (${boolValue}) with standard configuration`);
+                
+                app.setLoginItemSettings({
+                    openAtLogin: boolValue,
+                    args: ['--hidden'] // Start hidden when launched at startup
+                });
+            }
+
+            // Verify the setting was applied correctly
+            const verifySettings = app.getLoginItemSettings();
+            logger.info(MODULE_NAME, `Startup setting updated. New state: openAtLogin=${verifySettings.openAtLogin}`);
+            
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to update OS login item settings:', error);
+        }
+        
+        return boolValue;
     });
 
     // API/CSV Settings
@@ -250,15 +289,25 @@ try {
     // NEW: Handler for Web Content Window
     ipcMain.handle('open-web-content-window', (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => { // Type the initialTab
       logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
-      // Pass initialTab directly to createWebContentWindow, which now handles the URL hash
-      const webWindow = createWebContentWindow(initialTab); // Pass initialTab here
+      
+      // Filter to only supported sections for createWebContentWindow
+      let supportedSection: 'profile' | 'leaderboard' | 'map' | undefined = undefined;
+      if (initialTab === 'profile' || initialTab === 'leaderboard' || initialTab === 'map') {
+        supportedSection = initialTab;
+      } else if (initialTab === 'stats' || initialTab === '/') {
+        // Map unsupported sections to profile as default
+        logger.info(MODULE_NAME, `Mapping unsupported section '${initialTab}' to 'profile'`);
+        supportedSection = 'profile';
+      }
+      
+      // Pass filtered section to createWebContentWindow
+      const webWindow = createWebContentWindow(supportedSection);
 
       if (webWindow) {
           // Send status update regardless of whether it was created or focused
-          // Use initialTab if provided, otherwise maybe default to a known section or null?
-          // Let's assume for now the web content window itself determines the default if no hash is present.
-          getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: initialTab });
-          logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${initialTab || 'default'} }`);
+          // Use supportedSection for the status update to match what was actually passed to createWebContentWindow
+          getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: supportedSection });
+          logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${supportedSection || 'default'} }`);
 
           // Ensure the window is focused/restored if it already existed
           if (webWindow.isMinimized()) webWindow.restore();

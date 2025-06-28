@@ -14508,302 +14508,314 @@ var boolSchema$1 = {};
 var errors$2 = {};
 var codegen$1 = {};
 var code$3 = {};
-(function(exports) {
-  Object.defineProperty(exports, "__esModule", { value: true });
-  exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
-  class _CodeOrName {
-  }
-  exports._CodeOrName = _CodeOrName;
-  exports.IDENTIFIER = /^[a-z$_][a-z$_0-9]*$/i;
-  class Name extends _CodeOrName {
-    constructor(s) {
-      super();
-      if (!exports.IDENTIFIER.test(s))
-        throw new Error("CodeGen: name must be a valid identifier");
-      this.str = s;
+var hasRequiredCode;
+function requireCode() {
+  if (hasRequiredCode) return code$3;
+  hasRequiredCode = 1;
+  (function(exports) {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
+    class _CodeOrName {
     }
-    toString() {
-      return this.str;
-    }
-    emptyStr() {
-      return false;
-    }
-    get names() {
-      return { [this.str]: 1 };
-    }
-  }
-  exports.Name = Name;
-  class _Code extends _CodeOrName {
-    constructor(code2) {
-      super();
-      this._items = typeof code2 === "string" ? [code2] : code2;
-    }
-    toString() {
-      return this.str;
-    }
-    emptyStr() {
-      if (this._items.length > 1)
-        return false;
-      const item = this._items[0];
-      return item === "" || item === '""';
-    }
-    get str() {
-      var _a3;
-      return (_a3 = this._str) !== null && _a3 !== void 0 ? _a3 : this._str = this._items.reduce((s, c) => `${s}${c}`, "");
-    }
-    get names() {
-      var _a3;
-      return (_a3 = this._names) !== null && _a3 !== void 0 ? _a3 : this._names = this._items.reduce((names2, c) => {
-        if (c instanceof Name)
-          names2[c.str] = (names2[c.str] || 0) + 1;
-        return names2;
-      }, {});
-    }
-  }
-  exports._Code = _Code;
-  exports.nil = new _Code("");
-  function _(strs, ...args) {
-    const code2 = [strs[0]];
-    let i = 0;
-    while (i < args.length) {
-      addCodeArg(code2, args[i]);
-      code2.push(strs[++i]);
-    }
-    return new _Code(code2);
-  }
-  exports._ = _;
-  const plus = new _Code("+");
-  function str2(strs, ...args) {
-    const expr = [safeStringify(strs[0])];
-    let i = 0;
-    while (i < args.length) {
-      expr.push(plus);
-      addCodeArg(expr, args[i]);
-      expr.push(plus, safeStringify(strs[++i]));
-    }
-    optimize(expr);
-    return new _Code(expr);
-  }
-  exports.str = str2;
-  function addCodeArg(code2, arg) {
-    if (arg instanceof _Code)
-      code2.push(...arg._items);
-    else if (arg instanceof Name)
-      code2.push(arg);
-    else
-      code2.push(interpolate(arg));
-  }
-  exports.addCodeArg = addCodeArg;
-  function optimize(expr) {
-    let i = 1;
-    while (i < expr.length - 1) {
-      if (expr[i] === plus) {
-        const res = mergeExprItems(expr[i - 1], expr[i + 1]);
-        if (res !== void 0) {
-          expr.splice(i - 1, 3, res);
-          continue;
-        }
-        expr[i++] = "+";
+    exports._CodeOrName = _CodeOrName;
+    exports.IDENTIFIER = /^[a-z$_][a-z$_0-9]*$/i;
+    class Name extends _CodeOrName {
+      constructor(s) {
+        super();
+        if (!exports.IDENTIFIER.test(s))
+          throw new Error("CodeGen: name must be a valid identifier");
+        this.str = s;
       }
-      i++;
+      toString() {
+        return this.str;
+      }
+      emptyStr() {
+        return false;
+      }
+      get names() {
+        return { [this.str]: 1 };
+      }
     }
-  }
-  function mergeExprItems(a, b) {
-    if (b === '""')
-      return a;
-    if (a === '""')
-      return b;
-    if (typeof a == "string") {
-      if (b instanceof Name || a[a.length - 1] !== '"')
+    exports.Name = Name;
+    class _Code extends _CodeOrName {
+      constructor(code2) {
+        super();
+        this._items = typeof code2 === "string" ? [code2] : code2;
+      }
+      toString() {
+        return this.str;
+      }
+      emptyStr() {
+        if (this._items.length > 1)
+          return false;
+        const item = this._items[0];
+        return item === "" || item === '""';
+      }
+      get str() {
+        var _a3;
+        return (_a3 = this._str) !== null && _a3 !== void 0 ? _a3 : this._str = this._items.reduce((s, c) => `${s}${c}`, "");
+      }
+      get names() {
+        var _a3;
+        return (_a3 = this._names) !== null && _a3 !== void 0 ? _a3 : this._names = this._items.reduce((names2, c) => {
+          if (c instanceof Name)
+            names2[c.str] = (names2[c.str] || 0) + 1;
+          return names2;
+        }, {});
+      }
+    }
+    exports._Code = _Code;
+    exports.nil = new _Code("");
+    function _(strs, ...args) {
+      const code2 = [strs[0]];
+      let i = 0;
+      while (i < args.length) {
+        addCodeArg(code2, args[i]);
+        code2.push(strs[++i]);
+      }
+      return new _Code(code2);
+    }
+    exports._ = _;
+    const plus = new _Code("+");
+    function str2(strs, ...args) {
+      const expr = [safeStringify(strs[0])];
+      let i = 0;
+      while (i < args.length) {
+        expr.push(plus);
+        addCodeArg(expr, args[i]);
+        expr.push(plus, safeStringify(strs[++i]));
+      }
+      optimize(expr);
+      return new _Code(expr);
+    }
+    exports.str = str2;
+    function addCodeArg(code2, arg) {
+      if (arg instanceof _Code)
+        code2.push(...arg._items);
+      else if (arg instanceof Name)
+        code2.push(arg);
+      else
+        code2.push(interpolate(arg));
+    }
+    exports.addCodeArg = addCodeArg;
+    function optimize(expr) {
+      let i = 1;
+      while (i < expr.length - 1) {
+        if (expr[i] === plus) {
+          const res = mergeExprItems(expr[i - 1], expr[i + 1]);
+          if (res !== void 0) {
+            expr.splice(i - 1, 3, res);
+            continue;
+          }
+          expr[i++] = "+";
+        }
+        i++;
+      }
+    }
+    function mergeExprItems(a, b) {
+      if (b === '""')
+        return a;
+      if (a === '""')
+        return b;
+      if (typeof a == "string") {
+        if (b instanceof Name || a[a.length - 1] !== '"')
+          return;
+        if (typeof b != "string")
+          return `${a.slice(0, -1)}${b}"`;
+        if (b[0] === '"')
+          return a.slice(0, -1) + b.slice(1);
         return;
-      if (typeof b != "string")
-        return `${a.slice(0, -1)}${b}"`;
-      if (b[0] === '"')
-        return a.slice(0, -1) + b.slice(1);
+      }
+      if (typeof b == "string" && b[0] === '"' && !(a instanceof Name))
+        return `"${a}${b.slice(1)}`;
       return;
     }
-    if (typeof b == "string" && b[0] === '"' && !(a instanceof Name))
-      return `"${a}${b.slice(1)}`;
-    return;
-  }
-  function strConcat(c1, c2) {
-    return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str2`${c1}${c2}`;
-  }
-  exports.strConcat = strConcat;
-  function interpolate(x) {
-    return typeof x == "number" || typeof x == "boolean" || x === null ? x : safeStringify(Array.isArray(x) ? x.join(",") : x);
-  }
-  function stringify2(x) {
-    return new _Code(safeStringify(x));
-  }
-  exports.stringify = stringify2;
-  function safeStringify(x) {
-    return JSON.stringify(x).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
-  }
-  exports.safeStringify = safeStringify;
-  function getProperty2(key2) {
-    return typeof key2 == "string" && exports.IDENTIFIER.test(key2) ? new _Code(`.${key2}`) : _`[${key2}]`;
-  }
-  exports.getProperty = getProperty2;
-  function getEsmExportName(key2) {
-    if (typeof key2 == "string" && exports.IDENTIFIER.test(key2)) {
-      return new _Code(`${key2}`);
+    function strConcat(c1, c2) {
+      return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str2`${c1}${c2}`;
     }
-    throw new Error(`CodeGen: invalid export name: ${key2}, use explicit $id name mapping`);
-  }
-  exports.getEsmExportName = getEsmExportName;
-  function regexpCode(rx) {
-    return new _Code(rx.toString());
-  }
-  exports.regexpCode = regexpCode;
-})(code$3);
+    exports.strConcat = strConcat;
+    function interpolate(x) {
+      return typeof x == "number" || typeof x == "boolean" || x === null ? x : safeStringify(Array.isArray(x) ? x.join(",") : x);
+    }
+    function stringify2(x) {
+      return new _Code(safeStringify(x));
+    }
+    exports.stringify = stringify2;
+    function safeStringify(x) {
+      return JSON.stringify(x).replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+    }
+    exports.safeStringify = safeStringify;
+    function getProperty2(key2) {
+      return typeof key2 == "string" && exports.IDENTIFIER.test(key2) ? new _Code(`.${key2}`) : _`[${key2}]`;
+    }
+    exports.getProperty = getProperty2;
+    function getEsmExportName(key2) {
+      if (typeof key2 == "string" && exports.IDENTIFIER.test(key2)) {
+        return new _Code(`${key2}`);
+      }
+      throw new Error(`CodeGen: invalid export name: ${key2}, use explicit $id name mapping`);
+    }
+    exports.getEsmExportName = getEsmExportName;
+    function regexpCode(rx) {
+      return new _Code(rx.toString());
+    }
+    exports.regexpCode = regexpCode;
+  })(code$3);
+  return code$3;
+}
 var scope$1 = {};
-(function(exports) {
-  Object.defineProperty(exports, "__esModule", { value: true });
-  exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = void 0;
-  const code_12 = code$3;
-  class ValueError extends Error {
-    constructor(name) {
-      super(`CodeGen: "code" for ${name} not defined`);
-      this.value = name.value;
-    }
-  }
-  var UsedValueState;
-  (function(UsedValueState2) {
-    UsedValueState2[UsedValueState2["Started"] = 0] = "Started";
-    UsedValueState2[UsedValueState2["Completed"] = 1] = "Completed";
-  })(UsedValueState || (exports.UsedValueState = UsedValueState = {}));
-  exports.varKinds = {
-    const: new code_12.Name("const"),
-    let: new code_12.Name("let"),
-    var: new code_12.Name("var")
-  };
-  class Scope {
-    constructor({ prefixes, parent: parent2 } = {}) {
-      this._names = {};
-      this._prefixes = prefixes;
-      this._parent = parent2;
-    }
-    toName(nameOrPrefix) {
-      return nameOrPrefix instanceof code_12.Name ? nameOrPrefix : this.name(nameOrPrefix);
-    }
-    name(prefix) {
-      return new code_12.Name(this._newName(prefix));
-    }
-    _newName(prefix) {
-      const ng = this._names[prefix] || this._nameGroup(prefix);
-      return `${prefix}${ng.index++}`;
-    }
-    _nameGroup(prefix) {
-      var _a3, _b2;
-      if (((_b2 = (_a3 = this._parent) === null || _a3 === void 0 ? void 0 : _a3._prefixes) === null || _b2 === void 0 ? void 0 : _b2.has(prefix)) || this._prefixes && !this._prefixes.has(prefix)) {
-        throw new Error(`CodeGen: prefix "${prefix}" is not allowed in this scope`);
+var hasRequiredScope;
+function requireScope() {
+  if (hasRequiredScope) return scope$1;
+  hasRequiredScope = 1;
+  (function(exports) {
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = void 0;
+    const code_12 = requireCode();
+    class ValueError extends Error {
+      constructor(name) {
+        super(`CodeGen: "code" for ${name} not defined`);
+        this.value = name.value;
       }
-      return this._names[prefix] = { prefix, index: 0 };
     }
-  }
-  exports.Scope = Scope;
-  class ValueScopeName extends code_12.Name {
-    constructor(prefix, nameStr) {
-      super(nameStr);
-      this.prefix = prefix;
-    }
-    setValue(value2, { property, itemIndex }) {
-      this.value = value2;
-      this.scopePath = (0, code_12._)`.${new code_12.Name(property)}[${itemIndex}]`;
-    }
-  }
-  exports.ValueScopeName = ValueScopeName;
-  const line = (0, code_12._)`\n`;
-  class ValueScope extends Scope {
-    constructor(opts) {
-      super(opts);
-      this._values = {};
-      this._scope = opts.scope;
-      this.opts = { ...opts, _n: opts.lines ? line : code_12.nil };
-    }
-    get() {
-      return this._scope;
-    }
-    name(prefix) {
-      return new ValueScopeName(prefix, this._newName(prefix));
-    }
-    value(nameOrPrefix, value2) {
-      var _a3;
-      if (value2.ref === void 0)
-        throw new Error("CodeGen: ref must be passed in value");
-      const name = this.toName(nameOrPrefix);
-      const { prefix } = name;
-      const valueKey = (_a3 = value2.key) !== null && _a3 !== void 0 ? _a3 : value2.ref;
-      let vs = this._values[prefix];
-      if (vs) {
-        const _name = vs.get(valueKey);
-        if (_name)
-          return _name;
-      } else {
-        vs = this._values[prefix] = /* @__PURE__ */ new Map();
+    var UsedValueState;
+    (function(UsedValueState2) {
+      UsedValueState2[UsedValueState2["Started"] = 0] = "Started";
+      UsedValueState2[UsedValueState2["Completed"] = 1] = "Completed";
+    })(UsedValueState || (exports.UsedValueState = UsedValueState = {}));
+    exports.varKinds = {
+      const: new code_12.Name("const"),
+      let: new code_12.Name("let"),
+      var: new code_12.Name("var")
+    };
+    class Scope {
+      constructor({ prefixes, parent: parent2 } = {}) {
+        this._names = {};
+        this._prefixes = prefixes;
+        this._parent = parent2;
       }
-      vs.set(valueKey, name);
-      const s = this._scope[prefix] || (this._scope[prefix] = []);
-      const itemIndex = s.length;
-      s[itemIndex] = value2.ref;
-      name.setValue(value2, { property: prefix, itemIndex });
-      return name;
+      toName(nameOrPrefix) {
+        return nameOrPrefix instanceof code_12.Name ? nameOrPrefix : this.name(nameOrPrefix);
+      }
+      name(prefix) {
+        return new code_12.Name(this._newName(prefix));
+      }
+      _newName(prefix) {
+        const ng = this._names[prefix] || this._nameGroup(prefix);
+        return `${prefix}${ng.index++}`;
+      }
+      _nameGroup(prefix) {
+        var _a3, _b2;
+        if (((_b2 = (_a3 = this._parent) === null || _a3 === void 0 ? void 0 : _a3._prefixes) === null || _b2 === void 0 ? void 0 : _b2.has(prefix)) || this._prefixes && !this._prefixes.has(prefix)) {
+          throw new Error(`CodeGen: prefix "${prefix}" is not allowed in this scope`);
+        }
+        return this._names[prefix] = { prefix, index: 0 };
+      }
     }
-    getValue(prefix, keyOrRef) {
-      const vs = this._values[prefix];
-      if (!vs)
-        return;
-      return vs.get(keyOrRef);
+    exports.Scope = Scope;
+    class ValueScopeName extends code_12.Name {
+      constructor(prefix, nameStr) {
+        super(nameStr);
+        this.prefix = prefix;
+      }
+      setValue(value2, { property, itemIndex }) {
+        this.value = value2;
+        this.scopePath = (0, code_12._)`.${new code_12.Name(property)}[${itemIndex}]`;
+      }
     }
-    scopeRefs(scopeName, values = this._values) {
-      return this._reduceValues(values, (name) => {
-        if (name.scopePath === void 0)
-          throw new Error(`CodeGen: name "${name}" has no value`);
-        return (0, code_12._)`${scopeName}${name.scopePath}`;
-      });
-    }
-    scopeCode(values = this._values, usedValues, getCode) {
-      return this._reduceValues(values, (name) => {
-        if (name.value === void 0)
-          throw new Error(`CodeGen: name "${name}" has no value`);
-        return name.value.code;
-      }, usedValues, getCode);
-    }
-    _reduceValues(values, valueCode, usedValues = {}, getCode) {
-      let code2 = code_12.nil;
-      for (const prefix in values) {
-        const vs = values[prefix];
+    exports.ValueScopeName = ValueScopeName;
+    const line = (0, code_12._)`\n`;
+    class ValueScope extends Scope {
+      constructor(opts) {
+        super(opts);
+        this._values = {};
+        this._scope = opts.scope;
+        this.opts = { ...opts, _n: opts.lines ? line : code_12.nil };
+      }
+      get() {
+        return this._scope;
+      }
+      name(prefix) {
+        return new ValueScopeName(prefix, this._newName(prefix));
+      }
+      value(nameOrPrefix, value2) {
+        var _a3;
+        if (value2.ref === void 0)
+          throw new Error("CodeGen: ref must be passed in value");
+        const name = this.toName(nameOrPrefix);
+        const { prefix } = name;
+        const valueKey = (_a3 = value2.key) !== null && _a3 !== void 0 ? _a3 : value2.ref;
+        let vs = this._values[prefix];
+        if (vs) {
+          const _name = vs.get(valueKey);
+          if (_name)
+            return _name;
+        } else {
+          vs = this._values[prefix] = /* @__PURE__ */ new Map();
+        }
+        vs.set(valueKey, name);
+        const s = this._scope[prefix] || (this._scope[prefix] = []);
+        const itemIndex = s.length;
+        s[itemIndex] = value2.ref;
+        name.setValue(value2, { property: prefix, itemIndex });
+        return name;
+      }
+      getValue(prefix, keyOrRef) {
+        const vs = this._values[prefix];
         if (!vs)
-          continue;
-        const nameSet = usedValues[prefix] = usedValues[prefix] || /* @__PURE__ */ new Map();
-        vs.forEach((name) => {
-          if (nameSet.has(name))
-            return;
-          nameSet.set(name, UsedValueState.Started);
-          let c = valueCode(name);
-          if (c) {
-            const def2 = this.opts.es5 ? exports.varKinds.var : exports.varKinds.const;
-            code2 = (0, code_12._)`${code2}${def2} ${name} = ${c};${this.opts._n}`;
-          } else if (c = getCode === null || getCode === void 0 ? void 0 : getCode(name)) {
-            code2 = (0, code_12._)`${code2}${c}${this.opts._n}`;
-          } else {
-            throw new ValueError(name);
-          }
-          nameSet.set(name, UsedValueState.Completed);
+          return;
+        return vs.get(keyOrRef);
+      }
+      scopeRefs(scopeName, values = this._values) {
+        return this._reduceValues(values, (name) => {
+          if (name.scopePath === void 0)
+            throw new Error(`CodeGen: name "${name}" has no value`);
+          return (0, code_12._)`${scopeName}${name.scopePath}`;
         });
       }
-      return code2;
+      scopeCode(values = this._values, usedValues, getCode) {
+        return this._reduceValues(values, (name) => {
+          if (name.value === void 0)
+            throw new Error(`CodeGen: name "${name}" has no value`);
+          return name.value.code;
+        }, usedValues, getCode);
+      }
+      _reduceValues(values, valueCode, usedValues = {}, getCode) {
+        let code2 = code_12.nil;
+        for (const prefix in values) {
+          const vs = values[prefix];
+          if (!vs)
+            continue;
+          const nameSet = usedValues[prefix] = usedValues[prefix] || /* @__PURE__ */ new Map();
+          vs.forEach((name) => {
+            if (nameSet.has(name))
+              return;
+            nameSet.set(name, UsedValueState.Started);
+            let c = valueCode(name);
+            if (c) {
+              const def2 = this.opts.es5 ? exports.varKinds.var : exports.varKinds.const;
+              code2 = (0, code_12._)`${code2}${def2} ${name} = ${c};${this.opts._n}`;
+            } else if (c = getCode === null || getCode === void 0 ? void 0 : getCode(name)) {
+              code2 = (0, code_12._)`${code2}${c}${this.opts._n}`;
+            } else {
+              throw new ValueError(name);
+            }
+            nameSet.set(name, UsedValueState.Completed);
+          });
+        }
+        return code2;
+      }
     }
-  }
-  exports.ValueScope = ValueScope;
-})(scope$1);
+    exports.ValueScope = ValueScope;
+  })(scope$1);
+  return scope$1;
+}
 (function(exports) {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.or = exports.and = exports.not = exports.CodeGen = exports.operators = exports.varKinds = exports.ValueScopeName = exports.ValueScope = exports.Scope = exports.Name = exports.regexpCode = exports.stringify = exports.getProperty = exports.nil = exports.strConcat = exports.str = exports._ = void 0;
-  const code_12 = code$3;
-  const scope_1 = scope$1;
-  var code_2 = code$3;
+  const code_12 = requireCode();
+  const scope_1 = requireScope();
+  var code_2 = requireCode();
   Object.defineProperty(exports, "_", { enumerable: true, get: function() {
     return code_2._;
   } });
@@ -14828,7 +14840,7 @@ var scope$1 = {};
   Object.defineProperty(exports, "Name", { enumerable: true, get: function() {
     return code_2.Name;
   } });
-  var scope_2 = scope$1;
+  var scope_2 = requireScope();
   Object.defineProperty(exports, "Scope", { enumerable: true, get: function() {
     return scope_2.Scope;
   } });
@@ -15517,7 +15529,7 @@ var util$o = {};
 Object.defineProperty(util$o, "__esModule", { value: true });
 util$o.checkStrictMode = util$o.getErrorPath = util$o.Type = util$o.useFunc = util$o.setEvaluated = util$o.evaluatedPropsToName = util$o.mergeEvaluated = util$o.eachItem = util$o.unescapeJsonPointer = util$o.escapeJsonPointer = util$o.escapeFragment = util$o.unescapeFragment = util$o.schemaRefOrVal = util$o.schemaHasRulesButRef = util$o.schemaHasRules = util$o.checkUnknownRules = util$o.alwaysValidSchema = util$o.toHash = void 0;
 const codegen_1$13 = codegen$1;
-const code_1$l = code$3;
+const code_1$l = requireCode();
 function toHash$1(arr) {
   const hash = {};
   for (const item of arr)
@@ -16851,9 +16863,9 @@ function commentKeyword$1({ gen, schemaEnv, schema: schema2, errSchemaPath, opts
   }
 }
 function returnResults$1(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError3}(${names_1$d.default.vErrors})`));
+    gen.if((0, codegen_1$X._)`${names_1$d.default.errors} === 0`, () => gen.return(names_1$d.default.data), () => gen.throw((0, codegen_1$X._)`new ${ValidationError2}(${names_1$d.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$X._)`${validateName2}.errors`, names_1$d.default.vErrors);
     if (opts.unevaluated)
@@ -17197,15 +17209,21 @@ function getData$1($data, { dataLevel, dataNames, dataPathArr }) {
 }
 validate$1.getData = getData$1;
 var validation_error$1 = {};
-Object.defineProperty(validation_error$1, "__esModule", { value: true });
-let ValidationError$1 = class ValidationError extends Error {
-  constructor(errors2) {
-    super("validation failed");
-    this.errors = errors2;
-    this.ajv = this.validation = true;
+var hasRequiredValidation_error;
+function requireValidation_error() {
+  if (hasRequiredValidation_error) return validation_error$1;
+  hasRequiredValidation_error = 1;
+  Object.defineProperty(validation_error$1, "__esModule", { value: true });
+  class ValidationError2 extends Error {
+    constructor(errors2) {
+      super("validation failed");
+      this.errors = errors2;
+      this.ajv = this.validation = true;
+    }
   }
-};
-validation_error$1.default = ValidationError$1;
+  validation_error$1.default = ValidationError2;
+  return validation_error$1;
+}
 var ref_error$1 = {};
 Object.defineProperty(ref_error$1, "__esModule", { value: true });
 const resolve_1$4 = resolve$4;
@@ -17221,7 +17239,7 @@ var compile$2 = {};
 Object.defineProperty(compile$2, "__esModule", { value: true });
 compile$2.resolveSchema = compile$2.getCompilingSchema = compile$2.resolveRef = compile$2.compileSchema = compile$2.SchemaEnv = void 0;
 const codegen_1$W = codegen$1;
-const validation_error_1$1 = validation_error$1;
+const validation_error_1$1 = requireValidation_error();
 const names_1$c = names$3;
 const resolve_1$3 = resolve$4;
 const util_1$P = util$o;
@@ -18135,7 +18153,7 @@ uri$3.default = uri$2;
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  const validation_error_12 = validation_error$1;
+  const validation_error_12 = requireValidation_error();
   const ref_error_12 = ref_error$1;
   const rules_12 = rules$1;
   const compile_12 = compile$2;
@@ -21144,7 +21162,7 @@ jsonSchema202012.default = addMetaSchema2020;
   Object.defineProperty(exports, "CodeGen", { enumerable: true, get: function() {
     return codegen_12.CodeGen;
   } });
-  var validation_error_12 = validation_error$1;
+  var validation_error_12 = requireValidation_error();
   Object.defineProperty(exports, "ValidationError", { enumerable: true, get: function() {
     return validation_error_12.default;
   } });
@@ -23677,9 +23695,9 @@ function commentKeyword({ gen, schemaEnv, schema: schema2, errSchemaPath, opts }
   }
 }
 function returnResults(it) {
-  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError3, opts } = it;
+  const { gen, schemaEnv, validateName: validateName2, ValidationError: ValidationError2, opts } = it;
   if (schemaEnv.$async) {
-    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError3}(${names_1$3.default.vErrors})`));
+    gen.if((0, codegen_1$n._)`${names_1$3.default.errors} === 0`, () => gen.return(names_1$3.default.data), () => gen.throw((0, codegen_1$n._)`new ${ValidationError2}(${names_1$3.default.vErrors})`));
   } else {
     gen.assign((0, codegen_1$n._)`${validateName2}.errors`, names_1$3.default.vErrors);
     if (opts.unevaluated)
@@ -24024,14 +24042,14 @@ function getData($data, { dataLevel, dataNames, dataPathArr }) {
 validate.getData = getData;
 var validation_error = {};
 Object.defineProperty(validation_error, "__esModule", { value: true });
-class ValidationError2 extends Error {
+class ValidationError extends Error {
   constructor(errors2) {
     super("validation failed");
     this.errors = errors2;
     this.ajv = this.validation = true;
   }
 }
-validation_error.default = ValidationError2;
+validation_error.default = ValidationError;
 var ref_error = {};
 Object.defineProperty(ref_error, "__esModule", { value: true });
 const resolve_1$1 = resolve$1;
@@ -31809,7 +31827,9 @@ function createMainWindow(onFinishLoad) {
       contextIsolation: true,
       devTools: !app$1.isPackaged,
       // Enable DevTools only in development
-      spellcheck: false
+      spellcheck: false,
+      webSecurity: app$1.isPackaged
+      // Disable web security in development to allow HTTP images
     },
     frame: false,
     // Required for custom title bar
@@ -31940,7 +31960,9 @@ function createSettingsWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !app$1.isPackaged,
-      spellcheck: false
+      spellcheck: false,
+      webSecurity: app$1.isPackaged
+      // Disable web security in development to allow HTTP images
     },
     frame: false,
     titleBarStyle: "hidden",
@@ -169744,14 +169766,27 @@ async function login(identifier, password) {
       return { success: false, error: errorData.message || `Login failed (${response2.status})` };
     }
     const data2 = await response2.json();
-    debug$b(MODULE_NAME$5, "Received login response data:", JSON.stringify(data2));
+    info(MODULE_NAME$5, "Received login response data with the following structure:");
+    info(MODULE_NAME$5, `- access_token: ${data2.access_token ? "present" : "missing"}`);
+    info(MODULE_NAME$5, `- refresh_token: ${data2.refresh_token ? "present" : "missing"}`);
+    info(MODULE_NAME$5, `- user object: ${data2.user ? "present" : "missing"}`);
+    if (data2.user) {
+      info(MODULE_NAME$5, `- user.id: ${data2.user.id || "missing"}`);
+      info(MODULE_NAME$5, `- user.username: ${data2.user.username || "missing"}`);
+      info(MODULE_NAME$5, `- user.rsiHandle: ${data2.user.rsiHandle || "null"}`);
+      info(MODULE_NAME$5, `- user.rsiMoniker: ${data2.user.rsiMoniker || "null"}`);
+      info(MODULE_NAME$5, `- user.avatar: ${data2.user.avatar ? "present" : "null"}`);
+      info(MODULE_NAME$5, `- user.roles: [${data2.user.roles ? data2.user.roles.join(", ") : "missing"}]`);
+    }
     if (data2.access_token && data2.refresh_token && data2.user && data2.user.id && data2.user.username) {
       const userProfile = {
         userId: data2.user.id,
         username: data2.user.username,
         rsiHandle: data2.user.rsiHandle || null,
         rsiMoniker: data2.user.rsiMoniker || null,
-        avatar: data2.user.avatar || null
+        avatar: data2.user.avatar || null,
+        roles: data2.user.roles || ["user"]
+        // Default to 'user' role if not provided
       };
       await storeTokensAndUser(data2.access_token, data2.refresh_token, userProfile);
       guestToken = null;
@@ -169828,13 +169863,27 @@ async function refreshToken() {
       return null;
     }
     const data2 = await response2.json();
+    info(MODULE_NAME$5, "Received token refresh response data with the following structure:");
+    info(MODULE_NAME$5, `- access_token: ${data2.access_token ? "present" : "missing"}`);
+    info(MODULE_NAME$5, `- refresh_token: ${data2.refresh_token ? "present" : "missing"}`);
+    info(MODULE_NAME$5, `- user object: ${data2.user ? "present" : "missing"}`);
+    if (data2.user) {
+      info(MODULE_NAME$5, `- user.id: ${data2.user.id || "missing"}`);
+      info(MODULE_NAME$5, `- user.username: ${data2.user.username || "missing"}`);
+      info(MODULE_NAME$5, `- user.rsiHandle: ${data2.user.rsiHandle || "null"}`);
+      info(MODULE_NAME$5, `- user.rsiMoniker: ${data2.user.rsiMoniker || "null"}`);
+      info(MODULE_NAME$5, `- user.avatar: ${data2.user.avatar ? "present" : "null"}`);
+      info(MODULE_NAME$5, `- user.roles: [${data2.user.roles ? data2.user.roles.join(", ") : "missing"}]`);
+    }
     if (data2.access_token && data2.refresh_token && data2.user && data2.user.id && data2.user.username) {
       const userProfile = {
         userId: data2.user.id,
         username: data2.user.username,
         rsiHandle: data2.user.rsiHandle || null,
         rsiMoniker: data2.user.rsiMoniker || null,
-        avatar: data2.user.avatar || null
+        avatar: data2.user.avatar || null,
+        roles: data2.user.roles || ["user"]
+        // Default to 'user' role if not provided
       };
       await storeTokensAndUser(data2.access_token, data2.refresh_token, userProfile);
       guestToken = null;
@@ -169923,11 +169972,14 @@ function registerAuthIpcHandlers() {
         username: tokens.user.username,
         rsiHandle: tokens.user.rsiHandle || null,
         rsiMoniker: tokens.user.rsiMoniker || null,
-        avatar: tokens.user.avatar || null
+        avatar: tokens.user.avatar || null,
+        roles: tokens.user.roles || ["user"]
+        // Default to 'user' role if not provided
       } : loggedInUser;
       if (userProfile && userProfile.userId && userProfile.username) {
         await storeTokensAndUser(tokens.accessToken, tokens.refreshToken, userProfile);
         guestToken = null;
+        hasActiveSession = true;
         broadcastAuthStatusChange();
         return { success: true };
       } else {
@@ -170569,13 +170621,42 @@ function registerIpcHandlers() {
     return getLaunchOnStartup();
   });
   ipcMain$1.handle("set-launch-on-startup", (event, value2) => {
-    setLaunchOnStartup(!!value2);
-    app$1.setLoginItemSettings({
-      openAtLogin: !!value2,
-      args: ["--hidden"]
-      // Electron convention for "start hidden/in tray"
-    });
-    return !!value2;
+    const boolValue = !!value2;
+    setLaunchOnStartup(boolValue);
+    try {
+      if (process.env.NODE_ENV === "development") {
+        debug$b(MODULE_NAME$2, "Development mode detected, skipping OS login item setup");
+        return boolValue;
+      }
+      const appFolder = path$m.dirname(process.execPath);
+      const exeName = path$m.basename(process.execPath);
+      if (process.platform === "win32" && app$1.isPackaged) {
+        const stubLauncher = path$m.resolve(appFolder, "..", exeName);
+        info(MODULE_NAME$2, `Setting Windows startup (${boolValue}) with Squirrel path: ${stubLauncher}`);
+        app$1.setLoginItemSettings({
+          openAtLogin: boolValue,
+          path: stubLauncher,
+          args: [
+            "--processStart",
+            `"${exeName}"`,
+            "--process-start-args",
+            '"--hidden"'
+          ]
+        });
+      } else {
+        info(MODULE_NAME$2, `Setting startup (${boolValue}) with standard configuration`);
+        app$1.setLoginItemSettings({
+          openAtLogin: boolValue,
+          args: ["--hidden"]
+          // Start hidden when launched at startup
+        });
+      }
+      const verifySettings = app$1.getLoginItemSettings();
+      info(MODULE_NAME$2, `Startup setting updated. New state: openAtLogin=${verifySettings.openAtLogin}`);
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Failed to update OS login item settings:", error$12);
+    }
+    return boolValue;
   });
   ipcMain$1.handle("get-api-settings", () => {
     return {
@@ -170631,10 +170712,17 @@ function registerIpcHandlers() {
   ipcMain$1.handle("open-web-content-window", (_event, initialTab) => {
     var _a3;
     info(MODULE_NAME$2, `Received 'open-web-content-window' request. Initial tab: ${initialTab || "default"}`);
-    const webWindow = createWebContentWindow(initialTab);
+    let supportedSection = void 0;
+    if (initialTab === "profile" || initialTab === "leaderboard" || initialTab === "map") {
+      supportedSection = initialTab;
+    } else if (initialTab === "stats" || initialTab === "/") {
+      info(MODULE_NAME$2, `Mapping unsupported section '${initialTab}' to 'profile'`);
+      supportedSection = "profile";
+    }
+    const webWindow = createWebContentWindow(supportedSection);
     if (webWindow) {
-      (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("web-content-window-status", { isOpen: true, activeSection: initialTab });
-      info(MODULE_NAME$2, `Sent web-content-window-status { isOpen: true, activeSection: ${initialTab || "default"} }`);
+      (_a3 = getMainWindow()) == null ? void 0 : _a3.webContents.send("web-content-window-status", { isOpen: true, activeSection: supportedSection });
+      info(MODULE_NAME$2, `Sent web-content-window-status { isOpen: true, activeSection: ${supportedSection || "default"} }`);
       if (webWindow.isMinimized()) webWindow.restore();
       webWindow.focus();
     }
@@ -170961,6 +171049,64 @@ function registerGlobalShortcuts(mainWindow2) {
     warn(MODULE_NAME$1, "Failed to register F12 shortcut.");
   }
 }
+function initializeLaunchOnStartup() {
+  try {
+    if (process.env.NODE_ENV === "development") {
+      debug$b(MODULE_NAME$1, "Development mode detected, skipping launch on startup initialization");
+      return;
+    }
+    const shouldLaunchOnStartup = getLaunchOnStartup();
+    info(MODULE_NAME$1, `Launch on startup setting: ${shouldLaunchOnStartup}`);
+    const loginItemSettings = app$1.getLoginItemSettings();
+    if (loginItemSettings.wasOpenedAtLogin) {
+      info(MODULE_NAME$1, "App was launched at system startup");
+      if (loginItemSettings.wasOpenedAsHidden) {
+        info(MODULE_NAME$1, "App should start hidden/minimized");
+      }
+    }
+    const appFolder = path$m.dirname(process.execPath);
+    const exeName = path$m.basename(process.execPath);
+    if (process.platform === "win32" && app$1.isPackaged) {
+      const stubLauncher = path$m.resolve(appFolder, "..", exeName);
+      info(MODULE_NAME$1, `Setting up Windows startup with Squirrel-compatible path: ${stubLauncher}`);
+      app$1.setLoginItemSettings({
+        openAtLogin: shouldLaunchOnStartup,
+        path: stubLauncher,
+        args: [
+          "--processStart",
+          `"${exeName}"`,
+          "--process-start-args",
+          '"--hidden"'
+        ]
+      });
+    } else {
+      info(MODULE_NAME$1, `Setting up startup with standard path: ${process.execPath}`);
+      app$1.setLoginItemSettings({
+        openAtLogin: shouldLaunchOnStartup,
+        args: ["--hidden"]
+        // Start hidden/minimized when launched at startup
+      });
+    }
+    const verifySettings = app$1.getLoginItemSettings();
+    info(MODULE_NAME$1, `Startup setting applied successfully. Current state:`, {
+      openAtLogin: verifySettings.openAtLogin,
+      executableWillLaunchAtLogin: verifySettings.executableWillLaunchAtLogin,
+      launchItems: verifySettings.launchItems
+    });
+  } catch (error$12) {
+    error(MODULE_NAME$1, "Failed to initialize launch on startup setting:", error$12);
+  }
+}
+function shouldStartMinimized() {
+  const loginItemSettings = app$1.getLoginItemSettings();
+  const wasLaunchedAtStartup = loginItemSettings.wasOpenedAtLogin && loginItemSettings.wasOpenedAsHidden;
+  const hasHiddenArg = process.argv.includes("--hidden");
+  const shouldMinimize = wasLaunchedAtStartup || hasHiddenArg;
+  if (shouldMinimize) {
+    info(MODULE_NAME$1, `App should start minimized. wasLaunchedAtStartup: ${wasLaunchedAtStartup}, hasHiddenArg: ${hasHiddenArg}`);
+  }
+  return shouldMinimize;
+}
 async function onReady() {
   info("App is ready, initializing...");
   process.env.APP_ROOT = app$1.getAppPath();
@@ -170974,6 +171120,7 @@ async function onReady() {
   info(MODULE_NAME$1, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
   registerIpcHandlers();
   registerAuthIpcHandlers();
+  initializeLaunchOnStartup();
   const authState = await determineAuthState();
   let authAlreadyInitialized = false;
   if (authState.requiresLoginPopup) {
@@ -170981,7 +171128,17 @@ async function onReady() {
     authAlreadyInitialized = loginResult.authAlreadyInitialized;
   }
   createTrayMenu();
+  const startMinimized = shouldStartMinimized();
   const mainWindow2 = createMainWindow();
+  if (startMinimized && mainWindow2) {
+    info(MODULE_NAME$1, "Starting minimized due to startup launch");
+    setTimeout(() => {
+      if (mainWindow2 && !mainWindow2.isDestroyed()) {
+        mainWindow2.minimize();
+        mainWindow2.hide();
+      }
+    }, 1e3);
+  }
   if (mainWindow2) {
     await connectToLogServer(mainWindow2, authAlreadyInitialized);
     await loadHistoricData(mainWindow2);

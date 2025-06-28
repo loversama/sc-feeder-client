@@ -20,7 +20,8 @@ import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
 import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import {
-  getOfflineMode
+  getOfflineMode,
+  getLaunchOnStartup
 } from './config-manager';
 import { ipcMain } from 'electron'; // Import ipcMain for login popup
 
@@ -171,6 +172,88 @@ function registerGlobalShortcuts(mainWindow: BrowserWindow) {
   }
 }
 
+// Initialize launch on startup setting during app startup
+function initializeLaunchOnStartup(): void {
+  try {
+    // Don't set up auto-launch in development mode
+    if (process.env.NODE_ENV === 'development') {
+      logger.debug(MODULE_NAME, 'Development mode detected, skipping launch on startup initialization');
+      return;
+    }
+
+    // Get the stored setting
+    const shouldLaunchOnStartup = getLaunchOnStartup();
+    logger.info(MODULE_NAME, `Launch on startup setting: ${shouldLaunchOnStartup}`);
+
+    // Check if app was launched at startup for logging purposes
+    const loginItemSettings = app.getLoginItemSettings();
+    if (loginItemSettings.wasOpenedAtLogin) {
+      logger.info(MODULE_NAME, 'App was launched at system startup');
+      if (loginItemSettings.wasOpenedAsHidden) {
+        logger.info(MODULE_NAME, 'App should start hidden/minimized');
+      }
+    }
+
+    // Apply the stored setting to the OS
+    // For better compatibility with auto-updater on Windows, use appropriate path
+    const appFolder = path.dirname(process.execPath);
+    const exeName = path.basename(process.execPath);
+    
+    if (process.platform === 'win32' && app.isPackaged) {
+      // Windows production - use Squirrel-compatible path
+      const stubLauncher = path.resolve(appFolder, '..', exeName);
+      logger.info(MODULE_NAME, `Setting up Windows startup with Squirrel-compatible path: ${stubLauncher}`);
+      
+      app.setLoginItemSettings({
+        openAtLogin: shouldLaunchOnStartup,
+        path: stubLauncher,
+        args: [
+          '--processStart', `"${exeName}"`,
+          '--process-start-args', '"--hidden"'
+        ]
+      });
+    } else {
+      // macOS, Linux, or development - use standard approach
+      logger.info(MODULE_NAME, `Setting up startup with standard path: ${process.execPath}`);
+      
+      app.setLoginItemSettings({
+        openAtLogin: shouldLaunchOnStartup,
+        args: ['--hidden'] // Start hidden/minimized when launched at startup
+      });
+    }
+
+    // Verify the setting was applied
+    const verifySettings = app.getLoginItemSettings();
+    logger.info(MODULE_NAME, `Startup setting applied successfully. Current state:`, {
+      openAtLogin: verifySettings.openAtLogin,
+      executableWillLaunchAtLogin: verifySettings.executableWillLaunchAtLogin,
+      launchItems: verifySettings.launchItems
+    });
+
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialize launch on startup setting:', error);
+  }
+}
+
+// Check if app should start minimized/hidden
+function shouldStartMinimized(): boolean {
+  const loginItemSettings = app.getLoginItemSettings();
+  
+  // Start minimized if:
+  // 1. App was launched at login AND marked as hidden
+  // 2. OR if --hidden argument was passed
+  const wasLaunchedAtStartup = loginItemSettings.wasOpenedAtLogin && loginItemSettings.wasOpenedAsHidden;
+  const hasHiddenArg = process.argv.includes('--hidden');
+  
+  const shouldMinimize = wasLaunchedAtStartup || hasHiddenArg;
+  
+  if (shouldMinimize) {
+    logger.info(MODULE_NAME, `App should start minimized. wasLaunchedAtStartup: ${wasLaunchedAtStartup}, hasHiddenArg: ${hasHiddenArg}`);
+  }
+  
+  return shouldMinimize;
+}
+
 // This is the new, correct onReady function
 async function onReady() {
   logger.info('App is ready, initializing...');
@@ -192,6 +275,9 @@ async function onReady() {
   registerIpcHandlers();
   registerAuthIpcHandlers();
 
+  // Initialize launch on startup setting early in app lifecycle
+  initializeLaunchOnStartup();
+
   // 1. Determine if login is required. This MUST be the first step.
   const authState = await determineAuthState();
 
@@ -204,7 +290,22 @@ async function onReady() {
 
   // 3. ONLY AFTER the entire auth flow is complete, create the main UI.
   createTrayMenu();
+  
+  // Check if app should start minimized (launched at startup)
+  const startMinimized = shouldStartMinimized();
   const mainWindow = createMainWindow();
+  
+  // If launched at startup, minimize the window after creation
+  if (startMinimized && mainWindow) {
+    logger.info(MODULE_NAME, 'Starting minimized due to startup launch');
+    // Wait a bit for window to be fully ready before minimizing
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.minimize();
+        mainWindow.hide(); // Also hide from taskbar on Windows
+      }
+    }, 1000);
+  }
 
   // 4. Continue with the rest of the app initialization.
   if (mainWindow) {

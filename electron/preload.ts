@@ -15,6 +15,7 @@ interface UserProfile {
   rsiHandle: string | null;
   rsiMoniker: string | null;
   avatar: string | null;
+  roles: string[];
 }
 
 // --------- Expose some API to the Renderer process ---------

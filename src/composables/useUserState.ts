@@ -7,6 +7,7 @@ interface UserState {
   avatar: string
   isAuthenticated: boolean
   lastLoggedInUser: string
+  roles: string[]
 }
 
 // Create a reactive state
@@ -16,7 +17,8 @@ const state = ref<UserState>({
   rsiMoniker: null,
   avatar: '',
   isAuthenticated: false,
-  lastLoggedInUser: ''
+  lastLoggedInUser: '',
+  roles: []
 })
 
 export function useUserState() {
@@ -28,7 +30,8 @@ export function useUserState() {
     rsiMoniker: null,
     avatar: '',
     isAuthenticated: false,
-    lastLoggedInUser: ''
+    lastLoggedInUser: '',
+    roles: []
   })
 
   // --- Methods ---
@@ -74,19 +77,23 @@ export function useUserState() {
           state.value.rsiHandle = profile.rsiHandle
           state.value.rsiMoniker = profile.rsiMoniker
           state.value.avatar = profile.avatar || ''
+          state.value.roles = profile.roles || ['user']
           state.value.isAuthenticated = true
+          console.log(`[useUserState] Profile synced for ${profile.username} with roles: [${profile.roles?.join(', ')}]`)
         } else {
           // If profile data not found, use last known username
           state.value.username = state.value.lastLoggedInUser || 'User'
           state.value.rsiHandle = ''
           state.value.rsiMoniker = null
           state.value.avatar = ''
+          state.value.roles = []
         }
       } else {
         console.warn('logMonitorApi.getProfile not available')
         state.value.username = state.value.lastLoggedInUser || 'User'
         state.value.rsiHandle = ''
         state.value.avatar = ''
+        state.value.roles = []
       }
     } catch (error) {
       console.error('Failed to sync profile:', error)
@@ -94,6 +101,7 @@ export function useUserState() {
       state.value.username = state.value.lastLoggedInUser || 'User'
       state.value.rsiHandle = ''
       state.value.avatar = ''
+      state.value.roles = []
     }
   }
 
@@ -104,6 +112,7 @@ export function useUserState() {
     state.value.rsiHandle = '' // No RSI handle in guest mode
     state.value.rsiMoniker = null // No RSI moniker in guest mode
     state.value.avatar = '' // No avatar in guest mode
+    state.value.roles = [] // No roles in guest mode
     state.value.isAuthenticated = false
   }
 

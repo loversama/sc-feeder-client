@@ -20,8 +20,8 @@ const store = new Store({ name: 'auth-state' }); // Use a separate store file
 
 // In-memory storage for access token (cleared on app quit)
 let accessToken: string | null = null;
-// Updated type to include full profile data
-let loggedInUser: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null = null;
+// Updated type to include full profile data including roles
+let loggedInUser: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null; roles: string[] } | null = null;
 let guestToken: string | null = null; // In-memory storage for guest token
 // Track if user has an active authenticated session (not just stored tokens)
 let hasActiveSession: boolean = false;
@@ -48,7 +48,7 @@ let clientId: string | null = null; // Persisted client ID
 async function storeTokensAndUser(
     access: string,
     refresh: string,
-    user: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null
+    user: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null; roles: string[] } | null
 ): Promise<void> {
     accessToken = access;
     loggedInUser = user;
@@ -193,7 +193,18 @@ export async function login(identifier: string, password: string): Promise<{ suc
         }
 
         const data = await response.json();
-        logger.debug(MODULE_NAME, 'Received login response data:', JSON.stringify(data));
+        logger.info(MODULE_NAME, 'Received login response data with the following structure:');
+        logger.info(MODULE_NAME, `- access_token: ${data.access_token ? 'present' : 'missing'}`);
+        logger.info(MODULE_NAME, `- refresh_token: ${data.refresh_token ? 'present' : 'missing'}`);
+        logger.info(MODULE_NAME, `- user object: ${data.user ? 'present' : 'missing'}`);
+        if (data.user) {
+            logger.info(MODULE_NAME, `- user.id: ${data.user.id || 'missing'}`);
+            logger.info(MODULE_NAME, `- user.username: ${data.user.username || 'missing'}`);
+            logger.info(MODULE_NAME, `- user.rsiHandle: ${data.user.rsiHandle || 'null'}`);
+            logger.info(MODULE_NAME, `- user.rsiMoniker: ${data.user.rsiMoniker || 'null'}`);
+            logger.info(MODULE_NAME, `- user.avatar: ${data.user.avatar ? 'present' : 'null'}`);
+            logger.info(MODULE_NAME, `- user.roles: [${data.user.roles ? data.user.roles.join(', ') : 'missing'}]`);
+        }
 
         if (data.access_token && data.refresh_token && data.user && data.user.id && data.user.username) {
             const userProfile = {
@@ -202,6 +213,7 @@ export async function login(identifier: string, password: string): Promise<{ suc
                 rsiHandle: data.user.rsiHandle || null,
                 rsiMoniker: data.user.rsiMoniker || null,
                 avatar: data.user.avatar || null,
+                roles: data.user.roles || ['user'], // Default to 'user' role if not provided
             };
             await storeTokensAndUser(data.access_token, data.refresh_token, userProfile);
             guestToken = null;
@@ -262,7 +274,7 @@ export async function logout(): Promise<boolean> {
     return true;
 }
 
-export async function refreshToken(): Promise<{ userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null> {
+export async function refreshToken(): Promise<{ userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null; roles: string[] } | null> {
      logger.info(MODULE_NAME, 'Attempting token refresh.');
      const currentRefreshToken = getRefreshTokenFromStore();
      if (!currentRefreshToken) {
@@ -290,6 +302,19 @@ export async function refreshToken(): Promise<{ userId: string; username: string
          }
 
          const data = await response.json();
+         logger.info(MODULE_NAME, 'Received token refresh response data with the following structure:');
+         logger.info(MODULE_NAME, `- access_token: ${data.access_token ? 'present' : 'missing'}`);
+         logger.info(MODULE_NAME, `- refresh_token: ${data.refresh_token ? 'present' : 'missing'}`);
+         logger.info(MODULE_NAME, `- user object: ${data.user ? 'present' : 'missing'}`);
+         if (data.user) {
+             logger.info(MODULE_NAME, `- user.id: ${data.user.id || 'missing'}`);
+             logger.info(MODULE_NAME, `- user.username: ${data.user.username || 'missing'}`);
+             logger.info(MODULE_NAME, `- user.rsiHandle: ${data.user.rsiHandle || 'null'}`);
+             logger.info(MODULE_NAME, `- user.rsiMoniker: ${data.user.rsiMoniker || 'null'}`);
+             logger.info(MODULE_NAME, `- user.avatar: ${data.user.avatar ? 'present' : 'null'}`);
+             logger.info(MODULE_NAME, `- user.roles: [${data.user.roles ? data.user.roles.join(', ') : 'missing'}]`);
+         }
+         
          // Expecting new access_token, new refresh_token, and full user object from refresh
          if (data.access_token && data.refresh_token && data.user && data.user.id && data.user.username) {
              const userProfile = {
@@ -298,6 +323,7 @@ export async function refreshToken(): Promise<{ userId: string; username: string
                  rsiHandle: data.user.rsiHandle || null,
                  rsiMoniker: data.user.rsiMoniker || null,
                  avatar: data.user.avatar || null,
+                 roles: data.user.roles || ['user'], // Default to 'user' role if not provided
              };
              await storeTokensAndUser(data.access_token, data.refresh_token, userProfile);
              guestToken = null;
@@ -406,11 +432,13 @@ export function registerAuthIpcHandlers(): void {
                 rsiHandle: tokens.user.rsiHandle || null,
                 rsiMoniker: tokens.user.rsiMoniker || null,
                 avatar: tokens.user.avatar || null,
+                roles: tokens.user.roles || ['user'], // Default to 'user' role if not provided
             } : loggedInUser; // Fallback to existing if not provided
 
             if (userProfile && userProfile.userId && userProfile.username) {
                 await storeTokensAndUser(tokens.accessToken, tokens.refreshToken, userProfile);
                 guestToken = null; // Clear guest token if user tokens are stored
+                hasActiveSession = true; // Set active session flag
                 broadcastAuthStatusChange();
                 return { success: true };
             } else {

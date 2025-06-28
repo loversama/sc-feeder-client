@@ -365,7 +365,8 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged, // Enable DevTools only in development
-            spellcheck: false
+            spellcheck: false,
+            webSecurity: app.isPackaged // Disable web security in development to allow HTTP images
         },
         frame: false, // Required for custom title bar
         titleBarStyle: 'hidden', // Add for custom title bar
@@ -549,7 +550,8 @@ export function createSettingsWindow(): BrowserWindow | null {
             nodeIntegration: false,
             contextIsolation: true,
             devTools: !app.isPackaged,
-            spellcheck: false
+            spellcheck: false,
+            webSecurity: app.isPackaged // Disable web security in development to allow HTTP images
         },
         frame: false,
         titleBarStyle: 'hidden',

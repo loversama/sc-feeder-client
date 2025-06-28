@@ -33,6 +33,20 @@ const avatarText = computed(() => {
   return displayName.value.charAt(0).toUpperCase()
 })
 
+// Role pip computation
+const userRole = computed(() => {
+  if (!isAuthenticated.value || !userState.value.roles?.length) return null
+  
+  // Check for special roles in priority order
+  if (userState.value.roles.includes('admin')) return { text: 'ADMIN', color: 'red' }
+  if (userState.value.roles.includes('vip')) return { text: 'VIP', color: 'orange' }
+  if (userState.value.roles.includes('pro')) return { text: 'PRO', color: 'purple' }
+  if (userState.value.roles.includes('supporter')) return { text: 'SUPPORTER', color: 'yellow' }
+  
+  // Don't show pip for 'user' or 'guest' roles
+  return null
+})
+
 // Watch for debugging
 watch(rsiMoniker, (newVal, oldVal) => {
   console.log(`Navigation.vue: rsiMoniker changed from ${oldVal} to ${newVal}`)
@@ -108,9 +122,24 @@ const changePage = (page: string) => {
                 {{ avatarText }}
               </el-avatar>
               <div class="flex flex-col gap-0.5 ml-1.5">
-                <span class="text-sm font-semibold text-theme-text-light leading-none mb-1">
-                  {{ displayName }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-semibold text-theme-text-light leading-none">
+                    {{ displayName }}
+                  </span>
+                  <!-- Role pip -->
+                  <span 
+                    v-if="userRole"
+                    class="px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase rounded border leading-none"
+                    :class="{
+                      'text-red-400 border-red-400': userRole.color === 'red',
+                      'text-orange-400 border-orange-400': userRole.color === 'orange', 
+                      'text-purple-400 border-purple-400': userRole.color === 'purple',
+                      'text-yellow-400 border-yellow-400': userRole.color === 'yellow'
+                    }"
+                  >
+                    {{ userRole.text }}
+                  </span>
+                </div>
                 <span
                   class="text-[11px] font-medium tracking-widest uppercase leading-none"
                   :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : 'text-[#737373]'"

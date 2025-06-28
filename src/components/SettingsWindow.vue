@@ -3,6 +3,7 @@ console.log('[SettingsWindow.vue] <script setup> executing...');
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElNotification } from 'element-plus';
 import DebugActions from './DebugActions.vue';
+import { useUserState } from '../composables/useUserState';
 
 // State for the active category
 const activeCategory = ref<string>('general');
@@ -42,6 +43,9 @@ const loginError = ref<string>('');
 const loginLoading = ref<boolean>(false);
 const authStatus = ref<'loading' | 'authenticated' | 'unauthenticated'>('loading');
 const loggedInUsername = ref<string | null>(null);
+
+// User state for debugging
+const { state: userState } = useUserState();
 
 // Icon mapping
 const getIcon = (iconName: string) => {
@@ -569,6 +573,59 @@ const toggleLaunchOnStartup = async () => {
                 </el-tag>
               </div>
               <p class="text-gray-400 text-sm">Shows whether the application is currently running in guest mode.</p>
+            </div>
+
+            <!-- User State Debug Section -->
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">User State Debug</h4>
+              <div class="space-y-3 text-sm font-mono">
+                <div class="grid grid-cols-1 gap-2">
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">Username:</span>
+                    <span class="text-theme-text-light">{{ userState.username || 'null' }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">RSI Handle:</span>
+                    <span class="text-theme-text-light">{{ userState.rsiHandle || 'null' }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">RSI Moniker:</span>
+                    <span class="text-theme-text-light">{{ userState.rsiMoniker || 'null' }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">Authenticated:</span>
+                    <span class="text-theme-text-light">{{ userState.isAuthenticated }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">Roles:</span>
+                    <span class="text-theme-text-light">{{ userState.roles?.join(', ') || 'none' }}</span>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="text-gray-400 w-32 mb-1">Avatar URL:</span>
+                    <div class="pl-4">
+                      <div class="break-all text-xs text-theme-text-light bg-theme-bg-dark p-2 rounded border">
+                        {{ userState.avatar || 'null' }}
+                      </div>
+                      <div v-if="userState.avatar" class="mt-2">
+                        <span class="text-gray-400 text-xs">Avatar Preview:</span>
+                        <div class="mt-1">
+                          <img 
+                            :src="userState.avatar" 
+                            alt="Avatar" 
+                            class="w-12 h-12 rounded border-2 border-theme-border"
+                            @error="(e) => { 
+                              console.error('Settings avatar preview FAILED to load:', userState.avatar); 
+                              console.error('Error event:', e);
+                              console.error('Image element:', e.target);
+                            }"
+                            @load="() => console.log('Settings avatar preview loaded successfully:', userState.avatar)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <el-button @click="handleLogout" type="danger" class="px-6">
