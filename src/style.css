@@ -6,7 +6,7 @@
   --color-theme-bg-panel: #262626; /* charcoal-800 */
   --color-theme-accent-blue: rgb(99, 99, 247); /* primary-500 */
   --color-theme-accent-blue-hover: rgb(77, 77, 234); /* primary-600 */
-  --color-theme-accent-orange: #f0a070;
+  --color-theme-accent-orange: rgb(99, 99, 247);
   --color-theme-text-light: #e5e7eb;
   --color-theme-text-white: #ffffff;
   --color-theme-border: #404040; /* charcoal-700 */
@@ -25,13 +25,13 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* Element Plus Theme Overrides */
-  --el-color-primary: var(--color-theme-accent-orange); /* Use orange as primary */
-  --el-color-primary-light-3: #f4b08a;
-  --el-color-primary-light-5: #f7c3a3;
-  --el-color-primary-light-7: #fad6bc;
-  --el-color-primary-light-8: #fce0cd;
-  --el-color-primary-light-9: #fdeadd;
-  --el-color-primary-dark-2: #d6926b;
+  --el-color-primary: var(--color-theme-accent-orange); /* Use purple as primary */
+  --el-color-primary-light-3: rgba(99, 99, 247, 0.8);
+  --el-color-primary-light-5: rgba(99, 99, 247, 0.6);
+  --el-color-primary-light-7: rgba(99, 99, 247, 0.4);
+  --el-color-primary-light-8: rgba(99, 99, 247, 0.3);
+  --el-color-primary-light-9: rgba(99, 99, 247, 0.2);
+  --el-color-primary-dark-2: rgb(77, 77, 234);
   --el-bg-color: var(--color-theme-bg-panel); /* Use panel bg for components */
   --el-bg-color-overlay: var(--color-theme-bg-panel); /* Use panel bg for overlays like dropdowns */
   --el-bg-color-page: var(--color-theme-bg-dark); /* Use dark bg for page */
@@ -44,7 +44,7 @@
   --el-disabled-bg-color: var(--color-theme-bg-panel); /* Adjust disabled background */
   --el-disabled-text-color: #888; /* Muted text for disabled */
   --el-disabled-border-color: var(--color-theme-border); /* Adjust disabled border */
-  --el-color-info: var(--color-theme-accent-orange); /* Use orange for info color */
+  --el-color-info: var(--color-theme-accent-orange); /* Use purple for info color */
   --el-color-success: #67c23a;
   --el-color-warning: #e6a23c;
   --el-color-danger: #f56c6c;

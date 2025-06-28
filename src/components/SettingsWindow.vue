@@ -366,10 +366,10 @@ const toggleLaunchOnStartup = async () => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-gray-900 text-gray-100 font-sans overflow-hidden">
+  <div class="flex h-screen bg-theme-bg-dark text-theme-text-light font-sans overflow-hidden">
     <!-- Sidebar Navigation -->
-    <aside class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-      <div class="p-6 border-b border-gray-700">
+    <aside class="w-64 bg-theme-bg-panel border-r border-theme-border flex flex-col">
+      <div class="p-6 border-b border-theme-border">
         <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Settings</h2>
       </div>
       
@@ -380,8 +380,8 @@ const toggleLaunchOnStartup = async () => {
           @click="activeCategory = category.id"
           class="w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-all duration-200 group"
           :class="activeCategory === category.id 
-            ? 'bg-orange-500/20 text-orange-400 border-l-4 border-orange-500' 
-            : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent'"
+            ? 'bg-[rgb(99,99,247)]/20 text-[rgb(99,99,247)] border-l-4 border-[rgb(99,99,247)]' 
+            : 'text-theme-text-light hover:bg-white/5 hover:text-theme-text-white border-l-4 border-transparent'"
         >
           <svg class="w-5 h-5 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIcon(category.icon)"></path>
@@ -397,7 +397,7 @@ const toggleLaunchOnStartup = async () => {
         <!-- Status Message -->
         <div 
           v-if="statusMessage" 
-          class="mb-6 p-4 bg-blue-900/30 border border-blue-500/30 rounded-lg text-blue-400 text-sm"
+          class="mb-6 p-4 bg-[rgb(99,99,247)]/20 border border-[rgb(99,99,247)]/30 rounded-lg text-[rgb(99,99,247)] text-sm"
         >
           {{ statusMessage }}
         </div>
@@ -405,16 +405,16 @@ const toggleLaunchOnStartup = async () => {
         <!-- General Settings -->
         <section v-if="activeCategory === 'general'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">General Settings</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">General Settings</h3>
             <p class="text-gray-400">Configure basic application preferences</p>
           </div>
 
           <div class="space-y-6">
             <!-- Log File Location -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-              <h4 class="text-lg font-semibold text-white mb-4">Log File Location</h4>
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Log File Location</h4>
               <div class="flex items-center gap-4">
-                <code class="flex-1 bg-gray-900 px-4 py-3 rounded border border-gray-600 font-mono text-sm text-gray-300 overflow-hidden">
+                <code class="flex-1 bg-theme-bg-dark px-4 py-3 rounded border border-theme-border font-mono text-sm text-theme-text-light overflow-hidden">
                   {{ currentPath }}
                 </code>
                 <el-button @click="handleSelectLogDirectory" type="primary" class="px-6">
@@ -424,18 +424,18 @@ const toggleLaunchOnStartup = async () => {
             </div>
 
             <!-- Theme -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-              <h4 class="text-lg font-semibold text-white mb-4">Theme</h4>
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Theme</h4>
               <el-radio-group v-model="themeSelection" class="flex gap-4">
-                <el-radio value="dark" class="text-white">Dark Theme</el-radio>
+                <el-radio value="dark" class="text-theme-text-white">Dark Theme</el-radio>
                 <el-radio value="light" disabled class="text-gray-500">Light Theme (Coming Soon)</el-radio>
               </el-radio-group>
             </div>
 
             <!-- Launch on Startup -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-white">Launch on Startup</h4>
+                <h4 class="text-lg font-semibold text-theme-text-white">Launch on Startup</h4>
                 <el-switch
                   v-model="launchOnStartup"
                   @change="toggleLaunchOnStartup"
@@ -445,9 +445,9 @@ const toggleLaunchOnStartup = async () => {
             </div>
 
             <!-- Last Logged In User -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-              <h4 class="text-lg font-semibold text-white mb-2">Last Logged In User</h4>
-              <p class="text-gray-300">{{ lastLoggedInUser || 'None Detected' }}</p>
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-2">Last Logged In User</h4>
+              <p class="text-theme-text-light">{{ lastLoggedInUser || 'None Detected' }}</p>
             </div>
           </div>
         </section>
@@ -455,15 +455,15 @@ const toggleLaunchOnStartup = async () => {
         <!-- Kill Feed Settings -->
         <section v-if="activeCategory === 'killfeed'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">Kill Feed Settings</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Kill Feed Settings</h3>
             <p class="text-gray-400">Configure how kill events are processed and displayed</p>
           </div>
 
           <div class="space-y-6">
             <!-- Fetch Profile Data -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-white">Fetch Profile Data</h4>
+                <h4 class="text-lg font-semibold text-theme-text-white">Fetch Profile Data</h4>
                 <el-switch
                   v-model="fetchProfileData"
                   @change="toggleFetchProfileData"
@@ -473,9 +473,9 @@ const toggleLaunchOnStartup = async () => {
             </div>
 
             <!-- Play Sound Effects -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-white">Play Event Sounds</h4>
+                <h4 class="text-lg font-semibold text-theme-text-white">Play Event Sounds</h4>
                 <el-switch
                   v-model="playSoundEffects"
                   @change="toggleSoundEffects"
@@ -489,13 +489,13 @@ const toggleLaunchOnStartup = async () => {
         <!-- Notifications Settings -->
         <section v-if="activeCategory === 'notifications'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">Notifications</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Notifications</h3>
             <p class="text-gray-400">Configure desktop notification preferences</p>
           </div>
 
-          <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+          <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
             <div class="flex items-center justify-between mb-2">
-              <h4 class="text-lg font-semibold text-white">Show Kill Notifications</h4>
+              <h4 class="text-lg font-semibold text-theme-text-white">Show Kill Notifications</h4>
               <el-switch
                 v-model="showNotifications"
                 @change="toggleNotifications"
@@ -508,15 +508,15 @@ const toggleLaunchOnStartup = async () => {
         <!-- Data & API Settings -->
         <section v-if="activeCategory === 'data_api'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">Data & API</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Data & API</h3>
             <p class="text-gray-400">Configure data storage and API connectivity</p>
           </div>
 
           <div class="space-y-6">
             <!-- Offline Mode -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-white">Offline Mode</h4>
+                <h4 class="text-lg font-semibold text-theme-text-white">Offline Mode</h4>
                 <el-switch
                   v-model="offlineMode"
                   @change="saveApiSettings"
@@ -526,8 +526,8 @@ const toggleLaunchOnStartup = async () => {
             </div>
 
             <!-- CSV Log Path -->
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-              <h4 class="text-lg font-semibold text-white mb-4">CSV Export Path</h4>
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">CSV Export Path</h4>
               <div class="space-y-4">
                 <el-input
                   v-model="csvLogPath"
@@ -545,12 +545,12 @@ const toggleLaunchOnStartup = async () => {
         <!-- Account Settings -->
         <section v-if="activeCategory === 'account'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">Account</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Account</h3>
             <p class="text-gray-400">Manage your account and authentication</p>
           </div>
 
-          <div v-if="authStatus === 'loading'" class="bg-gray-800/50 rounded-lg p-8 border border-gray-700 text-center">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4"></div>
+          <div v-if="authStatus === 'loading'" class="bg-theme-bg-panel/80 rounded-lg p-8 border border-theme-border text-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(99,99,247)] mx-auto mb-4"></div>
             <p class="text-gray-400">Loading account status...</p>
           </div>
 
@@ -561,9 +561,9 @@ const toggleLaunchOnStartup = async () => {
               <p class="text-green-300">Logged in as: <strong>{{ loggedInUsername || 'Unknown' }}</strong></p>
             </div>
 
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-white">Guest Mode Status</h4>
+                <h4 class="text-lg font-semibold text-theme-text-white">Guest Mode Status</h4>
                 <el-tag :type="isGuestMode ? 'warning' : 'success'">
                   {{ isGuestMode ? 'Active' : 'Inactive' }}
                 </el-tag>
@@ -578,12 +578,12 @@ const toggleLaunchOnStartup = async () => {
 
           <!-- Logged Out View -->
           <div v-else class="space-y-6">
-            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
               <p class="text-gray-400 mb-6">Log in to sync settings and potentially link activity across devices (feature pending).</p>
               
               <div class="space-y-4">
                 <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2">Username or Email</label>
+                  <label class="block text-sm font-medium text-theme-text-light mb-2">Username or Email</label>
                   <el-input
                     v-model="loginIdentifier"
                     placeholder="your_handle / user@email.com"
@@ -592,7 +592,7 @@ const toggleLaunchOnStartup = async () => {
                 </div>
                 
                 <div>
-                  <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                  <label class="block text-sm font-medium text-theme-text-light mb-2">Password</label>
                   <el-input
                     v-model="loginPassword"
                     type="password"
@@ -620,7 +620,7 @@ const toggleLaunchOnStartup = async () => {
         <!-- Debug Section -->
         <section v-if="activeCategory === 'debug'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">Debug Actions</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Debug Actions</h3>
             <p class="text-gray-400">Development and testing utilities</p>
           </div>
 
@@ -630,13 +630,13 @@ const toggleLaunchOnStartup = async () => {
         <!-- About Section -->
         <section v-if="activeCategory === 'about'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-white mb-2">About</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">About</h3>
             <p class="text-gray-400">Application information and version details</p>
           </div>
 
-          <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
-            <h4 class="text-lg font-semibold text-white mb-2">Application Version</h4>
-            <p class="text-gray-300 font-mono">{{ version }}</p>
+          <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+            <h4 class="text-lg font-semibold text-theme-text-white mb-2">Application Version</h4>
+            <p class="text-theme-text-light font-mono">{{ version }}</p>
           </div>
         </section>
       </div>
@@ -645,25 +645,25 @@ const toggleLaunchOnStartup = async () => {
 </template>
 
 <style>
-/* Element Plus overrides for dark theme */
+/* Element Plus overrides to match application theme */
 :deep(.el-switch.is-checked .el-switch__core) {
-  background-color: #f97316 !important;
-  border-color: #f97316 !important;
+  background-color: rgb(99, 99, 247) !important;
+  border-color: rgb(99, 99, 247) !important;
 }
 
 :deep(.el-switch__core) {
-  background-color: #374151 !important;
-  border-color: #374151 !important;
+  background-color: var(--color-theme-border) !important;
+  border-color: var(--color-theme-border) !important;
 }
 
 :deep(.el-radio__input.is-checked .el-radio__inner) {
-  background-color: #f97316 !important;
-  border-color: #f97316 !important;
+  background-color: rgb(99, 99, 247) !important;
+  border-color: rgb(99, 99, 247) !important;
 }
 
 :deep(.el-radio__inner) {
   background-color: transparent !important;
-  border-color: #6b7280 !important;
+  border-color: var(--color-theme-border) !important;
 }
 
 :deep(.el-radio__label) {
@@ -671,18 +671,18 @@ const toggleLaunchOnStartup = async () => {
 }
 
 :deep(.el-input__wrapper) {
-  background-color: #111827 !important;
-  border-color: #374151 !important;
-  box-shadow: 0 0 0 1px #374151 inset !important;
+  background-color: var(--color-theme-bg-dark) !important;
+  border-color: var(--color-theme-border) !important;
+  box-shadow: 0 0 0 1px var(--color-theme-border) inset !important;
 }
 
 :deep(.el-input.is-focus .el-input__wrapper) {
-  border-color: #f97316 !important;
-  box-shadow: 0 0 0 1px #f97316 inset !important;
+  border-color: rgb(99, 99, 247) !important;
+  box-shadow: 0 0 0 1px rgb(99, 99, 247) inset !important;
 }
 
 :deep(.el-input__inner) {
-  color: #f3f4f6 !important;
+  color: var(--color-theme-text-light) !important;
 }
 
 :deep(.el-input__inner::placeholder) {
@@ -690,13 +690,13 @@ const toggleLaunchOnStartup = async () => {
 }
 
 :deep(.el-button--primary) {
-  background-color: #f97316 !important;
-  border-color: #f97316 !important;
+  background-color: rgb(99, 99, 247) !important;
+  border-color: rgb(99, 99, 247) !important;
 }
 
 :deep(.el-button--primary:hover) {
-  background-color: #ea580c !important;
-  border-color: #ea580c !important;
+  background-color: rgb(77, 77, 234) !important;
+  border-color: rgb(77, 77, 234) !important;
 }
 
 :deep(.el-button--danger) {
@@ -723,16 +723,16 @@ const toggleLaunchOnStartup = async () => {
 
 /* Hide default Element Plus notification styles that conflict */
 :deep(.el-notification) {
-  background-color: #1f2937 !important;
-  border-color: #374151 !important;
-  color: #f3f4f6 !important;
+  background-color: var(--color-theme-bg-panel) !important;
+  border-color: var(--color-theme-border) !important;
+  color: var(--color-theme-text-light) !important;
 }
 
 :deep(.el-notification .el-notification__title) {
-  color: #f3f4f6 !important;
+  color: var(--color-theme-text-white) !important;
 }
 
 :deep(.el-notification .el-notification__content) {
-  color: #d1d5db !important;
+  color: var(--color-theme-text-light) !important;
 }
 </style>
