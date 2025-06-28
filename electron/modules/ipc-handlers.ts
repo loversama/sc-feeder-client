@@ -248,7 +248,7 @@ try {
     });
 
     // NEW: Handler for Web Content Window
-    ipcMain.handle('open-web-content-window', (_event, initialTab?: 'profile' | 'leaderboard') => { // Type the initialTab
+    ipcMain.handle('open-web-content-window', (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => { // Type the initialTab
       logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
       // Pass initialTab directly to createWebContentWindow, which now handles the URL hash
       const webWindow = createWebContentWindow(initialTab); // Pass initialTab here

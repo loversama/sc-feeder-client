@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
+import { Setting, Tickets, User, MapLocation } from '@element-plus/icons-vue'; // Import icons
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
@@ -30,6 +31,7 @@ let cleanupFunctions: (() => void)[] = [];
 const isSettingsActive = ref(false);
 const isProfileActive = ref(false);
 const isLeaderboardActive = ref(false);
+const isMapActive = ref(false);
 // Note: For external windows like Settings, true active state tracking
 // would require IPC communication with the main process.
 
@@ -143,6 +145,20 @@ const openLeaderboard = () => {
     }
   } catch (error) {
     console.error("Failed to toggle web content window for leaderboard:", error);
+  }
+}
+
+const openMap = () => {
+  try {
+    if (isMapActive.value) {
+      console.log('Map button clicked while active: Closing window.');
+      window.logMonitorApi.closeWebContentWindow();
+    } else {
+      console.log('Map button clicked while inactive: Opening window to map.');
+      window.logMonitorApi.openWebContentWindow('map');
+    }
+  } catch (error) {
+    console.error("Failed to toggle web content window for map:", error);
   }
 }
 
@@ -459,10 +475,12 @@ const getInitialWindowStates = async () => {
       // Set based on initial status
       isProfileActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'profile';
       isLeaderboardActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'leaderboard';
-       // Ensure both are false if closed initially
+      isMapActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'map';
+       // Ensure all are false if closed initially
        if (!webContentStatus.isOpen) {
          isProfileActive.value = false;
          isLeaderboardActive.value = false;
+         isMapActive.value = false;
        }
     } else {
       console.warn('[KillFeed] getWebContentWindowStatus API not available for initial check.');
@@ -546,15 +564,17 @@ onMounted(async () => { // Make onMounted async
     // Add listener for Web Content window status
     (() => {
       if (window.logMonitorApi?.onWebContentWindowStatus) {
-        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => {
+        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | 'map' | '/' | null }) => {
           console.log('[KillFeed] Received web content window status update:', status);
           isProfileActive.value = status.isOpen && status.activeSection === 'profile';
           isLeaderboardActive.value = status.isOpen && status.activeSection === 'leaderboard';
+          isMapActive.value = status.isOpen && status.activeSection === 'map';
           // Add other active states here if needed for 'stats' or '/'
           // If web content window is closed, ensure all relevant states are inactive
           if (!status.isOpen) {
             isProfileActive.value = false;
             isLeaderboardActive.value = false;
+            isMapActive.value = false;
             // Reset other active states too if they exist
           }
         });
@@ -730,8 +750,16 @@ onUnmounted(() => {
         <span :class="monitoringBadge.class">{{ monitoringBadge.text }}</span>
         <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
       </div>
-      <!-- Right-aligned Icon Buttons (Order: Leaderboard, Profile, Settings) -->
+      <!-- Right-aligned Icon Buttons (Order: Map, Leaderboard, Profile, Settings) -->
       <div class="status-icons-container">
+        <div
+          @click="openMap"
+          class="status-icon-button"
+          :class="{ active: isMapActive }"
+          title="Map"
+        >
+          <el-icon><MapLocation /></el-icon>
+        </div>
         <div
           @click="openLeaderboard"
           class="status-icon-button"

@@ -61,14 +61,14 @@ export interface LogMonitorApi {
 
   // Window Actions
   openSettingsWindow: () => Promise<void>;
-  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/') => Promise<void>; // Expanded
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => Promise<void>; // Expanded
   closeSettingsWindow: () => Promise<boolean>;
   closeWebContentWindow: () => Promise<boolean>;
   // Window controls are now handled by custom-electron-titlebar
 
   // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
-  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }>; // Expanded
+  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }>; // Expanded
 
   // Debug Actions
   resetSessions: () => Promise<boolean>;
@@ -106,7 +106,7 @@ export interface LogMonitorApi {
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void) => () => void; // Expanded
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }) => void) => () => void; // Expanded
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: AuthData) => void) => () => void; // Added
 
   // Update Events

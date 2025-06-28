@@ -132,7 +132,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   
   // Window Actions
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
-  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section),
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section),
   closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'),
   closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'),
   // Window controls are now handled by custom-electron-titlebar
@@ -161,7 +161,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
 
   // Window Status Getters
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => ipcRenderer.invoke('get-settings-window-status'),
-  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
+  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
 
   // Resource Path
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
@@ -214,7 +214,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('settings-window-status', callback);
     return () => ipcRenderer.removeListener('settings-window-status', callback);
   },
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void): (() => void) => {
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }) => void): (() => void) => {
     ipcRenderer.on('web-content-window-status', callback);
     return () => ipcRenderer.removeListener('web-content-window-status', callback);
   },

@@ -27,7 +27,7 @@ let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let webContentWindow: BrowserWindow | null = null; // Added for Web Content Window
 let loginWindow: BrowserWindow | null = null;
-let currentWebContentSection: 'profile' | 'leaderboard' | null = null; // Track active section
+let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | null = null; // Track active section
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
@@ -795,7 +795,7 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
     return detailsWindow;
 }
 
-export function createWebContentWindow(section?: 'profile' | 'leaderboard'): BrowserWindow | null {
+export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map'): BrowserWindow | null {
     if (webContentWindow) {
         if (webContentWindow.isMinimized()) {
             webContentWindow.restore(); // Restore if minimized
@@ -1170,7 +1170,7 @@ export function getSettingsStatus(): { isOpen: boolean } {
     return { isOpen: settingsWindow !== null };
 }
 
-export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | null } {
+export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | null } {
     return { isOpen: webContentWindow !== null, activeSection: currentWebContentSection };
 }
 

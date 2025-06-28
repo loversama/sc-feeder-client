@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
 import { ElAvatar, ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
-import { User, Key, Switch } from '@element-plus/icons-vue'
+import { User, Key, Switch, MapLocation } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
 
 // Props and emits
@@ -54,6 +54,8 @@ const handleCommand = async (command: string) => {
       await window.logMonitorApi?.openWebContentWindow?.('profile')
     } else if (command === 'profile') {
       await window.logMonitorApi?.openWebContentWindow?.('profile')
+    } else if (command === 'map') {
+      await window.logMonitorApi?.openWebContentWindow?.('map')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     }
@@ -126,7 +128,11 @@ const changePage = (page: string) => {
             <el-icon><User /></el-icon>
             <span>Profile</span>
           </el-menu-item>
-          <el-menu-item index="1-3" @click="handleCommand('settings')" class="menu-item">
+          <el-menu-item index="1-3" @click="handleCommand('map')" class="menu-item">
+            <el-icon><MapLocation /></el-icon>
+            <span>Map</span>
+          </el-menu-item>
+          <el-menu-item index="1-4" @click="handleCommand('settings')" class="menu-item">
             <el-icon><Switch /></el-icon>
             <span>Settings</span>
           </el-menu-item>

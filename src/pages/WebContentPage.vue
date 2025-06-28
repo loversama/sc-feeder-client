@@ -24,6 +24,16 @@
         >
           Leaderboard
         </button>
+        <button
+          @click="setActiveSection('map')"
+          class="ml-4 p-2 rounded transition-colors duration-200"
+          :class="{ 
+            'text-[rgb(99,99,247)] bg-white/5': activeSection === 'map',
+            'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'map' 
+          }"
+        >
+          Map
+        </button>
       </nav>
     </header>
 
@@ -53,7 +63,7 @@ import type { IpcRendererEvent } from 'electron';
 import type { AuthData, UserProfile } from '../preload';
 
 const webviewRef = ref<Electron.WebviewTag | null>(null);
-const activeSection = ref<'profile' | 'leaderboard'>('profile'); // Current active section
+const activeSection = ref<'profile' | 'leaderboard' | 'map'>('profile'); // Current active section
 const baseWebUrl = import.meta.env.VITE_WEB_CONTENT_URL || 'http://localhost:3001';
 
 // State for authentication
@@ -72,10 +82,12 @@ const webviewSrc = computed(() => {
   // Use different URLs based on authentication status
   if (isAuthenticated.value) {
     // Authenticated user URLs - token-based authentication
-    if (activeSection.value === 'profile') {
-      url = `${webAppBaseUrl}/profile?source=electron&auth=true`;
+    if (activeSection.value === 'profile' && currentUsername.value) {
+      url = `${webAppBaseUrl}/user/${currentUsername.value}?source=electron&auth=true`;
     } else if (activeSection.value === 'leaderboard') {
       url = `${webAppBaseUrl}/leaderboard?source=electron&auth=true`;
+    } else if (activeSection.value === 'map') {
+      url = `${webAppBaseUrl}/map?source=electron&auth=true`;
     } else {
       url = `${webAppBaseUrl}?source=electron&auth=true`;
     }
@@ -85,6 +97,8 @@ const webviewSrc = computed(() => {
       url = `${webAppBaseUrl}/user/${currentUsername.value}?source=electron`;
     } else if (activeSection.value === 'leaderboard') {
       url = `${webAppBaseUrl}/leaderboard?source=electron`;
+    } else if (activeSection.value === 'map') {
+      url = `${webAppBaseUrl}/map?source=electron`;
     } else {
       url = `${webAppBaseUrl}?source=electron`;
     }
@@ -95,7 +109,7 @@ const webviewSrc = computed(() => {
 });
 
 // Function to change active section
-const setActiveSection = (section: 'profile' | 'leaderboard') => {
+const setActiveSection = (section: 'profile' | 'leaderboard' | 'map') => {
   console.log(`[WebContentPage] Setting active section to: ${section}`);
   activeSection.value = section;
 };
@@ -190,7 +204,7 @@ onMounted(async () => {
     try {
       const status = await window.logMonitorApi.getWebContentWindowStatus();
       if (status.isOpen && status.activeSection) {
-        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard') {
+        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map') {
           activeSection.value = status.activeSection;
           console.log(`[WebContentPage] Initial section set to: ${activeSection.value}`);
         }
@@ -203,7 +217,7 @@ onMounted(async () => {
   // Listen for navigation requests from main process
   window.addEventListener('web-content-navigate', (event: any) => {
     const section = event.detail?.section;
-    if (section === 'profile' || section === 'leaderboard') {
+    if (section === 'profile' || section === 'leaderboard' || section === 'map') {
       console.log(`[WebContentPage] Received navigation request for: ${section}`);
       setActiveSection(section);
     }
