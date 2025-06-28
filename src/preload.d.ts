@@ -64,9 +64,7 @@ export interface LogMonitorApi {
   openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/') => Promise<void>; // Expanded
   closeSettingsWindow: () => Promise<boolean>;
   closeWebContentWindow: () => Promise<boolean>;
-  windowMinimize: () => void;
-  windowToggleMaximize: () => void;
-  windowClose: () => void;
+  // Window controls are now handled by custom-electron-titlebar
 
   // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
@@ -110,6 +108,24 @@ export interface LogMonitorApi {
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
   onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | '/' | null }) => void) => () => void; // Expanded
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: AuthData) => void) => () => void; // Added
+
+  // Update Events
+  checkForUpdate: () => void;
+  downloadUpdate: () => void;
+  installUpdate: () => void;
+  onUpdateChecking: (callback: (event: IpcRendererEvent) => void) => () => void;
+  onUpdateAvailable: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => () => void;
+  onUpdateNotAvailable: (callback: (event: IpcRendererEvent) => void) => () => void;
+  onUpdateDownloadProgress: (callback: (event: IpcRendererEvent, progress: number, speed: number, transferred: number, total: number) => void) => () => void;
+  onUpdateDownloaded: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => () => void;
+  onUpdateError: (callback: (event: IpcRendererEvent, error: string) => void) => () => void;
+
+  // Debug Update Simulation
+  debugSimulateUpdateAvailable: () => void;
+  debugSimulateUpdateDownload: () => void;
+  debugSimulateUpdateError: () => void;
+  debugSimulateUpdateChecking: () => void;
+  debugResetUpdateSimulation: () => void;
 
   // Cleanup
   removeAllListeners: () => void;

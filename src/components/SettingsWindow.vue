@@ -1,20 +1,21 @@
 <script setup lang="ts">
-console.log('[SettingsWindow.vue] <script setup> executing...'); // Add early log
+console.log('[SettingsWindow.vue] <script setup> executing...');
 import { ref, onMounted } from 'vue';
-import DebugActions from './DebugActions.vue'; // Import the new component
+import { ElMessage, ElNotification } from 'element-plus';
+import DebugActions from './DebugActions.vue';
 
 // State for the active category
-const activeCategory = ref<string>('general'); // Default to 'general'
+const activeCategory = ref<string>('general');
 
 // Define categories for the sidebar
 const categories = ref([
-  { id: 'general', name: 'GENERAL' },
-  { id: 'killfeed', name: 'KILL FEED' },
-  { id: 'notifications', name: 'NOTIFICATIONS' },
-  { id: 'data_api', name: 'DATA &amp; API' },
-  { id: 'account', name: 'ACCOUNT' },
-  { id: 'debug', name: 'DEBUG' }, // Add Debug category
-  { id: 'about', name: 'ABOUT' },
+  { id: 'general', name: 'General', icon: 'settings' },
+  { id: 'killfeed', name: 'Kill Feed', icon: 'crosshairs' },
+  { id: 'notifications', name: 'Notifications', icon: 'bell' },
+  { id: 'data_api', name: 'Data & API', icon: 'database' },
+  { id: 'account', name: 'Account', icon: 'user' },
+  { id: 'debug', name: 'Debug', icon: 'bug' },
+  { id: 'about', name: 'About', icon: 'info' },
 ]);
 
 // Existing state variables
@@ -23,16 +24,18 @@ const lastLoggedInUser = ref<string>('None');
 const showNotifications = ref<boolean>(true);
 const playSoundEffects = ref<boolean>(true);
 const statusMessage = ref<string>('');
-// const apiUrl = ref<string>(''); // Removed
-// const apiKey = ref<string>(''); // Removed
 const offlineMode = ref<boolean>(false);
 const csvLogPath = ref<string>('');
 const fetchProfileData = ref<boolean>(true);
-const launchOnStartup = ref<boolean>(true); // Launch on startup toggle
+const launchOnStartup = ref<boolean>(true);
 const version = ref<string>('Loading...');
-const isGuestMode = ref<boolean>(false); // Guest mode status
+const isGuestMode = ref<boolean>(false);
 
-// --- Account State ---
+// Theme and Language State
+const themeSelection = ref<string>('dark');
+const languageSelection = ref<string>('en');
+
+// Account State
 const loginIdentifier = ref<string>('');
 const loginPassword = ref<string>('');
 const loginError = ref<string>('');
@@ -40,10 +43,23 @@ const loginLoading = ref<boolean>(false);
 const authStatus = ref<'loading' | 'authenticated' | 'unauthenticated'>('loading');
 const loggedInUsername = ref<string | null>(null);
 
+// Icon mapping
+const getIcon = (iconName: string) => {
+  const icons = {
+    settings: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+    crosshairs: 'M12 1v2m0 16v2m11-9h-2M4 12H2m15.364-6.364l-1.414 1.414M6.05 6.05L4.636 4.636m12.728 12.728l-1.414-1.414M6.05 17.95l-1.414 1.414M16 8a4 4 0 11-8 0 4 4 0 018 0z',
+    bell: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9',
+    database: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+    user: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
+    bug: 'M12 2l3.09 6.26L22 9l-5.09 0.74L12 16l-4.91-6.26L2 9l6.91-0.74L12 2z',
+    info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+  };
+  return icons[iconName as keyof typeof icons] || icons.settings;
+};
+
 // Fetch the current log path
 const updateLogPath = async () => {
   try {
-    // Use specific API if available, otherwise handle error
     if (window.logMonitorApi?.getLogPath) {
         currentPath.value = await window.logMonitorApi.getLogPath();
     } else {
@@ -57,7 +73,7 @@ const updateLogPath = async () => {
 
 // Function to handle directory selection for Game.log
 const handleSelectLogDirectory = async () => {
-  setStatus('Opening directory selection...'); // Use setStatus
+  setStatus('Opening directory selection...');
   if (!window.logMonitorApi?.selectLogDirectory) {
       setStatus('Error: Cannot open directory dialog.');
       return;
@@ -66,13 +82,13 @@ const handleSelectLogDirectory = async () => {
     const selectedPath = await window.logMonitorApi.selectLogDirectory()
     if (selectedPath) {
       currentPath.value = selectedPath
-      setStatus(`Log Directory updated.`); // Use setStatus
+      setStatus(`Log Directory updated.`);
     } else {
-      setStatus('Selection cancelled.'); // Use setStatus
+      setStatus('Selection cancelled.');
     }
   } catch (error) {
     console.error('Error selecting log directory:', error)
-    setStatus('Error opening directory dialog.'); // Use setStatus
+    setStatus('Error opening directory dialog.');
   }
 }
 
@@ -80,12 +96,12 @@ const handleSelectLogDirectory = async () => {
 onMounted(async () => {
   updateLogPath()
 
-  // Load the last logged in user (assuming this is still relevant or needs update)
+  // Load the last logged in user
   try {
     if (window.logMonitorApi?.getLastLoggedInUser) {
         const user = await window.logMonitorApi.getLastLoggedInUser();
         if (user) {
-            lastLoggedInUser.value = user; // Keep this for display?
+            lastLoggedInUser.value = user;
         }
     }
   } catch (error) {
@@ -106,10 +122,10 @@ onMounted(async () => {
      if (window.logMonitorApi?.getFetchProfileData) {
         fetchProfileData.value = await window.logMonitorApi.getFetchProfileData();
         console.log('Loaded fetch profile data setting:', fetchProfileData.value);
-     } else { fetchProfileData.value = true; } // Default
+     } else { fetchProfileData.value = true; }
   } catch (error) {
     console.error('Failed to get profile data settings:', error)
-    fetchProfileData.value = true // Default
+    fetchProfileData.value = true
   }
 
   // Load sound effects settings
@@ -117,23 +133,21 @@ onMounted(async () => {
     if (window.logMonitorApi?.getSoundEffects) {
         playSoundEffects.value = await window.logMonitorApi.getSoundEffects();
         console.log('Loaded sound effects setting:', playSoundEffects.value);
-    } else { playSoundEffects.value = true; } // Default
+    } else { playSoundEffects.value = true; }
   } catch (error) {
     console.error('Failed to get sound effects settings:', error)
-    playSoundEffects.value = true // Default
+    playSoundEffects.value = true
   }
 
   // Load API Settings
   try {
     if (window.logMonitorApi?.getApiSettings) {
         const apiSettings = await window.logMonitorApi.getApiSettings();
-        // apiUrl.value = apiSettings.apiUrl; // Removed
-        // apiKey.value = apiSettings.apiKey; // Removed
         offlineMode.value = apiSettings.offlineMode;
     }
   } catch (error) {
     console.error('Failed to get API settings:', error)
-    setStatus('Error loading API settings.'); // Use setStatus
+    setStatus('Error loading API settings.');
   }
 
   // Load CSV Log Path
@@ -143,7 +157,7 @@ onMounted(async () => {
     }
   } catch (error) {
     console.error('Failed to get CSV log path:', error)
-    setStatus('Error loading CSV log path.'); // Use setStatus
+    setStatus('Error loading CSV log path.');
   }
 
   // Update auth status when component mounts
@@ -154,16 +168,16 @@ onMounted(async () => {
     if (window.logMonitorApi?.getLaunchOnStartup) {
       launchOnStartup.value = await window.logMonitorApi.getLaunchOnStartup();
     } else {
-      launchOnStartup.value = true; // Default
+      launchOnStartup.value = true;
     }
   } catch (error) {
     console.error('Failed to get launch on startup setting:', error);
-    launchOnStartup.value = true; // Default
+    launchOnStartup.value = true;
   }
 
   // Load application version
   try {
-    if (window.logMonitorApi?.getAppVersion) { // Assuming this is the correct IPC channel
+    if (window.logMonitorApi?.getAppVersion) {
         version.value = await window.logMonitorApi.getAppVersion();
     }
   } catch (error) {
@@ -179,14 +193,13 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to get guest mode status:', error);
   }
-
 });
 
-// --- Account Methods ---
+// Account Methods
 const handleLogin = async () => {
     loginLoading.value = true;
     loginError.value = '';
-    if (!window.logMonitorApi?.authLogin) { // Check for specific function
+    if (!window.logMonitorApi?.authLogin) {
         loginError.value = 'API bridge (authLogin) not available.';
         setStatus('Login error: API bridge missing.');
         loginLoading.value = false;
@@ -194,13 +207,11 @@ const handleLogin = async () => {
     }
     try {
         setStatus('Login attempt...');
-        const result = await window.logMonitorApi.authLogin(loginIdentifier.value, loginPassword.value); // Use specific function
+        const result = await window.logMonitorApi.authLogin(loginIdentifier.value, loginPassword.value);
         if (result.success) {
-           await updateAuthStatus(); // Refresh status after login
+           await updateAuthStatus();
            setStatus('Login successful!');
-           loginPassword.value = ''; // Clear password field on success
-           // Don't pre-fill identifier after successful login
-           // loginIdentifier.value = loggedInUsername.value || '';
+           loginPassword.value = '';
         } else {
            loginError.value = result.error || 'Login failed.';
            setStatus('Login failed.');
@@ -216,21 +227,21 @@ const handleLogin = async () => {
 };
 
 const handleLogout = async () => {
-     if (!window.logMonitorApi?.authLogout) { // Check for specific function
+     if (!window.logMonitorApi?.authLogout) {
         setStatus('Logout error: API bridge missing.');
         return;
      }
      try {
         setStatus('Logging out...');
-        const success = await window.logMonitorApi.authLogout(); // Use specific function
-        if (success) { // Assuming logout returns boolean or throws error
-           await updateAuthStatus(); // Refresh status
-           loginIdentifier.value = ''; // Clear login form
+        const success = await window.logMonitorApi.authLogout();
+        if (success) {
+           await updateAuthStatus();
+           loginIdentifier.value = '';
            loginPassword.value = '';
            loginError.value = '';
            setStatus('Logged out.');
         } else {
-           setStatus('Logout failed.'); // Or handle specific errors if returned
+           setStatus('Logout failed.');
         }
      } catch (err: any) {
          console.error('Logout IPC error:', err);
@@ -241,19 +252,19 @@ const handleLogout = async () => {
 // Function to get current auth status from main process
 const updateAuthStatus = async () => {
     authStatus.value = 'loading';
-    if (!window.logMonitorApi?.authGetStatus) { // Check for specific function
+    if (!window.logMonitorApi?.authGetStatus) {
         authStatus.value = 'unauthenticated';
         loggedInUsername.value = null;
         console.error('Cannot get auth status: API bridge missing.');
         return;
     }
     try {
-        const status = await window.logMonitorApi.authGetStatus(); // Use specific function
+        const status = await window.logMonitorApi.authGetStatus();
         loggedInUsername.value = status.username;
         authStatus.value = status.isAuthenticated ? 'authenticated' : 'unauthenticated';
     } catch (err) {
         console.error('Error getting auth status:', err);
-        authStatus.value = 'unauthenticated'; // Assume logged out on error
+        authStatus.value = 'unauthenticated';
         loggedInUsername.value = null;
     }
 };
@@ -274,11 +285,7 @@ const toggleNotifications = async () => {
 const saveApiSettings = async () => {
   if (!window.logMonitorApi?.setApiSettings) return;
   try {
-    // Update offlineMode based on checkbox before saving
-    // Only save offlineMode now
     const success = await window.logMonitorApi.setApiSettings({
-      // apiUrl: apiUrl.value, // Removed
-      // apiKey: apiKey.value, // Removed
       offlineMode: offlineMode.value
     })
     setStatus(success ? 'API settings saved.' : 'Failed to save API settings.')
@@ -328,9 +335,17 @@ const toggleSoundEffects = async () => {
 
 // Helper to set status message and clear after delay
 const setStatus = (msg: string, duration = 3000) => {
+  ElNotification({
+    title: 'Status',
+    message: msg,
+    type: 'info',
+    duration: duration,
+    position: 'bottom-right'
+  });
+  
   statusMessage.value = msg;
   setTimeout(() => {
-    if (statusMessage.value === msg) { // Clear only if it hasn't been overwritten
+    if (statusMessage.value === msg) {
       statusMessage.value = '';
     }
   }, duration);
@@ -348,619 +363,376 @@ const toggleLaunchOnStartup = async () => {
     setStatus('Error updating launch on startup setting');
   }
 };
-
 </script>
 
 <template>
-  <div class="settings-container">
+  <div class="flex h-screen bg-gray-900 text-gray-100 font-sans overflow-hidden">
     <!-- Sidebar Navigation -->
-    <aside class="settings-sidebar">
-      <h2 class="sidebar-title">SETTINGS</h2>
-      <nav class="sidebar-nav">
-        <ul>
-          <li
-            v-for="category in categories"
-            :key="category.id"
-            :class="{ active: activeCategory === category.id }"
-            @click="activeCategory = category.id"
-          >
-            {{ category.name }}
-          </li>
-        </ul>
+    <aside class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+      <div class="p-6 border-b border-gray-700">
+        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Settings</h2>
+      </div>
+      
+      <nav class="flex-1 p-4 space-y-2">
+        <button
+          v-for="category in categories"
+          :key="category.id"
+          @click="activeCategory = category.id"
+          class="w-full flex items-center gap-3 px-4 py-3 text-left rounded-lg transition-all duration-200 group"
+          :class="activeCategory === category.id 
+            ? 'bg-orange-500/20 text-orange-400 border-l-4 border-orange-500' 
+            : 'text-gray-300 hover:bg-gray-700/50 hover:text-white border-l-4 border-transparent'"
+        >
+          <svg class="w-5 h-5 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="getIcon(category.icon)"></path>
+          </svg>
+          <span class="font-medium">{{ category.name }}</span>
+        </button>
       </nav>
     </aside>
 
-    <!-- Main Settings Content -->
-    <main class="settings-content">
-      <!-- General Settings -->
-      <section v-if="activeCategory === 'general'">
-        <h3 class="content-title">GENERAL</h3>
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto">
+      <div class="p-8 max-w-4xl">
+        <!-- Status Message -->
+        <div 
+          v-if="statusMessage" 
+          class="mb-6 p-4 bg-blue-900/30 border border-blue-500/30 rounded-lg text-blue-400 text-sm"
+        >
+          {{ statusMessage }}
+        </div>
 
-        <!-- Log File Location -->
-        <div class="setting-item">
-          <label class="setting-name">Log File Location</label>
-          <div class="setting-control file-path-control">
-            <code class="file-path">{{ currentPath }}</code>
-            <button @click="handleSelectLogDirectory" class="action-button">Change</button>
+        <!-- General Settings -->
+        <section v-if="activeCategory === 'general'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">General Settings</h3>
+            <p class="text-gray-400">Configure basic application preferences</p>
           </div>
-        </div>
 
-        <!-- Theme (Example - Not functional yet) -->
-        <div class="setting-item">
-          <label class="setting-name">Theme</label>
-          <div class="setting-control radio-group">
-            <label><input type="radio" name="theme" value="dark" checked> Dark</label>
-            <label><input type="radio" name="theme" value="light" disabled> Light</label>
+          <div class="space-y-6">
+            <!-- Log File Location -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <h4 class="text-lg font-semibold text-white mb-4">Log File Location</h4>
+              <div class="flex items-center gap-4">
+                <code class="flex-1 bg-gray-900 px-4 py-3 rounded border border-gray-600 font-mono text-sm text-gray-300 overflow-hidden">
+                  {{ currentPath }}
+                </code>
+                <el-button @click="handleSelectLogDirectory" type="primary" class="px-6">
+                  Change
+                </el-button>
+              </div>
+            </div>
+
+            <!-- Theme -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <h4 class="text-lg font-semibold text-white mb-4">Theme</h4>
+              <el-radio-group v-model="themeSelection" class="flex gap-4">
+                <el-radio value="dark" class="text-white">Dark Theme</el-radio>
+                <el-radio value="light" disabled class="text-gray-500">Light Theme (Coming Soon)</el-radio>
+              </el-radio-group>
+            </div>
+
+            <!-- Launch on Startup -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-lg font-semibold text-white">Launch on Startup</h4>
+                <el-switch
+                  v-model="launchOnStartup"
+                  @change="toggleLaunchOnStartup"
+                />
+              </div>
+              <p class="text-gray-400 text-sm">Launch the application automatically when you log in. Will start minimized to tray.</p>
+            </div>
+
+            <!-- Last Logged In User -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <h4 class="text-lg font-semibold text-white mb-2">Last Logged In User</h4>
+              <p class="text-gray-300">{{ lastLoggedInUser || 'None Detected' }}</p>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Language (Example - Not functional yet) -->
-        <div class="setting-item">
-          <label class="setting-name">Language</label>
-          <div class="setting-control select-control">
-            <span>English</span>
-            <span class="arrow">›</span>
+        <!-- Kill Feed Settings -->
+        <section v-if="activeCategory === 'killfeed'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">Kill Feed Settings</h3>
+            <p class="text-gray-400">Configure how kill events are processed and displayed</p>
           </div>
-        </div>
 
-        <!-- Last Logged In User -->
-        <div class="setting-item">
-          <label class="setting-name">Last Logged In User</label>
-          <div class="setting-control">
-            <span>{{ lastLoggedInUser || 'None Detected' }}</span>
+          <div class="space-y-6">
+            <!-- Fetch Profile Data -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-lg font-semibold text-white">Fetch Profile Data</h4>
+                <el-switch
+                  v-model="fetchProfileData"
+                  @change="toggleFetchProfileData"
+                />
+              </div>
+              <p class="text-gray-400 text-sm">Retrieves player enlistment dates, organization, etc., from the RSI website. Requires internet connection.</p>
+            </div>
+
+            <!-- Play Sound Effects -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-lg font-semibold text-white">Play Event Sounds</h4>
+                <el-switch
+                  v-model="playSoundEffects"
+                  @change="toggleSoundEffects"
+                />
+              </div>
+              <p class="text-gray-400 text-sm">Plays a sound effect when a new event appears in the kill feed.</p>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Launch on Startup -->
-        <div class="setting-item">
-          <label class="setting-name">Launch on Startup</label>
-          <div class="setting-control">
-            <label class="switch">
-              <input type="checkbox" v-model="launchOnStartup" @change="toggleLaunchOnStartup">
-              <span class="slider round"></span>
-            </label>
+        <!-- Notifications Settings -->
+        <section v-if="activeCategory === 'notifications'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">Notifications</h3>
+            <p class="text-gray-400">Configure desktop notification preferences</p>
           </div>
-        </div>
-        <div class="setting-description">
-          Launch the application automatically when you log in. Will start minimized to tray.
-        </div>
-      </section>
 
-      <!-- Kill Feed Settings -->
-      <section v-if="activeCategory === 'killfeed'">
-        <h3 class="content-title">KILL FEED</h3>
-
-        <!-- Fetch Profile Data -->
-        <div class="setting-item">
-          <label class="setting-name">Fetch Profile Data</label>
-          <div class="setting-control">
-            <label class="switch">
-              <input type="checkbox" v-model="fetchProfileData" @change="toggleFetchProfileData">
-              <span class="slider round"></span>
-            </label>
+          <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-lg font-semibold text-white">Show Kill Notifications</h4>
+              <el-switch
+                v-model="showNotifications"
+                @change="toggleNotifications"
+              />
+            </div>
+            <p class="text-gray-400 text-sm">Display system notifications for kills/deaths involving your player character.</p>
           </div>
-        </div>
-        <div class="setting-description">
-          Retrieves player enlistment dates, organization, etc., from the RSI website. Requires internet connection.
-        </div>
+        </section>
 
-        <!-- Play Sound Effects -->
-        <div class="setting-item">
-          <label class="setting-name">Play Event Sounds</label>
-          <div class="setting-control">
-            <label class="switch">
-              <input type="checkbox" v-model="playSoundEffects" @change="toggleSoundEffects">
-              <span class="slider round"></span>
-            </label>
+        <!-- Data & API Settings -->
+        <section v-if="activeCategory === 'data_api'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">Data & API</h3>
+            <p class="text-gray-400">Configure data storage and API connectivity</p>
           </div>
-        </div>
-        <div class="setting-description">
-          Plays a sound effect when a new event appears in the kill feed.
-        </div>
-      </section>
 
-      <!-- Notifications Settings -->
-      <section v-if="activeCategory === 'notifications'">
-        <h3 class="content-title">NOTIFICATIONS</h3>
+          <div class="space-y-6">
+            <!-- Offline Mode -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-lg font-semibold text-white">Offline Mode</h4>
+                <el-switch
+                  v-model="offlineMode"
+                  @change="saveApiSettings"
+                />
+              </div>
+              <p class="text-gray-400 text-sm">Disables authentication and connection to the backend server.</p>
+            </div>
 
-        <!-- Show Kill Notifications -->
-        <div class="setting-item">
-          <label class="setting-name">Show Kill Notifications</label>
-          <div class="setting-control">
-            <label class="switch">
-              <input type="checkbox" v-model="showNotifications" @change="toggleNotifications">
-              <span class="slider round"></span>
-            </label>
+            <!-- CSV Log Path -->
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <h4 class="text-lg font-semibold text-white mb-4">CSV Export Path</h4>
+              <div class="space-y-4">
+                <el-input
+                  v-model="csvLogPath"
+                  placeholder="Path for Kill-Log.csv"
+                  class="w-full"
+                />
+                <el-button @click="saveCsvPath" type="primary" class="px-6">
+                  Save CSV Path
+                </el-button>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="setting-description">
-          Display system notifications for kills/deaths involving your player character.
-        </div>
-      </section>
+        </section>
 
-      <!-- Data &amp; API Settings -->
-      <section v-if="activeCategory === 'data_api'">
-        <h3 class="content-title">DATA &amp; API</h3>
-
-        <!-- API URL Removed -->
-        <!-- API Key Removed -->
-
-        <!-- Offline Mode -->
-        <div class="setting-item">
-          <label class="setting-name">Offline Mode</label>
-          <div class="setting-control">
-            <label class="switch">
-              <input type="checkbox" v-model="offlineMode" @change="saveApiSettings"> <!-- Save on change -->
-              <span class="slider round"></span>
-            </label>
+        <!-- Account Settings -->
+        <section v-if="activeCategory === 'account'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">Account</h3>
+            <p class="text-gray-400">Manage your account and authentication</p>
           </div>
-        </div>
-        <div class="setting-description">
-          Disables authentication and connection to the backend server.
-        </div>
 
-        <!-- Save API Button Removed (saving happens on toggle change) -->
-
-        <!-- CSV Log Path -->
-        <div class="setting-item">
-          <label class="setting-name" for="csvPath">CSV Log Path</label>
-          <div class="setting-control">
-            <input type="text" id="csvPath" v-model="csvLogPath" class="text-input" placeholder="Path for Kill-Log.csv">
+          <div v-if="authStatus === 'loading'" class="bg-gray-800/50 rounded-lg p-8 border border-gray-700 text-center">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading account status...</p>
           </div>
-        </div>
-
-        <!-- Save CSV Button -->
-        <div class="setting-item action-item">
-          <button @click="saveCsvPath" class="action-button">Save CSV Path</button>
-        </div>
-
-        <!-- Delete Data (Example - Not functional yet) -->
-        <div class="setting-item action-item">
-          <label class="setting-name">Delete All Data</label>
-          <div class="setting-control">
-            <button class="action-button danger-button" disabled>Delete</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- About Section -->
-      <section v-if="activeCategory === 'about'">
-        <h3 class="content-title">ABOUT</h3>
-        <div class="setting-item">
-          <label class="setting-name">Application Version</label>
-          <div class="setting-control">
-            <span>{{ version }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Debug Actions Section -->
-      <section v-if="activeCategory === 'debug'">
-        <h3 class="content-title">DEBUG ACTIONS</h3>
-        <DebugActions />
-      </section>
-
-      <!-- Account Settings -->
-      <section v-if="activeCategory === 'account'">
-          <h3 class="content-title">ACCOUNT</h3>
-
-          <div v-if="authStatus === 'loading'" class="loading-state">Loading account status...</div>
 
           <!-- Logged In View -->
-          <div v-else-if="authStatus === 'authenticated'">
-              <div class="setting-item">
-                  <label class="setting-name">Status</label>
-                  <div class="setting-control">
-                      <span>Logged in as: <strong>{{ loggedInUsername || 'Unknown' }}</strong></span>
-                  </div>
-              </div>
-              <!-- Guest Mode Status -->
-              <div class="setting-item">
-                  <label class="setting-name">Guest Mode Active</label>
-                  <div class="setting-control">
-                      <span :class="['status-indicator', isGuestMode ? 'guest-active' : 'authenticated']">
-                          {{ isGuestMode ? 'Yes' : 'No' }}
-                      </span>
-                  </div>
-              </div>
-              <div class="setting-description">
-                  Shows whether the application is currently running in guest mode.
-              </div>
+          <div v-else-if="authStatus === 'authenticated'" class="space-y-6">
+            <div class="bg-green-900/20 border border-green-500/30 rounded-lg p-6">
+              <h4 class="text-lg font-semibold text-green-400 mb-2">Authenticated</h4>
+              <p class="text-green-300">Logged in as: <strong>{{ loggedInUsername || 'Unknown' }}</strong></p>
+            </div>
 
-              <div class="setting-item action-item">
-                  <button @click="handleLogout" class="action-button danger-button">Logout</button>
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <div class="flex items-center justify-between mb-2">
+                <h4 class="text-lg font-semibold text-white">Guest Mode Status</h4>
+                <el-tag :type="isGuestMode ? 'warning' : 'success'">
+                  {{ isGuestMode ? 'Active' : 'Inactive' }}
+                </el-tag>
               </div>
+              <p class="text-gray-400 text-sm">Shows whether the application is currently running in guest mode.</p>
+            </div>
+
+            <el-button @click="handleLogout" type="danger" class="px-6">
+              Logout
+            </el-button>
           </div>
 
           <!-- Logged Out View -->
-          <div v-else>
-              <p class="setting-description">Log in to sync settings and potentially link activity across devices (feature pending).</p>
-              <div class="setting-item">
-                  <label class="setting-name" for="loginIdentifier">Username or Email</label>
-                  <div class="setting-control">
-                      <input type="text" id="loginIdentifier" v-model="loginIdentifier" class="text-input" placeholder="your_handle / user@email.com" :disabled="loginLoading">
-                  </div>
+          <div v-else class="space-y-6">
+            <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+              <p class="text-gray-400 mb-6">Log in to sync settings and potentially link activity across devices (feature pending).</p>
+              
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Username or Email</label>
+                  <el-input
+                    v-model="loginIdentifier"
+                    placeholder="your_handle / user@email.com"
+                    :disabled="loginLoading"
+                  />
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                  <el-input
+                    v-model="loginPassword"
+                    type="password"
+                    placeholder="********"
+                    :disabled="loginLoading"
+                    show-password
+                  />
+                </div>
+                
+                <p v-if="loginError" class="text-red-400 text-sm">{{ loginError }}</p>
+                
+                <el-button 
+                  @click="handleLogin" 
+                  type="primary" 
+                  :loading="loginLoading"
+                  class="px-6"
+                >
+                  {{ loginLoading ? 'Logging in...' : 'Login' }}
+                </el-button>
               </div>
-              <div class="setting-item">
-                  <label class="setting-name" for="loginPassword">Password</label>
-                  <div class="setting-control">
-                      <input type="password" id="loginPassword" v-model="loginPassword" class="text-input" placeholder="********" :disabled="loginLoading">
-                  </div>
-              </div>
-               <p v-if="loginError" class="error-message">{{ loginError }}</p>
-              <div class="setting-item action-item">
-                  <button @click="handleLogin" class="action-button" :disabled="loginLoading">
-                      {{ loginLoading ? 'Logging in...' : 'Login' }}
-                  </button>
-                  <!-- TODO: Add Register link/button? -->
-              </div>
+            </div>
           </div>
-      </section>
+        </section>
 
-      <!-- Status Message Area -->
-      <div class="status-message" v-if="statusMessage">
-        {{ statusMessage }}
+        <!-- Debug Section -->
+        <section v-if="activeCategory === 'debug'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">Debug Actions</h3>
+            <p class="text-gray-400">Development and testing utilities</p>
+          </div>
+
+          <DebugActions />
+        </section>
+
+        <!-- About Section -->
+        <section v-if="activeCategory === 'about'" class="space-y-6">
+          <div class="mb-8">
+            <h3 class="text-2xl font-bold text-white mb-2">About</h3>
+            <p class="text-gray-400">Application information and version details</p>
+          </div>
+
+          <div class="bg-gray-800/50 rounded-lg p-6 border border-gray-700">
+            <h4 class="text-lg font-semibold text-white mb-2">Application Version</h4>
+            <p class="text-gray-300 font-mono">{{ version }}</p>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 </template>
 
 <style>
-
-.cet-title.cet-title-center {
-display: none !important;
+/* Element Plus overrides for dark theme */
+:deep(.el-switch.is-checked .el-switch__core) {
+  background-color: #f97316 !important;
+  border-color: #f97316 !important;
 }
 
-.cet-container {
-  position: relative !important;
-  top: 0px !important;
-  bottom: 0;
-  overflow: auto;
-  z-index: 1;
-  }
-
-.cet-drag-region {
-  /* padding-bottom: 80px; */
-  z-index: 1 !important;
-
-}
-    
-
-.cet-menubar {
-    display: none !important;
+:deep(.el-switch__core) {
+  background-color: #374151 !important;
+  border-color: #374151 !important;
 }
 
-.cet-icon {
-    display: none !important;
+:deep(.el-radio__input.is-checked .el-radio__inner) {
+  background-color: #f97316 !important;
+  border-color: #f97316 !important;
 }
 
-.title-bar {
-  -webkit-app-region: drag;
-  user-select: none; /* Prevent text selection */
+:deep(.el-radio__inner) {
+  background-color: transparent !important;
+  border-color: #6b7280 !important;
 }
 
-/* Styles specific to the Settings Window */
-.settings-container {
-  display: flex;
-  height: 100vh;
-  background-color: #1e1e1e; /* Dark background */
-  color: #e0e0e0; /* Light text */
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  overflow: hidden; /* Prevent container scroll */
+:deep(.el-radio__label) {
+  color: currentColor !important;
 }
 
-.settings-sidebar {
-  width: 200px;
-  background-color: #1a1a1a; /* Slightly darker panel */
-  padding: 20px 0;
-  border-right: 1px solid #333;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
+:deep(.el-input__wrapper) {
+  background-color: #111827 !important;
+  border-color: #374151 !important;
+  box-shadow: 0 0 0 1px #374151 inset !important;
 }
 
-.sidebar-title {
-  font-size: 0.8em;
-  font-weight: 600;
-  color: #aaa;
-  padding: 0 20px 10px 20px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
+:deep(.el-input.is-focus .el-input__wrapper) {
+  border-color: #f97316 !important;
+  box-shadow: 0 0 0 1px #f97316 inset !important;
 }
 
-.sidebar-nav ul {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+:deep(.el-input__inner) {
+  color: #f3f4f6 !important;
 }
 
-.sidebar-nav li {
-  padding: 10px 20px;
-  cursor: pointer;
-  font-size: 0.9em;
-  color: #ccc;
-  border-left: 3px solid transparent;
-  transition: background-color 0.2s ease, border-left-color 0.2s ease;
+:deep(.el-input__inner::placeholder) {
+  color: #6b7280 !important;
 }
 
-.sidebar-nav li:hover {
-  background-color: #2a2a2a;
+:deep(.el-button--primary) {
+  background-color: #f97316 !important;
+  border-color: #f97316 !important;
 }
 
-.sidebar-nav li.active {
-  background-color: #50452c; /* Active item background */
-  color: #ffffff;
-  border-left-color: #db7134; /* Active item indicator */
-  font-weight: 500;
+:deep(.el-button--primary:hover) {
+  background-color: #ea580c !important;
+  border-color: #ea580c !important;
 }
 
-.settings-content {
-  flex: 1;
-  padding: 30px;
-  overflow-y: auto; /* Allow content scrolling */
+:deep(.el-button--danger) {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
 }
 
-.content-title {
-  font-size: 1.4em;
-  font-weight: 500;
-  color: #ffffff;
-  margin-top: 0;
-  margin-bottom: 25px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #333;
+:deep(.el-button--danger:hover) {
+  background-color: #b91c1c !important;
+  border-color: #b91c1c !important;
 }
 
-.setting-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #282828; /* Subtle separator */
-}
-.setting-item:last-child {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
+:deep(.el-tag--warning) {
+  background-color: rgba(251, 191, 36, 0.2) !important;
+  color: #fbbf24 !important;
+  border-color: rgba(251, 191, 36, 0.3) !important;
 }
 
-.setting-name {
-  width: 180px; /* Fixed width for labels */
-  flex-shrink: 0;
-  font-size: 0.9em;
-  color: #bbb;
-  padding-right: 20px;
+:deep(.el-tag--success) {
+  background-color: rgba(34, 197, 94, 0.2) !important;
+  color: #22c55e !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
 }
 
-.setting-control {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px; /* Space between elements in control area */
+/* Hide default Element Plus notification styles that conflict */
+:deep(.el-notification) {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+  color: #f3f4f6 !important;
 }
 
-.setting-description {
-  font-size: 0.8em;
-  color: #888;
-  margin-top: -10px; /* Pull description closer to item */
-  margin-bottom: 20px;
-  padding-left: 180px; /* Align with controls */
+:deep(.el-notification .el-notification__title) {
+  color: #f3f4f6 !important;
 }
 
-/* Specific Control Styles */
-.file-path-control {
-  justify-content: space-between;
+:deep(.el-notification .el-notification__content) {
+  color: #d1d5db !important;
 }
-.file-path {
-  background-color: #2a2a2a;
-  padding: 5px 10px;
-  border-radius: 3px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 0.85em;
-  color: #ccc;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: calc(100% - 100px); /* Adjust based on button width */
-  min-width: 0; /* Allow shrinking in flexbox for ellipsis */
-}
-
-.action-button {
-  background-color: #db7134; /* Blue */
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 15px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 0.85em;
-  white-space: nowrap;
-}
-.action-button:hover {
-  background-color: #db5b34;
-}
-.action-button.danger-button {
-  background-color: #e74c3c; /* Red */
-}
-.action-button.danger-button:hover {
-  background-color: #c0392b;
-}
-
-/* Status Indicator Styles */
-.status-indicator {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: bold;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.status-indicator.guest-active {
-  background-color: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
-  border: 1px solid rgba(255, 193, 7, 0.3);
-}
-
-.status-indicator.authenticated {
-  background-color: rgba(40, 167, 69, 0.2);
-  color: #28a745;
-  border: 1px solid rgba(40, 167, 69, 0.3);
-}
-
-.action-button:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-
-.radio-group label {
-  margin-right: 15px;
-  font-size: 0.9em;
-  display: inline-flex;
-  align-items: center;
-}
-.radio-group input[type="radio"] {
-  margin-right: 5px;
-}
-
-.select-control {
-  background-color: #2a2a2a;
-  padding: 8px 12px;
-  border-radius: 3px;
-  border: 1px solid #333;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: not-allowed; /* Indicate non-functional */
-  width: 150px; /* Example width */
-  color: #aaa;
-}
-.select-control .arrow {
-  font-size: 1.2em;
-}
-
-.text-input {
-  background-color: #2a2a2a;
-  border: 1px solid #333;
-  color: #e0e0e0;
-  padding: 8px 10px;
-  border-radius: 3px;
-  font-size: 0.9em;
-  width: 100%; /* Make inputs fill control area */
-  box-sizing: border-box;
-}
-.text-input:focus {
-  outline: none;
-  border-color: #db7134;
-}
-.text-input::placeholder {
-  color: #666;
-}
-
-/* Switch Toggle Styles */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 40px; /* Smaller width */
-  height: 20px; /* Smaller height */
-}
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #444;
-  transition: .4s;
-}
-.slider:before {
-  position: absolute;
-  content: "";
-  height: 16px; /* Smaller handle */
-  width: 16px;  /* Smaller handle */
-  left: 2px;    /* Adjust position */
-  bottom: 2px;  /* Adjust position */
-  background-color: white;
-  transition: .4s;
-}
-input:checked + .slider {
-  background-color: #db7134; /* Blue when checked */
-}
-input:focus + .slider {
-  box-shadow: 0 0 1px #db7134;
-}
-input:checked + .slider:before {
-  transform: translateX(20px); /* Adjust translation */
-}
-.slider.round {
-  border-radius: 20px; /* Adjust radius */
-}
-.slider.round:before {
-  border-radius: 50%;
-}
-
-/* Action Item - for buttons not directly editing a value */
-.setting-item.action-item {
-  justify-content: flex-end; /* Align button to the right */
-  padding-top: 10px;
-}
-.setting-item.action-item .setting-name {
-  /* Optionally hide label if button is self-explanatory */
-   /* display: none; */
-}
-.setting-item.action-item .setting-control {
-  flex: 0 0 auto; /* Don't let button container grow */
-}
-
-
-/* About Section */
-.about-content {
-  font-size: 0.9em;
-  line-height: 1.6;
-  color: #ccc;
-}
-.about-content p {
-  margin-bottom: 8px;
-}
-
-/* Status Message */
-.status-message {
-  position: fixed;
-  bottom: 15px;
-  right: 20px;
-  background-color: rgba(219, 99, 52, 0.9); /* Blue with transparency */
-  color: white;
-  padding: 10px 15px;
-  border-radius: 4px;
-  font-size: 0.9em;
-  z-index: 1000;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-}
-
-/* Error Message */
-.error-message {
-    color: #e74c3c; /* Red */
-    font-size: 0.85em;
-    margin-top: 5px;
-    /* Align with input field if needed */
-    padding-left: 180px; /* Match setting-name width */
-}
-
-/* Loading State */
-.loading-state {
-    text-align: center;
-    color: #888;
-    padding: 20px;
-    font-style: italic;
-}
-
 </style>

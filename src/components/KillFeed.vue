@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
+import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 
 // Using the interface from the main process instead
@@ -705,6 +706,11 @@ onUnmounted(() => {
 
 <template>
   <div class="kill-feed-container">
+    <!-- Update Banner Container with matching background -->
+    <div class="update-banner-container">
+      <UpdateBanner />
+    </div>
+    
     <!-- Controls bar -->
     <!-- Controls bar - Removed Mode Toggle, Search takes full width -->
     <div class="controls-container full-width-search">
@@ -980,6 +986,11 @@ onUnmounted(() => {
   padding: 0;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.update-banner-container {
+  background-color: #171717;
+  flex-shrink: 0;
 }
 
 /* Controls container */

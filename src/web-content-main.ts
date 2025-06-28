@@ -1,13 +1,22 @@
 import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 import ElementPlus from 'element-plus'; // Import Element Plus
 import 'element-plus/dist/index.css'; // Import Element Plus CSS
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'; // Import all icons
 import './style.css'; // Import shared styles
 import WebContentApp from './components/WebContentApp.vue'; // Import the root component
 import router from './router/web-content-router'; // Import router instance
 import type { IpcRendererEvent } from 'electron'; // Import type
 
 const app = createApp(WebContentApp);
+const pinia = createPinia();
 
+// Register all Element Plus icons globally
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
+
+app.use(pinia); // Use Pinia
 app.use(router); // Use router
 app.use(ElementPlus); // Use Element Plus
 

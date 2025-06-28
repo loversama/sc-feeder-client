@@ -1,4 +1,4 @@
-import { app, dialog } from 'electron'; // Keep app and dialog from electron
+import { app, dialog, Menu } from 'electron'; // Keep app and dialog from electron, add Menu
 import { autoUpdater } from 'electron-updater'; // Import autoUpdater specifically from electron-updater
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,6 +98,10 @@ if (!app.requestSingleInstanceLock()) {
   // Setup the titlebar main process
   setupTitlebar();
 
+  // Disable application menu globally to ensure no native menu bars appear
+  Menu.setApplicationMenu(null);
+  logger.info(MODULE_NAME, 'Global application menu disabled');
+
   // Set AppUserModelID for Windows to prevent "electron.app" in notifications
   if (process.platform === 'win32') {
     app.setAppUserModelId(app.name);
@@ -121,53 +125,66 @@ autoUpdater.logger = logger; // Use the existing logger module
 
 autoUpdater.on('update-available', (info) => {
   logger.info(MODULE_NAME, `Update available: ${info.version}`);
-  autoUpdater.downloadUpdate();
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes
+    });
+  }
+  // Don't auto-download - let user decide
 });
 
 autoUpdater.on('update-not-available', (info) => {
   logger.info(MODULE_NAME, `Update not available: ${info.version}`);
-  // Optional: Silently log or notify user if needed
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-not-available');
+  }
 });
 
 autoUpdater.on('error', (err) => {
   logger.error(MODULE_NAME, `Error in auto-updater: ${err.message || err}`);
-  dialog.showErrorBox('Update Error', `Failed to check or download updates: ${err.message || err}`);
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-error', err.message || err.toString());
+  }
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
   const log_message = `Update Download speed: ${Math.round(progressObj.bytesPerSecond / 1024)} KB/s - Downloaded ${progressObj.percent.toFixed(2)}% (${Math.round(progressObj.transferred / 1024)}/${Math.round(progressObj.total / 1024)} KB)`;
   logger.info(MODULE_NAME, log_message);
-  // Optional: Send progress to renderer process to display in UI
   const mainWindow = getMainWindow();
-  if (mainWindow) {
-      // TODO: Implement download progress bar in renderer process
-      // Example:
-      // if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
-      //   mainWindow.webContents.send('update-download-progress', progressObj.percent);
-      // }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-download-progress', 
+      progressObj.percent,
+      progressObj.bytesPerSecond,
+      progressObj.transferred,
+      progressObj.total
+    );
   }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
   logger.info(MODULE_NAME, `Update downloaded: ${info.version}`);
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Ready',
-    message: `Version ${info.version} has been downloaded. Restart the application to apply the update.`,
-    buttons: ['Restart Now', 'Later']
-  }).then(({ response }) => {
-    if (response === 0) { // User clicked 'Restart Now'
-      logger.info(MODULE_NAME, 'User agreed to restart for update.');
-      setImmediate(() => autoUpdater.quitAndInstall());
-    } else {
-      logger.info(MODULE_NAME, 'User chose to restart later.');
-    }
-  });
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-downloaded', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes
+    });
+  }
 });
 
 // --- Auto Update Check Interval ---
 // Check for updates every 5 minutes (300000 milliseconds)
 setInterval(() => {
-logger.info(MODULE_NAME, 'Checking for updates...');
-autoUpdater.checkForUpdates();
+  logger.info(MODULE_NAME, 'Checking for updates...');
+  const mainWindow = getMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update-checking');
+  }
+  autoUpdater.checkForUpdates();
 }, 300000);

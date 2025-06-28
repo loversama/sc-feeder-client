@@ -1,5 +1,6 @@
 
 import { ipcRenderer, contextBridge } from 'electron';
+import { Titlebar, TitlebarColor } from 'custom-electron-titlebar';
 
 const MODULE_NAME = 'WebViewPreload';
 console.log(`${MODULE_NAME}: Preload script for webview loaded.`);
@@ -51,6 +52,16 @@ ipcRenderer.on('auth-tokens-updated', (_event, authData: { accessToken: string |
     // Notify the app of logout
     window.dispatchEvent(new CustomEvent('auth-logout'));
   }
+});
+
+// --- Custom Title Bar Initialization ---
+window.addEventListener('DOMContentLoaded', () => {
+  new Titlebar({
+    backgroundColor: TitlebarColor.TRANSPARENT,
+    titleHorizontalAlignment: 'center', // This won't matter since we'll hide the title
+    enableMnemonics: false, // Disable keyboard shortcuts for menu
+    unfocusEffect: false, // Keep consistent appearance when unfocused
+  });
 });
 
 // --- Initial Token Request ---

@@ -18,11 +18,9 @@ import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
-import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, refreshToken, setGuestModeAndRemember, getRefreshTokenFromStore } from './auth-manager'; // Import initializeAuth and getPersistedClientId
+import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import {
-  getOfflineMode,
-  getGuestModePreference,
-  getHasShownInitialLogin
+  getOfflineMode
 } from './config-manager';
 import { ipcMain } from 'electron'; // Import ipcMain for login popup
 
@@ -47,34 +45,24 @@ async function determineAuthState(): Promise<{
   requiresLoginPopup: boolean;
   authMode: 'authenticated' | 'guest' | 'unknown';
 }> {
-  // Force login window in development mode
-  if (!app.isPackaged) {
-    logger.info(MODULE_NAME, 'Development mode detected, forcing login popup');
-    return { requiresLoginPopup: true, authMode: 'unknown' };
+  logger.info(MODULE_NAME, 'determineAuthState called');
+  
+  // Check if there's an active authenticated session in memory
+  const hasActive = hasActiveAuthSession();
+  logger.info(MODULE_NAME, `hasActiveAuthSession() returned: ${hasActive}`);
+  
+  if (hasActive) {
+    logger.info(MODULE_NAME, 'Active authenticated session found, skipping login popup');
+    return { requiresLoginPopup: false, authMode: 'authenticated' };
   }
   
-  // Check for existing valid session
-  const existingRefreshToken = getRefreshTokenFromStore();
-  if (existingRefreshToken) {
-    const refreshResult = await refreshToken();
-    if (refreshResult) {
-      logger.info(MODULE_NAME, 'Valid session found, skipping login popup');
-      return { requiresLoginPopup: false, authMode: 'authenticated' };
-    }
-  }
-  
-  // Check for guest preference
-  if (getGuestModePreference()) {
-    logger.info(MODULE_NAME, 'Guest mode preference found, skipping login popup');
-    return { requiresLoginPopup: false, authMode: 'guest' };
-  }
-  
-  // First run or session expired - show login popup
-  logger.info(MODULE_NAME, 'No valid auth state, login popup required');
+  // Always show login popup on startup if no active session
+  logger.info(MODULE_NAME, 'No active session - showing login popup');
   return { requiresLoginPopup: true, authMode: 'unknown' };
 }
 
 async function showLoginPopup(): Promise<void> {
+  logger.info(MODULE_NAME, 'showLoginPopup called - creating login window');
   return new Promise((resolve) => {
     // Create login window - no main window dependency required
     const loginWindow = createLoginWindow();
@@ -84,6 +72,8 @@ async function showLoginPopup(): Promise<void> {
       resolve();
       return;
     }
+    
+    logger.info(MODULE_NAME, 'Login window created successfully');
 
     // Listen for login completion
     const handleLoginComplete = () => {

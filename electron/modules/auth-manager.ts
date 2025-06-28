@@ -23,6 +23,8 @@ let accessToken: string | null = null;
 // Updated type to include full profile data
 let loggedInUser: { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null } | null = null;
 let guestToken: string | null = null; // In-memory storage for guest token
+// Track if user has an active authenticated session (not just stored tokens)
+let hasActiveSession: boolean = false;
 
 // Exported function to set guest token
 export function setGuestToken(token: string): void {
@@ -33,6 +35,12 @@ export function setGuestToken(token: string): void {
 export function clearGuestToken(): void {
   guestToken = null;
 }
+
+// Exported function to check if there's an active session
+export function hasActiveAuthSession(): boolean {
+  return hasActiveSession;
+}
+
 let clientId: string | null = null; // Persisted client ID
 
 // --- Helper Functions ---
@@ -197,6 +205,7 @@ export async function login(identifier: string, password: string): Promise<{ suc
             };
             await storeTokensAndUser(data.access_token, data.refresh_token, userProfile);
             guestToken = null;
+            hasActiveSession = true; // Set active session flag
             
             // Clear guest preference when user successfully logs in
             clearGuestModePreference();
@@ -223,6 +232,7 @@ export async function logout(): Promise<boolean> {
     const currentRefreshToken = getRefreshTokenFromStore();
     await clearAllTokensAndUser();
     disconnectFromServer();
+    hasActiveSession = false; // Clear active session flag
     
     // Clear guest preference to force login popup on next launch
     clearGuestModePreference();
@@ -353,6 +363,7 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
 export function setGuestModeAndRemember(): void {
   setGuestModePreference(true);
   setHasShownInitialLogin(true);
+  hasActiveSession = true; // Set active session flag for guest mode
   logger.info(MODULE_NAME, 'Guest mode preference set and remembered');
 }
 
@@ -439,9 +450,11 @@ export async function initializeAuth(): Promise<boolean> {
         const refreshedUserProfile = await refreshToken();
         if (refreshedUserProfile) {
             logger.info(MODULE_NAME, `Auth initialized successfully for ${refreshedUserProfile.username} via refresh token.`);
+            hasActiveSession = true; // Set active session flag on successful refresh
             connectionReady = true;
         } else {
             logger.warn(MODULE_NAME, 'Failed to refresh token during initialization. User remains logged out.');
+            hasActiveSession = false; // Clear active session flag
             // clearAllTokensAndUser() is called within refreshToken() on failure.
             // Attempt to get a guest token if refresh failed and user is effectively logged out.
             const guestTokenObtained = await requestAndStoreGuestToken();
@@ -450,6 +463,7 @@ export async function initializeAuth(): Promise<boolean> {
     } else {
         logger.info(MODULE_NAME, 'No existing refresh token found. User is logged out.');
         await clearAllTokensAndUser();
+        hasActiveSession = false; // Clear active session flag
         const guestTokenObtained = await requestAndStoreGuestToken();
         connectionReady = guestTokenObtained;
     }

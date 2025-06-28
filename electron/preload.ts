@@ -1,6 +1,12 @@
 import { ipcRenderer, contextBridge, IpcRendererEvent } from 'electron' // Added IpcRendererEvent
-import { Titlebar, TitlebarColor } from "custom-electron-titlebar";
 import type { KillEvent } from '../shared/types'; // For onKillFeedEvent - Corrected path
+
+// CRITICAL: Basic execution test
+console.log('PRELOAD EXECUTING NOW')
+
+// Try dynamic import for titlebar to avoid module resolution issues
+let Titlebar: any = null;
+let TitlebarColor: any = null;
 
 // Define UserProfile type matching preload.d.ts for clarity in this file
 interface UserProfile {
@@ -129,9 +135,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | '/'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section),
   closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'),
   closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'),
-  windowMinimize: (): void => ipcRenderer.send('window:minimize'),
-  windowToggleMaximize: (): void => ipcRenderer.send('window:toggleMaximize'),
-  windowClose: (): void => ipcRenderer.send('window:close'),
+  // Window controls are now handled by custom-electron-titlebar
 
   // Debug Actions
   resetSessions: (): Promise<boolean> => ipcRenderer.invoke('reset-sessions'),
@@ -215,22 +219,202 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     return () => ipcRenderer.removeListener('web-content-window-status', callback);
   },
 
+  // Update Events
+  checkForUpdate: () => {
+    ipcRenderer.send('check-for-update');
+  },
+  downloadUpdate: () => {
+    ipcRenderer.send('download-update');
+  },
+  installUpdate: () => {
+    ipcRenderer.send('install-update');
+  },
+  onUpdateChecking: (callback: (event: IpcRendererEvent) => void): (() => void) => {
+    ipcRenderer.on('update-checking', callback);
+    return () => ipcRenderer.removeListener('update-checking', callback);
+  },
+  onUpdateAvailable: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void): (() => void) => {
+    ipcRenderer.on('update-available', callback);
+    return () => ipcRenderer.removeListener('update-available', callback);
+  },
+  onUpdateNotAvailable: (callback: (event: IpcRendererEvent) => void): (() => void) => {
+    ipcRenderer.on('update-not-available', callback);
+    return () => ipcRenderer.removeListener('update-not-available', callback);
+  },
+  onUpdateDownloadProgress: (callback: (event: IpcRendererEvent, progress: number, speed: number, transferred: number, total: number) => void): (() => void) => {
+    ipcRenderer.on('update-download-progress', callback);
+    return () => ipcRenderer.removeListener('update-download-progress', callback);
+  },
+  onUpdateDownloaded: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void): (() => void) => {
+    ipcRenderer.on('update-downloaded', callback);
+    return () => ipcRenderer.removeListener('update-downloaded', callback);
+  },
+  onUpdateError: (callback: (event: IpcRendererEvent, error: string) => void): (() => void) => {
+    ipcRenderer.on('update-error', callback);
+    return () => ipcRenderer.removeListener('update-error', callback);
+  },
+
+  // Debug Update Simulation
+  debugSimulateUpdateAvailable: () => {
+    ipcRenderer.send('debug:simulate-update-available');
+  },
+  debugSimulateUpdateDownload: () => {
+    ipcRenderer.send('debug:simulate-update-download');
+  },
+  debugSimulateUpdateError: () => {
+    ipcRenderer.send('debug:simulate-update-error');
+  },
+  debugSimulateUpdateChecking: () => {
+    ipcRenderer.send('debug:simulate-update-checking');
+  },
+  debugResetUpdateSimulation: () => {
+    ipcRenderer.send('debug:reset-update-simulation');
+  },
+
   removeAllListeners: () => {
     const channels = [
       'log-update', 'log-reset', 'log-status', 'log-path-updated',
       'kill-feed-event', 'auth-status-changed', 'connection-status-changed',
-      'game-mode-update', 'settings-window-status', 'web-content-window-status'
+      'game-mode-update', 'settings-window-status', 'web-content-window-status',
+      'update-checking', 'update-available', 'update-not-available',
+      'update-download-progress', 'update-downloaded', 'update-error'
     ];
     channels.forEach(channel => ipcRenderer.removeAllListeners(channel));
   }
 })
 
+// Expose window control API for fallback titlebar
+contextBridge.exposeInMainWorld('electronAPI', {
+  minimizeWindow: () => {
+    console.log('Minimize button clicked, sending window-minimize');
+    ipcRenderer.send('window-minimize');
+  },
+  maximizeWindow: () => {
+    console.log('Maximize button clicked, sending window-maximize');
+    ipcRenderer.send('window-maximize');
+  },
+  closeWindow: () => {
+    console.log('Close button clicked, sending window-close');
+    ipcRenderer.send('window-close');
+  }
+})
+
 // --- Custom Title Bar Initialization ---
-window.addEventListener('DOMContentLoaded', () => {
-  new Titlebar({
-    iconSize: 60, // Consider making this smaller if it looks too large
-    enableMnemonics: true,
-    backgroundColor: TitlebarColor.TRANSPARENT,
-    // menu: null, // Hides the default menu if you are using a custom one or none
-  });
+window.addEventListener('DOMContentLoaded', async () => {
+  console.log('DOMContentLoaded - attempting to load titlebar...');
+  try {
+    // Dynamic import to avoid module resolution issues
+    console.log('Importing custom-electron-titlebar...');
+    const titlebarModule = await import('custom-electron-titlebar');
+    console.log('Titlebar module loaded:', titlebarModule);
+    
+    Titlebar = titlebarModule.Titlebar;
+    TitlebarColor = titlebarModule.TitlebarColor;
+    
+    console.log('Creating titlebar with TitlebarColor.TRANSPARENT...');
+    new Titlebar({
+      backgroundColor: TitlebarColor.TRANSPARENT,
+      titleHorizontalAlignment: 'center',
+      enableMnemonics: false,
+      unfocusEffect: false,
+    });
+    
+    console.log('Titlebar initialized successfully');
+  } catch (error) {
+    console.error('Failed to load titlebar:', error);
+    console.error('Error details:', error instanceof Error ? error.message : String(error));
+    
+    // Fallback: Create a simple custom titlebar
+    console.log('Creating fallback titlebar...');
+    createFallbackTitlebar();
+  }
 });
+
+// Fallback titlebar implementation
+function createFallbackTitlebar() {
+  const titlebar = document.createElement('div');
+  titlebar.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 32px;
+    background: transparent;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    z-index: 9999;
+    -webkit-app-region: drag;
+  `;
+  
+  // Window controls container
+  const controls = document.createElement('div');
+  controls.style.cssText = `
+    display: flex;
+    -webkit-app-region: no-drag;
+  `;
+  
+  // Minimize button
+  const minimize = createControlButton('−', () => {
+    console.log('Minimize button clicked in fallback titlebar');
+    console.log('Sending window-minimize via direct ipcRenderer');
+    ipcRenderer.send('window-minimize');
+  });
+  
+  // Maximize button  
+  const maximize = createControlButton('□', () => {
+    console.log('Maximize button clicked in fallback titlebar');
+    console.log('Sending window-maximize via direct ipcRenderer');
+    ipcRenderer.send('window-maximize');
+  });
+  
+  // Close button
+  const close = createControlButton('×', () => {
+    console.log('Close button clicked in fallback titlebar');
+    console.log('Sending window-close via direct ipcRenderer');
+    ipcRenderer.send('window-close');
+  });
+  close.addEventListener('mouseenter', () => {
+    close.style.backgroundColor = '#e81123';
+  });
+  close.addEventListener('mouseleave', () => {
+    close.style.backgroundColor = 'transparent';
+  });
+  
+  controls.appendChild(minimize);
+  controls.appendChild(maximize);
+  controls.appendChild(close);
+  titlebar.appendChild(controls);
+  document.body.appendChild(titlebar);
+  
+  console.log('Fallback titlebar created');
+}
+
+function createControlButton(text: string, onclick: () => void) {
+  const button = document.createElement('button');
+  button.textContent = text;
+  button.style.cssText = `
+    width: 46px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+  `;
+  
+  button.addEventListener('mouseenter', () => {
+    button.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+  });
+  
+  button.addEventListener('mouseleave', () => {
+    button.style.backgroundColor = 'transparent';
+  });
+  
+  button.addEventListener('click', onclick);
+  return button;
+}

@@ -28,6 +28,15 @@ export default defineConfig({
           // Preload specifically for the webview
           'webview-preload': path.join(__dirname, 'electron/webview-preload.ts'),
         },
+        vite: {
+          build: {
+            rollupOptions: {
+              output: {
+                inlineDynamicImports: false,
+              },
+            },
+          },
+        },
       },
       renderer: process.env.NODE_ENV === 'test'
         ? undefined
@@ -42,6 +51,10 @@ export default defineConfig({
         settings: path.resolve(__dirname, 'settings.html'),
         webContent: path.resolve(__dirname, 'web-content.html'),
         login: path.resolve(__dirname, 'login.html'),
+      },
+      output: {
+        // Explicitly disable inlineDynamicImports for multiple inputs
+        inlineDynamicImports: false,
       },
     },
   },

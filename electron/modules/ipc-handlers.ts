@@ -355,42 +355,7 @@ ipcMain.handle('auth:show-login', () => {
       return ConfigManager.getGuestModePreference();
     });
 
-    // --- Custom Title Bar Window Controls ---
-    ipcMain.on('window:minimize', (event) => {
-        const win = getMainWindow(); // Or get window from event sender if needed
-        if (win) {
-            logger.debug(MODULE_NAME, "Minimizing main window.");
-            win.minimize();
-        } else {
-             logger.warn(MODULE_NAME, "Minimize requested but main window not found.");
-        }
-    });
-
-    ipcMain.on('window:toggleMaximize', (event) => {
-        const win = getMainWindow();
-        if (win) {
-            if (win.isMaximized()) {
-                logger.debug(MODULE_NAME, "Unmaximizing main window.");
-                win.unmaximize();
-            } else {
-                logger.debug(MODULE_NAME, "Maximizing main window.");
-                win.maximize();
-            }
-        } else {
-             logger.warn(MODULE_NAME, "Toggle maximize requested but main window not found.");
-        }
-    });
-
-    ipcMain.on('window:close', (event) => {
-        const win = getMainWindow();
-        if (win) {
-            logger.debug(MODULE_NAME, "Closing main window.");
-            win.close(); // This will trigger the 'close' event handler in window-manager
-        } else {
-             logger.warn(MODULE_NAME, "Close requested but main window not found.");
-        }
-    });
-
+    // Window controls are now handled by custom-electron-titlebar
 
     // --- Debug Action Handlers ---
     ipcMain.handle('reset-sessions', () => {
@@ -419,6 +384,149 @@ ipcMain.handle('auth:show-login', () => {
         }
     });
 
+    // --- Update Handlers ---
+    ipcMain.on('check-for-update', () => {
+        logger.info(MODULE_NAME, 'Manual update check requested');
+        const { autoUpdater } = require('electron-updater');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-checking');
+        }
+        autoUpdater.checkForUpdates();
+    });
+
+    ipcMain.on('download-update', () => {
+        logger.info(MODULE_NAME, 'Update download requested');
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.downloadUpdate();
+    });
+
+    ipcMain.on('install-update', () => {
+        logger.info(MODULE_NAME, 'Update install requested');
+        const { autoUpdater } = require('electron-updater');
+        setImmediate(() => autoUpdater.quitAndInstall());
+    });
+
+    // --- Update Simulation Handlers (Debug) ---
+    ipcMain.on('debug:simulate-update-available', () => {
+        logger.info(MODULE_NAME, 'Debug: Simulating update available');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-available', {
+                version: '2.1.0',
+                releaseDate: new Date().toISOString(),
+                releaseNotes: 'This is a simulated update for testing the UI.'
+            });
+        }
+    });
+
+    ipcMain.on('debug:simulate-update-download', () => {
+        logger.info(MODULE_NAME, 'Debug: Simulating update download');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            // Simulate progressive download
+            let progress = 0;
+            const downloadInterval = setInterval(() => {
+                progress += Math.random() * 15 + 5; // Random progress increments
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(downloadInterval);
+                    // Send download complete
+                    mainWindow.webContents.send('update-downloaded', {
+                        version: '2.1.0',
+                        releaseDate: new Date().toISOString(),
+                        releaseNotes: 'This is a simulated update for testing the UI.'
+                    });
+                } else {
+                    // Send download progress
+                    const bytesPerSecond = Math.floor(Math.random() * 1024000) + 500000; // 500KB-1.5MB/s
+                    const totalBytes = 50 * 1024 * 1024; // 50MB total
+                    const transferredBytes = Math.floor((progress / 100) * totalBytes);
+                    
+                    mainWindow.webContents.send('update-download-progress', 
+                        progress,
+                        bytesPerSecond,
+                        transferredBytes,
+                        totalBytes
+                    );
+                }
+            }, 200); // Update every 200ms
+        }
+    });
+
+    ipcMain.on('debug:simulate-update-error', () => {
+        logger.info(MODULE_NAME, 'Debug: Simulating update error');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-error', 'Simulated update error for testing');
+        }
+    });
+
+    ipcMain.on('debug:simulate-update-checking', () => {
+        logger.info(MODULE_NAME, 'Debug: Simulating update checking');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-checking');
+            // After a delay, send update available
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('update-available', {
+                        version: '2.1.0',
+                        releaseDate: new Date().toISOString(),
+                        releaseNotes: 'This is a simulated update for testing the UI.'
+                    });
+                }
+            }, 1500);
+        }
+    });
+
+    ipcMain.on('debug:reset-update-simulation', () => {
+        logger.info(MODULE_NAME, 'Debug: Resetting update simulation');
+        const mainWindow = getMainWindow();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-not-available');
+        }
+    });
+
+
+    // Window control handlers for fallback titlebar
+    ipcMain.on('window-minimize', (event) => {
+        logger.info(MODULE_NAME, 'Received window-minimize command');
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (window) {
+            logger.info(MODULE_NAME, 'Minimizing window');
+            window.minimize();
+        } else {
+            logger.error(MODULE_NAME, 'Could not find window for minimize command');
+        }
+    });
+
+    ipcMain.on('window-maximize', (event) => {
+        logger.info(MODULE_NAME, 'Received window-maximize command');
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (window) {
+            if (window.isMaximized()) {
+                logger.info(MODULE_NAME, 'Unmaximizing window');
+                window.unmaximize();
+            } else {
+                logger.info(MODULE_NAME, 'Maximizing window');
+                window.maximize();
+            }
+        } else {
+            logger.error(MODULE_NAME, 'Could not find window for maximize command');
+        }
+    });
+
+    ipcMain.on('window-close', (event) => {
+        logger.info(MODULE_NAME, 'Received window-close command');
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (window) {
+            logger.info(MODULE_NAME, 'Closing window');
+            window.close();
+        } else {
+            logger.error(MODULE_NAME, 'Could not find window for close command');
+        }
+    });
 
     logger.success(MODULE_NAME, "IPC handlers registered.");
 }

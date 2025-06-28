@@ -31,6 +31,42 @@ let currentWebContentSection: 'profile' | 'leaderboard' | null = null; // Track 
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
+// Helper function to inject custom titlebar CSS for dark theme
+function injectTitlebarCSS(window: BrowserWindow): void {
+    window.webContents.insertCSS(`
+      /* Custom electron titlebar dark theme styling */
+      .cet-titlebar {
+        background-color: transparent !important;
+        border-bottom: none !important;
+      }
+      
+      /* Ensure window controls are dark themed */
+      .cet-control-button {
+        color: #ffffff !important;
+        background-color: transparent !important;
+      }
+      
+      .cet-control-button:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+      }
+      
+      .cet-control-button.cet-close:hover {
+        background-color: #e81123 !important;
+      }
+      
+      /* Hide title and icon since we want minimal titlebar */
+      .cet-title, .cet-icon {
+        display: none !important;
+      }
+      
+      /* Ensure content doesn't have unnecessary spacing */
+      #app, #login-app {
+        height: 100vh !important;
+        overflow: auto !important;
+      }
+    `).catch(err => logger.error(MODULE_NAME, "Failed to inject titlebar CSS:", err));
+}
+
 // WindowManager class
 class WindowManager {
     private webContentWindow: BrowserWindow | null = null;
@@ -331,8 +367,8 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
             devTools: !app.isPackaged, // Enable DevTools only in development
             spellcheck: false
         },
+        frame: false, // Required for custom title bar
         titleBarStyle: 'hidden', // Add for custom title bar
-        titleBarOverlay: false, // Add for custom title bar (Windows controls overlay)
         autoHideMenuBar: true,
         useContentSize: true,
         backgroundColor: '#222',
@@ -384,10 +420,9 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
 
     mainWindow.on('ready-to-show', () => {
         mainWindow?.show();
-        // Optional: Insert CSS to ensure no margin/padding
-        mainWindow?.webContents.insertCSS(`
-          html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
-        `).catch(err => logger.error(MODULE_NAME, "Failed to insert CSS:", err));
+        if (mainWindow) {
+            injectTitlebarCSS(mainWindow);
+        }
     });
 
     mainWindow.webContents.on('did-finish-load', () => {
@@ -518,7 +553,6 @@ export function createSettingsWindow(): BrowserWindow | null {
         },
         frame: false,
         titleBarStyle: 'hidden',
-        titleBarOverlay: true,
         autoHideMenuBar: true,
         show: false,
         icon: getIconPath() || undefined, // Use centralized function
@@ -556,6 +590,12 @@ export function createSettingsWindow(): BrowserWindow | null {
     settingsWindow = new BrowserWindow(settingsWindowOptions);
 
     attachTitlebarToWindow(settingsWindow); // Attach the custom title bar
+    
+    // Listen for console messages from settings window
+    settingsWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        logger.info(MODULE_NAME, `Settings window console [${level}]: ${message} (${sourceId}:${line})`);
+    });
+    
     // settingsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
     // Load settings content
@@ -582,8 +622,25 @@ export function createSettingsWindow(): BrowserWindow | null {
             });
     }
 
+    settingsWindow.webContents.on('did-finish-load', () => {
+        logger.info(MODULE_NAME, 'Settings window finished loading');
+        
+        // Check for console messages from settings-main.ts
+        if (settingsWindow) {
+            settingsWindow.webContents.executeJavaScript(`
+              console.log('[WindowManager] Checking if settings-main.ts is loaded...');
+              document.getElementById('app') ? 'app div found' : 'app div NOT found';
+            `).then(result => {
+              logger.info(MODULE_NAME, `Settings window DOM check: ${result}`);
+            });
+        }
+    });
+
     settingsWindow.once('ready-to-show', () => {
         settingsWindow?.show();
+        if (settingsWindow) {
+            injectTitlebarCSS(settingsWindow);
+        }
         // Emit status update when shown
         getMainWindow()?.webContents.send('settings-window-status', { isOpen: true });
         logger.info(MODULE_NAME, 'Sent settings-window-status { isOpen: true }');
@@ -647,7 +704,6 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
         },
         frame: false,
         titleBarStyle: 'hidden',
-        titleBarOverlay: true,
         autoHideMenuBar: true,
         show: false,
         icon: getIconPath() || undefined,
@@ -718,6 +774,9 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
 
     detailsWindow.once('ready-to-show', () => {
         detailsWindow?.show();
+        if (detailsWindow) {
+            injectTitlebarCSS(detailsWindow);
+        }
         if (!app.isPackaged) {
             detailsWindow?.webContents.openDevTools();
         }
@@ -785,7 +844,6 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
         },
         frame: false, // Required for custom title bar
         titleBarStyle: 'hidden',
-        titleBarOverlay: true, // Enable overlay for custom controls
         autoHideMenuBar: true,
         show: false, // Don't show until ready
         icon: getIconPath() || undefined,
@@ -852,6 +910,9 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard'): Bro
 
     webContentWindow.once('ready-to-show', () => {
         webContentWindow?.show();
+        if (webContentWindow) {
+            injectTitlebarCSS(webContentWindow);
+        }
         if (!app.isPackaged) {
             webContentWindow?.webContents.openDevTools();
         }
@@ -886,46 +947,76 @@ export function closeWebContentWindow(): void {
 }
 
 export function createLoginWindow(): BrowserWindow | null {
+  logger.info(MODULE_NAME, 'Creating login window...');
+  
   if (loginWindow) {
+    logger.info(MODULE_NAME, 'Login window already exists, focusing...');
     loginWindow.focus();
     return loginWindow;
   }
 
-  // Ensure main window exists before setting parent
-  if (!mainWindow) {
-    logger.error(MODULE_NAME, "Cannot create login window: Main window does not exist.");
-    return null;
-  }
-
   const appIconPath = getIconPath();
+  logger.info(MODULE_NAME, `Using app icon path: ${appIconPath}`);
+  
+  // Get and log preload path
+  const preloadPath = getPreloadPath('preload.mjs');
+  logger.info(MODULE_NAME, `LOGIN WINDOW - Using preload path: ${preloadPath}`);
   
   const loginWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: 400,
     height: 500,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
+    minWidth: 350,
+    minHeight: 450,
+    resizable: true,
+    maximizable: true,
+    minimizable: true,
     alwaysOnTop: true,
-    modal: true,
+    modal: false, // Changed from true - no longer modal
+    parent: undefined, // No parent window required
     icon: appIconPath || undefined,
     title: 'SC Kill Feed - Login',
     webPreferences: {
-      preload: getPreloadPath('preload.mjs'),
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !app.isPackaged,
       spellcheck: false
     },
-    titleBarStyle: 'hidden',
-    titleBarOverlay: false,
-    autoHideMenuBar: true,
+    frame: false, // Remove native window frame completely
+    titleBarStyle: 'hidden', // Hide native titlebar
+    autoHideMenuBar: true, // Hide menu bar
     backgroundColor: '#222',
-    show: false,
-    center: true
+    show: false
   };
 
-  loginWindow = new BrowserWindow(loginWindowOptions);
-  attachTitlebarToWindow(loginWindow);
+  try {
+    loginWindow = new BrowserWindow(loginWindowOptions);
+    logger.info(MODULE_NAME, 'Login window BrowserWindow created successfully');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Error creating login window BrowserWindow:', error);
+    return null;
+  }
+  
+  logger.info(MODULE_NAME, 'Login window created, attaching custom titlebar...');
+  
+  try {
+    attachTitlebarToWindow(loginWindow);
+    logger.info(MODULE_NAME, 'Custom titlebar attached successfully');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Error attaching custom titlebar:', error);
+  }
+  
+  logger.info(MODULE_NAME, 'Login window created, loading content...');
+
+  // Listen for console messages from login window
+  loginWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    logger.info(MODULE_NAME, `Login window console [${level}]: ${message} (${sourceId}:${line})`);
+  });
+
+  // Open DevTools for debugging in development
+  if (!app.isPackaged) {
+    loginWindow.webContents.openDevTools();
+  }
 
   // Load login page
   const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
@@ -941,10 +1032,120 @@ export function createLoginWindow(): BrowserWindow | null {
   }
 
   loginWindow.once('ready-to-show', () => {
-    loginWindow?.show();
+    logger.info(MODULE_NAME, 'Login window ready to show');
+    if (loginWindow) {
+      // Get current bounds and display info for debugging
+      const bounds = loginWindow.getBounds();
+      const displays = screen.getAllDisplays();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      
+      logger.info(MODULE_NAME, `Login window bounds: x=${bounds.x}, y=${bounds.y}, width=${bounds.width}, height=${bounds.height}`);
+      logger.info(MODULE_NAME, `Primary display bounds: x=${primaryDisplay.bounds.x}, y=${primaryDisplay.bounds.y}, width=${primaryDisplay.bounds.width}, height=${primaryDisplay.bounds.height}`);
+      logger.info(MODULE_NAME, `Total displays: ${displays.length}`);
+      
+      // Force center the window on primary display
+      const centerX = Math.round(primaryDisplay.bounds.x + (primaryDisplay.bounds.width - bounds.width) / 2);
+      const centerY = Math.round(primaryDisplay.bounds.y + (primaryDisplay.bounds.height - bounds.height) / 2);
+      
+      loginWindow.setBounds({
+        x: centerX,
+        y: centerY,
+        width: bounds.width,
+        height: bounds.height
+      });
+      
+      logger.info(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
+      
+      loginWindow.show();
+      loginWindow.focus();
+      loginWindow.setAlwaysOnTop(true);
+      loginWindow.moveTop();
+      
+      // Check visibility immediately after showing
+      logger.info(MODULE_NAME, `After show() - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}`);
+      
+      injectTitlebarCSS(loginWindow);
+      
+      // Check visibility after CSS injection
+      setTimeout(() => {
+        if (loginWindow) {
+          logger.info(MODULE_NAME, `After CSS injection - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}, isMinimized: ${loginWindow.isMinimized()}`);
+          
+          // Try force showing again if not visible
+          if (!loginWindow.isVisible()) {
+            logger.warn(MODULE_NAME, 'Login window not visible after CSS injection, attempting to force show');
+            loginWindow.show();
+            loginWindow.focus();
+            loginWindow.moveTop();
+          }
+        }
+      }, 500);
+      
+      logger.info(MODULE_NAME, 'Login window shown and focused');
+    }
+  });
+
+  loginWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    logger.error(MODULE_NAME, `Login window failed to load: ${errorCode} - ${errorDescription} for URL: ${validatedURL}`);
+  });
+
+  loginWindow.webContents.on('did-finish-load', () => {
+    logger.info(MODULE_NAME, 'Login window finished loading');
+    
+    // Check for console messages from login.ts
+    if (loginWindow) {
+        loginWindow.webContents.executeJavaScript(`
+          console.log('[WindowManager] Checking if login.ts is loaded...');
+          document.getElementById('login-app') ? 'login-app div found' : 'login-app div NOT found';
+        `).then(result => {
+          logger.info(MODULE_NAME, `Login window DOM check: ${result}`);
+        });
+    }
+    
+    // Force show the window immediately after content loads
+    if (loginWindow) {
+      logger.info(MODULE_NAME, 'Attempting to show login window after content load');
+      
+      // Get current bounds and display info for debugging
+      const bounds = loginWindow.getBounds();
+      const displays = screen.getAllDisplays();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      
+      logger.info(MODULE_NAME, `Login window bounds: x=${bounds.x}, y=${bounds.y}, width=${bounds.width}, height=${bounds.height}`);
+      logger.info(MODULE_NAME, `Primary display bounds: x=${primaryDisplay.bounds.x}, y=${primaryDisplay.bounds.y}, width=${primaryDisplay.bounds.width}, height=${primaryDisplay.bounds.height}`);
+      
+      // Force center the window on primary display
+      const centerX = Math.round(primaryDisplay.bounds.x + (primaryDisplay.bounds.width - bounds.width) / 2);
+      const centerY = Math.round(primaryDisplay.bounds.y + (primaryDisplay.bounds.height - bounds.height) / 2);
+      
+      loginWindow.setBounds({
+        x: centerX,
+        y: centerY,
+        width: bounds.width,
+        height: bounds.height
+      });
+      
+      logger.info(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
+      
+      loginWindow.show();
+      loginWindow.focus();
+      loginWindow.setAlwaysOnTop(true);
+      loginWindow.moveTop();
+      
+      logger.info(MODULE_NAME, `After show calls - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}`);
+      
+      // Inject CSS after a brief delay
+      setTimeout(() => {
+        if (loginWindow) {
+          injectTitlebarCSS(loginWindow);
+          logger.info(MODULE_NAME, `After CSS injection - isVisible: ${loginWindow.isVisible()}`);
+        }
+      }, 100);
+    }
   });
 
   loginWindow.on('closed', () => {
+    logger.info(MODULE_NAME, 'Login window closed');
     loginWindow = null;
   });
 

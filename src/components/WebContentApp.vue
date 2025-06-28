@@ -2,6 +2,7 @@
 import { RouterLink, RouterView } from 'vue-router';
 // Removed ref, onMounted
 import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
+import UpdateNotificationCompact from './UpdateNotificationCompact.vue';
 
 // Removed headerRef and headerHeight logic
 </script>
@@ -9,8 +10,7 @@ import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
 <template>
   <div class="relative flex flex-col h-screen overflow-hidden bg-theme-bg-dark text-theme-text-light border border-theme-border">
     <!-- Non-Fixed Header -->
-    <header class="p-2 bg-[#171717] border-b border-[#262626] shadow-md shrink-0 h-[80px] flex items-center">
-      <!-- <h1 class="text-lg font-semibold">Web Content Window</h1> -->
+    <header class="p-2 bg-[#171717] border-b border-[#262626] shadow-md shrink-0 h-[80px] flex items-center justify-between">
       <!-- Tab Navigation -->
       <nav class="mt-2 flex items-center">
         <!-- More Options Button -->
@@ -37,6 +37,10 @@ import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
           Leaderboard
         </router-link>
       </nav>
+      <!-- Update Notification -->
+      <div class="pr-4">
+        <UpdateNotificationCompact />
+      </div>
     </header>
 
     <!-- Main Content Area (takes remaining space) -->

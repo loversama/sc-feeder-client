@@ -25,9 +25,16 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* Element Plus Theme Overrides */
-  --el-color-primary: var(--color-theme-accent-blue);
+  --el-color-primary: var(--color-theme-accent-orange); /* Use orange as primary */
+  --el-color-primary-light-3: #f4b08a;
+  --el-color-primary-light-5: #f7c3a3;
+  --el-color-primary-light-7: #fad6bc;
+  --el-color-primary-light-8: #fce0cd;
+  --el-color-primary-light-9: #fdeadd;
+  --el-color-primary-dark-2: #d6926b;
   --el-bg-color: var(--color-theme-bg-panel); /* Use panel bg for components */
   --el-bg-color-overlay: var(--color-theme-bg-panel); /* Use panel bg for overlays like dropdowns */
+  --el-bg-color-page: var(--color-theme-bg-dark); /* Use dark bg for page */
   --el-text-color-primary: var(--color-theme-text-light);
   --el-text-color-regular: var(--color-theme-text-light); /* Ensure regular text also uses light theme */
   --el-border-color: var(--color-theme-border);
@@ -35,9 +42,12 @@
   --el-border-color-lighter: var(--color-theme-border); /* Keep borders consistent */
   --el-fill-color-blank: var(--color-theme-bg-dark); /* Use dark bg for blank fills */
   --el-disabled-bg-color: var(--color-theme-bg-panel); /* Adjust disabled background */
-  --el-disabled-text-color: #606266; /* Keep default disabled text or adjust if needed */
+  --el-disabled-text-color: #888; /* Muted text for disabled */
   --el-disabled-border-color: var(--color-theme-border); /* Adjust disabled border */
-  --el-color-info: var(--color-theme-accent-blue); /* Use accent blue for info color */
+  --el-color-info: var(--color-theme-accent-orange); /* Use orange for info color */
+  --el-color-success: #67c23a;
+  --el-color-warning: #e6a23c;
+  --el-color-danger: #f56c6c;
   /* Add more overrides as needed based on Element Plus usage */
 }
 
@@ -47,6 +57,19 @@ body {
   background-color: var(--color-theme-bg-dark);
   color: var(--color-theme-text-light);
   overflow: hidden; /* Prevent body scrollbars */
+}
+
+/* Custom Titlebar Styles - Legacy support for any remaining usage */
+.titlebar {
+  display: none; /* Hide any legacy titlebar elements */
+}
+
+/* App content should use full viewport height with transparent titlebar */
+.app-content {
+  height: 100vh;
+  overflow: auto;
+  position: relative;
+  z-index: 1;
 }
 
 /* Global Scrollbar Styles */
@@ -129,27 +152,4 @@ body {
   .mb-4 { margin-bottom: 1rem; }
   .mb-2 { margin-bottom: 0.5rem; }
   .text-red-500 { color: rgb(239 68 68); }
-
-
-  /* Borders */
-  .rounded { border-radius: 0.25rem; }
-  .border { border-width: 1px; }
-
-  /* Effects */
-  .shadow { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06); } /* Adjusted shadow */
-  .overflow-hidden { overflow: hidden; }
-  .overflow-auto { overflow: auto; }
-
-  /* Transitions */
-  .transition-colors { transition-property: background-color, border-color, color, fill, stroke; }
-  .duration-200 { transition-duration: 200ms; }
-
-  /* Background Opacity */
-  .bg-white\/5 { background-color: rgba(255, 255, 255, 0.05); }
-  .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1); }
-
-  /* Colors */
-  .bg-transparent { background-color: transparent; }
-  .bg-red-600 { background-color: rgb(220, 38, 38); }
-  .border-none { border: none; }
 }

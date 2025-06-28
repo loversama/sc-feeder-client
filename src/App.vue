@@ -3,16 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
 
-// --- Window Control Methods ---
-const minimizeWindow = () => {
-  window.logMonitorApi.windowMinimize();
-}
-const toggleMaximizeWindow = () => {
-  window.logMonitorApi.windowToggleMaximize();
-}
-const closeWindow = () => {
-  window.logMonitorApi.windowClose();
-}
+// Window controls are now handled by custom-electron-titlebar
 
 // --- Page Navigation ---
 const activePage = ref<string>('kill-feed') // Default page
@@ -81,8 +72,8 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col h-screen w-screen overflow-hidden bg-theme-bg-dark text-theme-text-light">
-    <!-- Center Section (Navigation) -->
-    <div class="flex-grow flex justify-center">
+    <!-- Header with Navigation -->
+    <div class="header-container">
       <Navigation :activePage="activePage" @change-page="changePage" />
     </div>
 
@@ -94,6 +85,14 @@ onUnmounted(() => {
 </template>
 
 <style>
+/* Header layout */
+.header-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+
 /* Make the title bar draggable */
 .nav-container {
     height: 84px !important;
