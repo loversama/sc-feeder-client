@@ -523,24 +523,35 @@ function convertProcessedServerEventToClient(serverEvent: any): KillEvent {
 
   // Map server event type to client death type
   let deathType: KillEvent['deathType'] = 'Unknown';
-  switch (serverEvent.type) {
-    case 'PLAYER_KILL':
-      deathType = 'Combat';
-      break;
-    case 'VEHICLE_DESTRUCTION':
-      deathType = 'Hard';
-      break;
-    case 'ENVIRONMENTAL_DEATH':
-      deathType = 'Unknown';
-      break;
-    case 'DEATH':
-      deathType = 'Unknown';
-      break;
+  
+  // First, check if server provides a specific death type
+  if (serverEvent.data?.specificDeathType) {
+    const specificType = serverEvent.data.specificDeathType;
+    if (['Soft', 'Hard', 'Combat', 'Collision', 'Crash', 'BleedOut', 'Suffocation'].includes(specificType)) {
+      deathType = specificType as KillEvent['deathType'];
+    }
+  } else {
+    // Fallback to mapping from event type (handle both cases)
+    const eventType = serverEvent.type?.toUpperCase();
+    switch (eventType) {
+      case 'PLAYER_KILL':
+        deathType = 'Combat';
+        break;
+      case 'VEHICLE_DESTRUCTION':
+        deathType = 'Hard';
+        break;
+      case 'ENVIRONMENTAL_DEATH':
+        deathType = 'Unknown';
+        break;
+      case 'DEATH':
+        deathType = 'Unknown';
+        break;
+    }
   }
 
   // Map server event to client format
   const clientEvent: KillEvent = {
-    id: serverEvent.correlationId || serverEvent.id || `server_${Date.now()}`,
+    id: serverEvent.id || serverEvent.correlationId || `server_${Date.now()}`,
     timestamp: serverEvent.timestamp ? new Date(serverEvent.timestamp).toISOString() : new Date().toISOString(),
     killers: killers.length > 0 ? killers : ['Unknown'],
     victims: victims.length > 0 ? victims : ['Unknown'],

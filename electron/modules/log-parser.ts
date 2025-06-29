@@ -285,9 +285,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                 const { timestamp, playerName, damageType } = envDeathMatch.groups;
                 logger.info(MODULE_NAME, 'Environmental death:', { victim: playerName }, 'died from', { weapon: damageType });
 
-                let deathType: KillEvent['deathType'] = 'Unknown';
-                if (damageType === 'BleedOut') deathType = 'BleedOut';
-                if (damageType === 'SuffocationDamage') deathType = 'Suffocation';
+                // Use the improved death type determination logic
+                const deathType = determineDeathType(
+                    0, // Environmental deaths don't have destruction levels
+                    damageType || 'Unknown',
+                    'Environment',
+                    null
+                );
 
                 const isPlayerInvolved = playerName === currentUsername;
                 const eventId = `env_death_${playerName}_${timestamp}`.replace(/[^a-zA-Z0-9_]/g, '');

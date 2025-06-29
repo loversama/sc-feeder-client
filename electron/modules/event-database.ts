@@ -18,7 +18,7 @@ export interface EventQuery {
   searchQuery?: string;
   startDate?: Date;
   endDate?: Date;
-  source?: 'local' | 'server' | 'merged';
+  source?: 'local' | 'server' | 'merged' | 'both';
 }
 
 export interface EventSearchResult {
@@ -342,7 +342,7 @@ export class EventDatabase {
   /**
    * Insert or update an event in the database
    */
-  insertEvent(event: KillEvent, source: 'local' | 'server' | 'merged' = 'local'): boolean {
+  insertEvent(event: KillEvent, source: 'local' | 'server' | 'merged' | 'both' = 'local'): boolean {
     if (!this.isInitialized) {
       throw new Error('Database not initialized');
     }

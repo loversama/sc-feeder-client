@@ -11,6 +11,8 @@ var __privateAdd = (obj, member, value2) => member.has(obj) ? __typeError("Canno
 var __privateSet = (obj, member, value2, setter) => (__accessCheck(obj, member, "write to private field"), setter ? setter.call(obj, value2) : member.set(obj, value2), value2);
 var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "access private method"), method);
 var _validator, _encryptionKey, _options, _defaultValues, _a2, _handler, _b, _c, _paused, _reason, _aborted, _abort, _handler2, _controller, _d, _client, _ProxyAgent_instances, getUrl_fn, shouldConnect_fn, _e, _noProxyValue, _noProxyEntries, _opts, _EnvHttpProxyAgent_instances, getProxyAgentForUrl_fn, shouldProxy_fn, parseNoProxy_fn, noProxyChanged_get, noProxyEnv_get, _agent, _options2, _client2, _H2CClient_instances, buildConnector_fn, _handler3, _onCompleteCalled, _onErrorCalled, _onResponseStartCalled, _f, _statusCode, _contentType, _decoder, _headers, _body, _ResponseErrorHandler_instances, checkContentType_fn, _maxSize, _dumped, _size, _controller2, _DumpHandler_instances, abort_fn, _maxTTL, _maxItems, _records, _DNSInstance_instances, defaultLookup_fn, defaultPick_fn, _state, _opts2, _dispatch, _origin, _controller3, _newOrigin, _firstTry, _cacheKey, _cacheType, _cacheByDefault, _store, _handler4, _writeStream, _g, _maxCount, _maxSize2, _maxEntrySize, _size2, _count, _entries, _hasEmittedMaxSizeEvent, _h, _successful, _callback, _handler5, _context, _allowErrorStatusCodes, _i, _maxEntrySize2, _maxCount2, _db, _getValuesQuery, _updateValueQuery, _insertValueQuery, _deleteExpiredValuesQuery, _deleteByUrlQuery, _countEntriesQuery, _deleteOldValuesQuery, _SqliteCacheStore_instances, prune_fn, makeValueUrl_fn, findValue_fn, _j;
+import url$1, { fileURLToPath, URL as URL$5 } from "node:url";
+import path$o, { resolve as resolve$5, join, relative, sep } from "node:path";
 import require$$1$6, { ipcMain as ipcMain$1, app as app$1, screen, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, webContents, dialog, globalShortcut } from "electron";
 import require$$0$3, { unwatchFile, watchFile, watch as watch$1, stat as stat$7 } from "fs";
 import require$$0$2 from "constants";
@@ -29,8 +31,6 @@ import Url$1 from "url";
 import require$$1$5 from "string_decoder";
 import zlib$1 from "zlib";
 import http$3 from "http";
-import path$o, { resolve as resolve$5, join, relative, sep } from "node:path";
-import url$1, { fileURLToPath, URL as URL$5 } from "node:url";
 import fs$l from "node:fs";
 import process$1 from "node:process";
 import require$$0$d, { promisify as promisify$2, isDeepStrictEqual } from "node:util";
@@ -78,6 +78,35 @@ function _mergeNamespaces(n, m) {
     }
   }
   return Object.freeze(Object.defineProperty(n, Symbol.toStringTag, { value: "Module" }));
+}
+const __filename$5 = fileURLToPath(import.meta.url);
+const __dirname$3 = path$o.dirname(__filename$5);
+global.__filename = __filename$5;
+global.__dirname = __dirname$3;
+if (typeof globalThis.__filename === "undefined") {
+  Object.defineProperty(globalThis, "__filename", {
+    get() {
+      var _a3;
+      const err = new Error();
+      const stack = (_a3 = err.stack) == null ? void 0 : _a3.split("\n");
+      if (stack && stack.length > 2) {
+        const match = stack[2].match(/file:\/\/\/(.*?):/);
+        if (match) {
+          return match[1].replace(/\//g, path$o.sep);
+        }
+      }
+      return __filename$5;
+    },
+    configurable: true
+  });
+}
+if (typeof globalThis.__dirname === "undefined") {
+  Object.defineProperty(globalThis, "__dirname", {
+    get() {
+      return path$o.dirname(globalThis.__filename);
+    },
+    configurable: true
+  });
 }
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
 function getDefaultExportFromCjs(x) {
@@ -161830,7 +161859,34 @@ class EventStore extends EventEmitter$3 {
       }
       const currentUsername2 = getCurrentUsername();
       targetEvent.isPlayerInvolved = targetEvent.killers.includes(currentUsername2 || "") || targetEvent.victims.includes(currentUsername2 || "");
-      this.database.insertEvent(targetEvent, source);
+      if (!targetEvent.metadata) {
+        targetEvent.metadata = {};
+      }
+      if (!targetEvent.metadata.source) {
+        targetEvent.metadata.source = {
+          server: source === "server",
+          local: source === "local",
+          external: source === "server"
+        };
+      } else {
+        if (source === "server" && !targetEvent.metadata.source.server) {
+          targetEvent.metadata.source.server = true;
+          targetEvent.metadata.source.external = true;
+          info(MODULE_NAME$9, `🔄 Server confirmed local event ${targetEvent.id} - will now show server pip`);
+        } else if (source === "local" && !targetEvent.metadata.source.local) {
+          targetEvent.metadata.source.local = true;
+          debug$b(MODULE_NAME$9, `Updated event ${targetEvent.id} with local source`);
+        }
+      }
+      let dbSource = source;
+      if (targetEvent.metadata.source.local && targetEvent.metadata.source.server) {
+        dbSource = "both";
+      } else if (targetEvent.metadata.source.server) {
+        dbSource = "server";
+      } else if (targetEvent.metadata.source.local) {
+        dbSource = "local";
+      }
+      this.database.insertEvent(targetEvent, dbSource);
       this.recentEventIds.add(targetEvent.id);
       if (this.recentEventIds.size > this.MAX_RECENT_IDS) {
         const idsArray = Array.from(this.recentEventIds);
@@ -162037,18 +162093,20 @@ class EventStore extends EventEmitter$3 {
    * Intelligently merge two similar events
    */
   mergeEvents(existingEvent, newEvent) {
-    var _a3, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2, _j2, _k, _l, _m, _n, _o, _p, _q, _r;
+    var _a3, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2, _j2, _k, _l, _m, _n, _o, _p, _q, _r, _s, _t, _u, _v;
     debug$b(MODULE_NAME$9, `Merging events: ${existingEvent.id} + ${newEvent.id}`);
     const existingHasServerSource = (_b2 = (_a3 = existingEvent.metadata) == null ? void 0 : _a3.source) == null ? void 0 : _b2.server;
-    const newHasServerSource = (_d2 = (_c2 = newEvent.metadata) == null ? void 0 : _c2.source) == null ? void 0 : _d2.server;
+    const existingHasLocalSource = (_d2 = (_c2 = existingEvent.metadata) == null ? void 0 : _c2.source) == null ? void 0 : _d2.local;
+    const newHasServerSource = (_f2 = (_e2 = newEvent.metadata) == null ? void 0 : _e2.source) == null ? void 0 : _f2.server;
+    const newHasLocalSource = (_h2 = (_g2 = newEvent.metadata) == null ? void 0 : _g2.source) == null ? void 0 : _h2.local;
     let primaryEvent;
     let secondaryEvent;
-    if (newHasServerSource && !existingHasServerSource) {
-      primaryEvent = newEvent;
-      secondaryEvent = existingEvent;
-    } else if (existingHasServerSource && !newHasServerSource) {
+    if (existingHasLocalSource && newHasServerSource) {
       primaryEvent = existingEvent;
       secondaryEvent = newEvent;
+    } else if (newHasLocalSource && existingHasServerSource) {
+      primaryEvent = newEvent;
+      secondaryEvent = existingEvent;
     } else {
       const existingCompleteness = this.calculateEventCompleteness(existingEvent);
       const newCompleteness = this.calculateEventCompleteness(newEvent);
@@ -162070,17 +162128,17 @@ class EventStore extends EventEmitter$3 {
       vehicleModel: primaryEvent.vehicleModel || secondaryEvent.vehicleModel,
       location: primaryEvent.location || secondaryEvent.location,
       weapon: primaryEvent.weapon || secondaryEvent.weapon,
-      // Merge metadata
+      // Merge metadata - if either event has server source, the merged event should show server indicator
       metadata: {
         ...primaryEvent.metadata,
         source: {
-          server: ((_f2 = (_e2 = primaryEvent.metadata) == null ? void 0 : _e2.source) == null ? void 0 : _f2.server) || ((_h2 = (_g2 = secondaryEvent.metadata) == null ? void 0 : _g2.source) == null ? void 0 : _h2.server) || false,
-          local: ((_j2 = (_i2 = primaryEvent.metadata) == null ? void 0 : _i2.source) == null ? void 0 : _j2.local) || ((_l = (_k = secondaryEvent.metadata) == null ? void 0 : _k.source) == null ? void 0 : _l.local) || false,
-          external: ((_n = (_m = primaryEvent.metadata) == null ? void 0 : _m.source) == null ? void 0 : _n.external) || ((_p = (_o = secondaryEvent.metadata) == null ? void 0 : _o.source) == null ? void 0 : _p.external) || false
+          server: ((_j2 = (_i2 = primaryEvent.metadata) == null ? void 0 : _i2.source) == null ? void 0 : _j2.server) || ((_l = (_k = secondaryEvent.metadata) == null ? void 0 : _k.source) == null ? void 0 : _l.server) || false,
+          local: ((_n = (_m = primaryEvent.metadata) == null ? void 0 : _m.source) == null ? void 0 : _n.local) || ((_p = (_o = secondaryEvent.metadata) == null ? void 0 : _o.source) == null ? void 0 : _p.local) || false,
+          external: ((_r = (_q = primaryEvent.metadata) == null ? void 0 : _q.source) == null ? void 0 : _r.external) || ((_t = (_s = secondaryEvent.metadata) == null ? void 0 : _s.source) == null ? void 0 : _t.external) || false
         },
         mergedFrom: [
-          ...((_q = primaryEvent.metadata) == null ? void 0 : _q.mergedFrom) || [],
-          ...((_r = secondaryEvent.metadata) == null ? void 0 : _r.mergedFrom) || [],
+          ...((_u = primaryEvent.metadata) == null ? void 0 : _u.mergedFrom) || [],
+          ...((_v = secondaryEvent.metadata) == null ? void 0 : _v.mergedFrom) || [],
           secondaryEvent.id
         ].filter((id2, index2, arr) => arr.indexOf(id2) === index2)
       }
@@ -162135,7 +162193,7 @@ function getEventStore() {
 const MODULE_NAME$8 = "EventProcessor";
 const killEvents = [];
 const globalKillEvents = [];
-const MAX_KILL_EVENTS = 100;
+const MAX_KILL_EVENTS = 25;
 let eventStore;
 async function initializeEventProcessor() {
   try {
@@ -162246,6 +162304,16 @@ async function processKillEvent(partialEvent, silentMode, destructionLevel = 0) 
   const killerName = ((_b2 = partialEvent.killers) == null ? void 0 : _b2[0]) || "Unknown";
   const victimRsiData = profileDataMap[victimName] || existingEvent || defaultProfileData;
   const attackerRsiData = profileDataMap[killerName] || existingEvent || defaultProfileData;
+  if (!partialEvent.deathType || partialEvent.deathType === "Unknown") {
+    warn(MODULE_NAME$8, "Event with Unknown or missing death type:", {
+      id: partialEvent.id,
+      deathType: partialEvent.deathType,
+      damageType: partialEvent.damageType,
+      killers: partialEvent.killers,
+      victims: partialEvent.victims,
+      vehicleType: partialEvent.vehicleType
+    });
+  }
   const fullEvent = {
     // Base required fields
     id: partialEvent.id,
@@ -162374,14 +162442,69 @@ async function correlateDeathWithDestruction(timestamp2, playerName, silentMode)
 }
 function determineDeathType(level, damageType, caused_by, driver) {
   const isSelfInflicted = caused_by === "unknown" || driver && caused_by === driver;
+  debug$b(MODULE_NAME$8, "Determining death type:", {
+    level,
+    damageType,
+    caused_by,
+    driver,
+    isSelfInflicted
+  });
   if (damageType === "Collision" || damageType === "Crash") {
-    return isSelfInflicted ? "Crash" : "Collision";
+    const result2 = isSelfInflicted ? "Crash" : "Collision";
+    debug$b(MODULE_NAME$8, `Death type determined (collision): ${result2}`);
+    return result2;
   }
-  if (level === 1) return "Soft";
-  if (level >= 2) return "Hard";
-  if (caused_by === "Environment") return "Unknown";
-  if (isSelfInflicted) return "Unknown";
-  return "Combat";
+  if (damageType === "BleedOut") {
+    debug$b(MODULE_NAME$8, "Death type determined (bleed): BleedOut");
+    return "BleedOut";
+  }
+  if (damageType === "SuffocationDamage") {
+    debug$b(MODULE_NAME$8, "Death type determined (suffocation): Suffocation");
+    return "Suffocation";
+  }
+  if (damageType === "Combat") {
+    if (level >= 2) {
+      debug$b(MODULE_NAME$8, `Death type determined (combat level ${level}): Hard`);
+      return "Hard";
+    }
+    if (level === 1) {
+      debug$b(MODULE_NAME$8, "Death type determined (combat level 1): Soft");
+      return "Soft";
+    }
+    debug$b(MODULE_NAME$8, "Death type determined (combat level 0): Combat");
+    return "Combat";
+  }
+  if (level === 1) {
+    debug$b(MODULE_NAME$8, "Death type determined (level 1): Soft");
+    return "Soft";
+  }
+  if (level >= 2) {
+    debug$b(MODULE_NAME$8, `Death type determined (level ${level}): Hard`);
+    return "Hard";
+  }
+  if (caused_by === "Environment") {
+    if (damageType && damageType !== "Unknown") {
+      debug$b(MODULE_NAME$8, `Environmental death with damage type: ${damageType} -> Unknown`);
+      return "Unknown";
+    }
+    debug$b(MODULE_NAME$8, "Death type determined (environment): Unknown");
+    return "Unknown";
+  }
+  if (isSelfInflicted) {
+    if (level > 0) {
+      debug$b(MODULE_NAME$8, `Death type determined (self-inflicted level ${level}): Crash`);
+      return "Crash";
+    }
+    debug$b(MODULE_NAME$8, "Death type determined (self-inflicted level 0): Unknown");
+    return "Unknown";
+  }
+  if (level === 0 && caused_by && caused_by !== "unknown") {
+    debug$b(MODULE_NAME$8, "Death type determined (level 0 external): Combat");
+    return "Combat";
+  }
+  const result = "Combat";
+  debug$b(MODULE_NAME$8, `Death type determined: ${result}`);
+  return result;
 }
 function formatKillEventDescription(killers, victims, vehicleType, vehicleModel, deathType, destructionLevel = 0) {
   const isVictimShipPlaceholder = victims.length === 1 && victims[0] === vehicleType;
@@ -162669,9 +162792,13 @@ async function parseLogContent(content2, silentMode = false) {
       if (envDeathMatch == null ? void 0 : envDeathMatch.groups) {
         const { timestamp: timestamp2, playerName, damageType } = envDeathMatch.groups;
         info(MODULE_NAME$7, "Environmental death:", { victim: playerName }, "died from", { weapon: damageType });
-        let deathType = "Unknown";
-        if (damageType === "BleedOut") deathType = "BleedOut";
-        if (damageType === "SuffocationDamage") deathType = "Suffocation";
+        const deathType = determineDeathType(
+          0,
+          // Environmental deaths don't have destruction levels
+          damageType || "Unknown",
+          "Environment",
+          null
+        );
         const isPlayerInvolved = playerName === currentUsername;
         const eventId = `env_death_${playerName}_${timestamp2}`.replace(/[^a-zA-Z0-9_]/g, "");
         const partialEvent = {
@@ -171514,6 +171641,7 @@ async function login(identifier, password) {
   const hostname = os$1.hostname();
   const currentClientId = getPersistedClientId();
   info(MODULE_NAME$5, `Attempting login for identifier: ${identifier} from hostname: ${hostname}, clientId: ${currentClientId}`);
+  await new Promise((resolve2) => setTimeout(resolve2, 100));
   try {
     const response2 = await fetch(`${SERVER_API_URL}/api/auth/login`, {
       method: "POST",
@@ -171566,8 +171694,13 @@ async function login(identifier, password) {
       return { success: false, error: "Server login response incomplete." };
     }
   } catch (error$12) {
-    error(MODULE_NAME$5, "Error during login API call:", error$12);
-    return { success: false, error: error$12.message || "Network or unexpected error during login." };
+    error(MODULE_NAME$5, "Error during login API call:", {
+      message: (error$12 == null ? void 0 : error$12.message) || "No error message",
+      name: (error$12 == null ? void 0 : error$12.name) || "Unknown error type",
+      stack: (error$12 == null ? void 0 : error$12.stack) || "No stack trace",
+      errorObject: error$12
+    });
+    return { success: false, error: (error$12 == null ? void 0 : error$12.message) || "Network or unexpected error during login." };
   }
 }
 async function logout() {
@@ -171709,7 +171842,17 @@ function setGuestModeAndRemember() {
 }
 function registerAuthIpcHandlers() {
   ipcMain$1.handle("auth:login", async (_event, identifier, password) => {
-    return await login(identifier, password);
+    try {
+      return await login(identifier, password);
+    } catch (error$12) {
+      error(MODULE_NAME$5, "Unhandled error in login IPC handler:", {
+        message: (error$12 == null ? void 0 : error$12.message) || "No error message",
+        name: (error$12 == null ? void 0 : error$12.name) || "Unknown error type",
+        stack: (error$12 == null ? void 0 : error$12.stack) || "No stack trace",
+        errorObject: error$12
+      });
+      return { success: false, error: (error$12 == null ? void 0 : error$12.message) || "Unexpected error during login" };
+    }
   });
   ipcMain$1.handle("auth:logout", async () => {
     return await logout();
@@ -172148,7 +172291,7 @@ function handleProcessedServerEvent(serverEvent) {
   }
 }
 function convertProcessedServerEventToClient(serverEvent) {
-  var _a3, _b2, _c2, _d2, _e2, _f2, _g2;
+  var _a3, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
   const killers = [];
   const victims = [];
   if (((_a3 = serverEvent.data) == null ? void 0 : _a3.killers) && Array.isArray(serverEvent.data.killers)) {
@@ -172170,31 +172313,39 @@ function convertProcessedServerEventToClient(serverEvent) {
     }
   }
   let deathType = "Unknown";
-  switch (serverEvent.type) {
-    case "PLAYER_KILL":
-      deathType = "Combat";
-      break;
-    case "VEHICLE_DESTRUCTION":
-      deathType = "Hard";
-      break;
-    case "ENVIRONMENTAL_DEATH":
-      deathType = "Unknown";
-      break;
-    case "DEATH":
-      deathType = "Unknown";
-      break;
+  if ((_c2 = serverEvent.data) == null ? void 0 : _c2.specificDeathType) {
+    const specificType = serverEvent.data.specificDeathType;
+    if (["Soft", "Hard", "Combat", "Collision", "Crash", "BleedOut", "Suffocation"].includes(specificType)) {
+      deathType = specificType;
+    }
+  } else {
+    const eventType = (_d2 = serverEvent.type) == null ? void 0 : _d2.toUpperCase();
+    switch (eventType) {
+      case "PLAYER_KILL":
+        deathType = "Combat";
+        break;
+      case "VEHICLE_DESTRUCTION":
+        deathType = "Hard";
+        break;
+      case "ENVIRONMENTAL_DEATH":
+        deathType = "Unknown";
+        break;
+      case "DEATH":
+        deathType = "Unknown";
+        break;
+    }
   }
   const clientEvent = {
-    id: serverEvent.correlationId || serverEvent.id || `server_${Date.now()}`,
+    id: serverEvent.id || serverEvent.correlationId || `server_${Date.now()}`,
     timestamp: serverEvent.timestamp ? new Date(serverEvent.timestamp).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
     killers: killers.length > 0 ? killers : ["Unknown"],
     victims: victims.length > 0 ? victims : ["Unknown"],
     deathType,
-    vehicleType: ((_c2 = serverEvent.data) == null ? void 0 : _c2.vehicle) || "Unknown",
-    vehicleModel: ((_d2 = serverEvent.data) == null ? void 0 : _d2.vehicle) || "Unknown",
-    location: ((_e2 = serverEvent.data) == null ? void 0 : _e2.location) || "",
-    weapon: ((_f2 = serverEvent.data) == null ? void 0 : _f2.weapon) || "",
-    damageType: ((_g2 = serverEvent.data) == null ? void 0 : _g2.damageType) || "",
+    vehicleType: ((_e2 = serverEvent.data) == null ? void 0 : _e2.vehicle) || "Unknown",
+    vehicleModel: ((_f2 = serverEvent.data) == null ? void 0 : _f2.vehicle) || "Unknown",
+    location: ((_g2 = serverEvent.data) == null ? void 0 : _g2.location) || "",
+    weapon: ((_h2 = serverEvent.data) == null ? void 0 : _h2.weapon) || "",
+    damageType: ((_i2 = serverEvent.data) == null ? void 0 : _i2.damageType) || "",
     gameMode: "Unknown",
     // Server events don't specify game mode in current format
     eventDescription: `Server: ${killers.join(", ")} → ${victims.join(", ")}`,
@@ -173136,9 +173287,15 @@ function initialize() {
   app$1.on("will-quit", onWillQuit);
   success(MODULE_NAME$1, "Initialized.");
 }
-const MODULE_NAME = "Main";
+process.on("uncaughtException", (error2) => {
+  console.error("Uncaught Exception:", error2);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
 const __filename$1 = fileURLToPath(import.meta.url);
 path$o.dirname(__filename$1);
+const MODULE_NAME = "Main";
 startup(MODULE_NAME, "SC Feeder Client starting up...");
 if (!app$1.requestSingleInstanceLock()) {
   error(MODULE_NAME, "Another instance is already running. Quitting.");

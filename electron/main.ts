@@ -1,7 +1,23 @@
+// Import polyfills first to ensure __filename and __dirname are available
+import './polyfills.ts';
+
 import { app, dialog, Menu } from 'electron'; // Keep app and dialog from electron, add Menu
 import { autoUpdater } from 'electron-updater'; // Import autoUpdater specifically from electron-updater
+
+// Add global error handlers to catch unhandled errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// Define __filename and __dirname for ES module scope
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import * as AppLifecycle from './modules/app-lifecycle.ts'; // Added .ts
 import { getMainWindow } from './modules/window-manager.ts'; // Import getMainWindow - Added .ts
 import * as logger from './modules/logger'; // Import the logger utility
@@ -16,8 +32,7 @@ const MODULE_NAME = 'Main'; // Define module name for logger
 
 // Set APP_ROOT environment variable early, as other modules might rely on it.
 // Note: __dirname in ESM corresponds to the directory of the current file.
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// (__filename and __dirname are now defined globally above)
 // process.env.APP_ROOT = path.join(__dirname, '..'); // REMOVED: Will be set later using app.getAppPath()
 
 logger.startup(MODULE_NAME, 'SC Feeder Client starting up...');

@@ -149,8 +149,39 @@ export class EventStore extends EventEmitter {
       targetEvent.isPlayerInvolved = targetEvent.killers.includes(currentUsername || '') || 
                                     targetEvent.victims.includes(currentUsername || '');
 
-      // Save to database
-      this.database.insertEvent(targetEvent, source);
+      // Ensure metadata and source information is set
+      if (!targetEvent.metadata) {
+        targetEvent.metadata = {};
+      }
+      if (!targetEvent.metadata.source) {
+        targetEvent.metadata.source = {
+          server: source === 'server',
+          local: source === 'local',
+          external: source === 'server'
+        };
+      } else {
+        // Update source flags if this is a new source type (e.g., server confirming a local event)
+        if (source === 'server' && !targetEvent.metadata.source.server) {
+          targetEvent.metadata.source.server = true;
+          targetEvent.metadata.source.external = true;
+          logger.info(MODULE_NAME, `🔄 Server confirmed local event ${targetEvent.id} - will now show server pip`);
+        } else if (source === 'local' && !targetEvent.metadata.source.local) {
+          targetEvent.metadata.source.local = true;
+          logger.debug(MODULE_NAME, `Updated event ${targetEvent.id} with local source`);
+        }
+      }
+
+      // Save to database with appropriate source designation
+      // If event has both local and server data, use 'both', otherwise use most authoritative source
+      let dbSource: 'local' | 'server' | 'merged' | 'both' = source as 'local' | 'server' | 'merged';
+      if (targetEvent.metadata.source.local && targetEvent.metadata.source.server) {
+        dbSource = 'both';
+      } else if (targetEvent.metadata.source.server) {
+        dbSource = 'server';
+      } else if (targetEvent.metadata.source.local) {
+        dbSource = 'local';
+      }
+      this.database.insertEvent(targetEvent, dbSource as 'local' | 'server' | 'merged' | 'both');
 
       // Track recent IDs for fast duplicate detection
       this.recentEventIds.add(targetEvent.id);
@@ -421,19 +452,22 @@ export class EventStore extends EventEmitter {
   private mergeEvents(existingEvent: KillEvent, newEvent: KillEvent): KillEvent {
     logger.debug(MODULE_NAME, `Merging events: ${existingEvent.id} + ${newEvent.id}`);
 
-    // Determine priority: server > local with more data > older
+    // Determine priority: local > server when both exist, otherwise prefer more complete data
     const existingHasServerSource = existingEvent.metadata?.source?.server;
+    const existingHasLocalSource = existingEvent.metadata?.source?.local;
     const newHasServerSource = newEvent.metadata?.source?.server;
+    const newHasLocalSource = newEvent.metadata?.source?.local;
     
     let primaryEvent: KillEvent;
     let secondaryEvent: KillEvent;
     
-    if (newHasServerSource && !existingHasServerSource) {
-      primaryEvent = newEvent;
-      secondaryEvent = existingEvent;
-    } else if (existingHasServerSource && !newHasServerSource) {
+    // If one is local and one is server, prefer the local event
+    if (existingHasLocalSource && newHasServerSource) {
       primaryEvent = existingEvent;
       secondaryEvent = newEvent;
+    } else if (newHasLocalSource && existingHasServerSource) {
+      primaryEvent = newEvent;
+      secondaryEvent = existingEvent;
     } else {
       // Same source type, prefer more complete data
       const existingCompleteness = this.calculateEventCompleteness(existingEvent);
@@ -462,7 +496,7 @@ export class EventStore extends EventEmitter {
       location: primaryEvent.location || secondaryEvent.location,
       weapon: primaryEvent.weapon || secondaryEvent.weapon,
       
-      // Merge metadata
+      // Merge metadata - if either event has server source, the merged event should show server indicator
       metadata: {
         ...primaryEvent.metadata,
         source: {

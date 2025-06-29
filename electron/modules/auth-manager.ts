@@ -176,6 +176,9 @@ export async function login(identifier: string, password: string): Promise<{ suc
     const hostname = os.hostname();
     const currentClientId = getPersistedClientId();
     logger.info(MODULE_NAME, `Attempting login for identifier: ${identifier} from hostname: ${hostname}, clientId: ${currentClientId}`);
+    
+    // Add small delay to ensure all modules are properly initialized
+    await new Promise(resolve => setTimeout(resolve, 100));
     try {
         const response = await fetch(`${SERVER_API_URL}/api/auth/login`, {
             method: 'POST',
@@ -234,8 +237,13 @@ export async function login(identifier: string, password: string): Promise<{ suc
         }
 
     } catch (error: any) {
-        logger.error(MODULE_NAME, 'Error during login API call:', error);
-        return { success: false, error: error.message || 'Network or unexpected error during login.' };
+        logger.error(MODULE_NAME, 'Error during login API call:', {
+            message: error?.message || 'No error message',
+            name: error?.name || 'Unknown error type',
+            stack: error?.stack || 'No stack trace',
+            errorObject: error
+        });
+        return { success: false, error: error?.message || 'Network or unexpected error during login.' };
     }
 }
 
@@ -398,7 +406,17 @@ export function setGuestModeAndRemember(): void {
 
 export function registerAuthIpcHandlers(): void {
     ipcMain.handle('auth:login', async (_event, identifier, password) => {
-        return await login(identifier, password);
+        try {
+            return await login(identifier, password);
+        } catch (error: any) {
+            logger.error(MODULE_NAME, 'Unhandled error in login IPC handler:', {
+                message: error?.message || 'No error message',
+                name: error?.name || 'Unknown error type',
+                stack: error?.stack || 'No stack trace',
+                errorObject: error
+            });
+            return { success: false, error: error?.message || 'Unexpected error during login' };
+        }
     });
 
     ipcMain.handle('auth:logout', async () => {

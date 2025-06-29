@@ -17,7 +17,7 @@ const MODULE_NAME = 'EventProcessor'; // Define module name for logger
 // Legacy arrays - maintained for compatibility but now backed by EventStore
 const killEvents: KillEvent[] = []; // Player-involved events (legacy)
 const globalKillEvents: KillEvent[] = []; // All events (legacy)
-const MAX_KILL_EVENTS = 100; // Maximum number of kill events to store per array (legacy)
+const MAX_KILL_EVENTS = 25; // Maximum number of kill events to store per array (legacy, reduced for testing)
 
 // EventStore instance
 let eventStore: EventStore;
@@ -179,6 +179,18 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     const victimRsiData = profileDataMap[victimName] || existingEvent || defaultProfileData;
     const attackerRsiData = profileDataMap[killerName] || existingEvent || defaultProfileData;
 
+
+    // Debug logging for death type determination
+    if (!partialEvent.deathType || partialEvent.deathType === 'Unknown') {
+        logger.warn(MODULE_NAME, 'Event with Unknown or missing death type:', {
+            id: partialEvent.id,
+            deathType: partialEvent.deathType,
+            damageType: partialEvent.damageType,
+            killers: partialEvent.killers,
+            victims: partialEvent.victims,
+            vehicleType: partialEvent.vehicleType
+        });
+    }
 
     const fullEvent: KillEvent = {
         // Base required fields
@@ -374,19 +386,89 @@ export function determineDeathType(
     driver: string | null
 ): KillEvent['deathType'] {
     const isSelfInflicted = (caused_by === 'unknown' || (driver && caused_by === driver));
+    
+    logger.debug(MODULE_NAME, 'Determining death type:', {
+        level,
+        damageType,
+        caused_by,
+        driver,
+        isSelfInflicted
+    });
 
+    // Handle specific damage types first (highest priority)
     if (damageType === 'Collision' || damageType === 'Crash') {
-        return isSelfInflicted ? 'Crash' : 'Collision';
+        const result = isSelfInflicted ? 'Crash' : 'Collision';
+        logger.debug(MODULE_NAME, `Death type determined (collision): ${result}`);
+        return result;
     }
-    if (level === 1) return 'Soft';
-    if (level >= 2) return 'Hard';
+    
+    if (damageType === 'BleedOut') {
+        logger.debug(MODULE_NAME, 'Death type determined (bleed): BleedOut');
+        return 'BleedOut';
+    }
+    if (damageType === 'SuffocationDamage') {
+        logger.debug(MODULE_NAME, 'Death type determined (suffocation): Suffocation');
+        return 'Suffocation';
+    }
+    if (damageType === 'Combat') {
+        // Combat damage should prioritize destruction level
+        if (level >= 2) {
+            logger.debug(MODULE_NAME, `Death type determined (combat level ${level}): Hard`);
+            return 'Hard';
+        }
+        if (level === 1) {
+            logger.debug(MODULE_NAME, 'Death type determined (combat level 1): Soft');
+            return 'Soft';
+        }
+        // Level 0 combat damage
+        logger.debug(MODULE_NAME, 'Death type determined (combat level 0): Combat');
+        return 'Combat';
+    }
+    
+    // Handle destruction levels (high priority)
+    if (level === 1) {
+        logger.debug(MODULE_NAME, 'Death type determined (level 1): Soft');
+        return 'Soft';
+    }
+    if (level >= 2) {
+        logger.debug(MODULE_NAME, `Death type determined (level ${level}): Hard`);
+        return 'Hard';
+    }
+    
+    // Handle environmental causes more intelligently
+    if (caused_by === 'Environment') {
+        // For environmental damage, try to infer from damage type
+        if (damageType && damageType !== 'Unknown') {
+            // Return the damage type as death type for environmental
+            logger.debug(MODULE_NAME, `Environmental death with damage type: ${damageType} -> Unknown`);
+            return 'Unknown'; // Keep as Unknown for now, but log for investigation
+        }
+        logger.debug(MODULE_NAME, 'Death type determined (environment): Unknown');
+        return 'Unknown';
+    }
+    
+    // Handle self-inflicted damage more intelligently
+    if (isSelfInflicted) {
+        // If there's vehicle destruction, it's likely a crash
+        if (level > 0) {
+            logger.debug(MODULE_NAME, `Death type determined (self-inflicted level ${level}): Crash`);
+            return 'Crash';
+        }
+        // Otherwise, unknown self-inflicted damage
+        logger.debug(MODULE_NAME, 'Death type determined (self-inflicted level 0): Unknown');
+        return 'Unknown';
+    }
+    
+    // Combat damage from external sources
+    if (level === 0 && caused_by && caused_by !== 'unknown') {
+        // Level 0 damage from external source - could be light combat
+        logger.debug(MODULE_NAME, 'Death type determined (level 0 external): Combat');
+        return 'Combat';
+    }
 
-    // Fallback if level is 0 or damage type isn't collision/crash
-    // If caused by environment or self, maybe 'Unknown'? Otherwise 'Combat'.
-    if (caused_by === 'Environment') return 'Unknown'; // Or specific environmental type if known
-    if (isSelfInflicted) return 'Unknown'; // Or 'Crash' if appropriate? Needs context.
-
-    return 'Combat'; // Default assumption for external damage
+    const result = 'Combat'; // Default assumption for external damage
+    logger.debug(MODULE_NAME, `Death type determined: ${result}`);
+    return result;
 }
 
 

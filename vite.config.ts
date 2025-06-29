@@ -19,6 +19,13 @@ export default defineConfig({
     electron({
       main: {
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              external: ['better-sqlite3', 'bindings', 'node-gyp-build'],
+            },
+          },
+        },
       },
       preload: {
         // Preload scripts for different windows
