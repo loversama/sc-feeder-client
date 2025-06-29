@@ -35,6 +35,12 @@ const totalEventsLoaded = ref<number>(0);
 const isUsingSearch = ref<boolean>(false);
 const loadMoreTriggerDistance = 200; // Pixels from bottom to trigger load more
 
+// Enhanced scroll state management
+const scrollDetectionEnabled = ref<boolean>(false);
+const lastScrollTime = ref<number>(0);
+const scrollThrottleMs = 100; // Throttle scroll events to 100ms
+const containerReady = ref<boolean>(false); // Track if container is properly sized
+
 let cleanupFunctions: (() => void)[] = [];
 
 // --- Icon Button Active State ---
@@ -312,9 +318,11 @@ const loadSoundEffectsSetting = async () => {
   }
 };
 
-// Load kill events based on the current feed mode
+// Enhanced kill events loading with proper scroll setup
 const loadKillEvents = async () => {
   try {
+    console.log('[KillFeed] 🚀 Starting initial event load...');
+    
     // Load initial events from EventStore
     const serverEvents = await window.logMonitorApi.getGlobalKillEvents(25);
 
@@ -326,14 +334,36 @@ const loadKillEvents = async () => {
     const moreEventsCheck = await window.logMonitorApi.loadMoreEvents(1, serverEvents.length);
     hasMoreEvents.value = moreEventsCheck.hasMore || moreEventsCheck.events.length > 0;
 
-    console.log(`[KillFeed] Initial load: ${serverEvents.length} events, hasMoreEvents: ${hasMoreEvents.value}`);
+    console.log(`[KillFeed] ✅ Initial load: ${serverEvents.length} events, hasMoreEvents: ${hasMoreEvents.value}`);
 
-    // Scroll to top after initial load
+    // Scroll to top after initial load and setup scroll detection
     nextTick(() => {
-      if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
+      if (killFeedListRef.value) {
+        killFeedListRef.value.scrollTop = 0;
+        
+        // Validate container and enable scroll detection after a short delay
+        setTimeout(() => {
+          const isValid = validateScrollContainer();
+          if (isValid) {
+            scrollDetectionEnabled.value = true;
+            console.log('[KillFeed] 🚀 Scroll detection enabled after initial load');
+          } else {
+            console.log('[KillFeed] ⚠️ Container not ready for scroll detection yet');
+            // Retry validation in 1 second
+            setTimeout(() => {
+              if (validateScrollContainer()) {
+                scrollDetectionEnabled.value = true;
+                console.log('[KillFeed] 🚀 Scroll detection enabled after retry');
+              }
+            }, 1000);
+          }
+          
+          // Stats section removed - clean up completed
+        }, 500); // 500ms delay to ensure DOM is fully updated
+      }
     });
   } catch (error) {
-    console.error('[KillFeed] Failed to load kill events:', error);
+    console.error('[KillFeed] ⚠️ Failed to load kill events:', error);
     hasMoreEvents.value = false; // Assume no more events on error
   }
 };
@@ -538,54 +568,93 @@ const debouncedSearch = (query: string) => {
 // Initialize search watcher (will be set up in onMounted)
 let unwatchSearch: (() => void) | null = null;
 
-// Infinite scroll functions
+// Scroll container validation function
+const validateScrollContainer = () => {
+  if (!killFeedListRef.value) {
+    return false;
+  }
+  
+  const container = killFeedListRef.value;
+  const scrollHeight = container.scrollHeight;
+  const clientHeight = container.clientHeight;
+  const canScroll = scrollHeight > clientHeight;
+  
+  // Container is ready if it has content and can scroll, or if it can't scroll but has events to load
+  const isReady = (canScroll || (hasMoreEvents.value && currentEvents.value.length > 0));
+  containerReady.value = isReady;
+  
+  return isReady;
+};
+
+// Throttled scroll handler for infinite scroll
 const handleScroll = (event: Event) => {
+  const now = Date.now();
+  
+  // Throttle scroll events
+  if (now - lastScrollTime.value < scrollThrottleMs) {
+    return;
+  }
+  lastScrollTime.value = now;
+  
+  // Only process if scroll detection is enabled and container is ready
+  if (!scrollDetectionEnabled.value || !containerReady.value) {
+    return;
+  }
+  
   const container = event.target as HTMLElement;
+  if (!container) {
+    console.warn('[KillFeed] Scroll event target is not an HTMLElement');
+    return;
+  }
+  
   const scrollTop = container.scrollTop;
   const scrollHeight = container.scrollHeight;
   const clientHeight = container.clientHeight;
   
+  // Ensure we have valid dimensions
+  if (scrollHeight <= 0 || clientHeight <= 0) {
+    console.warn('[KillFeed] Invalid container dimensions:', { scrollHeight, clientHeight });
+    return;
+  }
+  
   // Calculate distance from bottom
   const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
   
-  // Adaptive trigger distance based on screen size (minimum 100px, maximum 400px)
-  const adaptiveTriggerDistance = Math.max(100, Math.min(400, clientHeight * 0.1));
+  // Calculate scroll percentage (how far down we are)
+  const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
   
-  // Check if near bottom
-  const isNearBottom = distanceFromBottom <= adaptiveTriggerDistance;
+  // Adaptive trigger distance based on viewport height
+  const baseTriggerDistance = Math.max(100, Math.min(300, clientHeight * 0.15));
+  const adaptiveTriggerDistance = Math.max(baseTriggerDistance, 200);
   
-  // Debug logging (can be removed later)
-  if (distanceFromBottom <= adaptiveTriggerDistance * 2) { // Log when getting close
-    console.log('[KillFeed] Scroll Debug:', {
-      distanceFromBottom,
-      adaptiveTriggerDistance,
-      isNearBottom,
-      isLoadingMore: isLoadingMore.value,
-      hasMoreEvents: hasMoreEvents.value,
-      scrollTop,
-      scrollHeight,
-      clientHeight
-    });
+  // Check if near bottom using both pixel distance and percentage
+  const isNearBottom = distanceFromBottom <= adaptiveTriggerDistance || scrollPercentage >= 0.90;
+  
+  // Also check if scrollbar is at absolute bottom
+  const isAtBottom = distanceFromBottom <= 5;
+  
+  // Special handling for absolute bottom
+  if (isAtBottom && !isLoadingMore.value && hasMoreEvents.value) {
+    console.log('[KillFeed] User scrolled to bottom - loading more events');
+    loadMoreEvents();
+    return;
   }
   
+  // Trigger load more when near bottom
   if (isNearBottom && !isLoadingMore.value && hasMoreEvents.value) {
-    console.log('[KillFeed] Triggering load more events - scroll detected near bottom');
+    console.log('[KillFeed] Near bottom - loading more events');
     loadMoreEvents();
   }
 };
 
 const loadMoreEvents = async () => {
   if (isLoadingMore.value || !hasMoreEvents.value) {
-    console.log('[KillFeed] Load more events blocked:', {
-      isLoadingMore: isLoadingMore.value,
-      hasMoreEvents: hasMoreEvents.value
-    });
     return;
   }
 
   try {
     isLoadingMore.value = true;
-    console.log('[KillFeed] Starting to load more events...');
+    console.log('[KillFeed] 📥 Starting to load more events...');
 
     if (isUsingSearch.value && searchQuery.value.trim()) {
       // Load more search results
@@ -613,42 +682,33 @@ const loadMoreEvents = async () => {
       allEvents.value = [...allEvents.value, ...newEvents];
       hasMoreEvents.value = results.hasMore;
       
-      console.log(`[KillFeed] Added ${newEvents.length} new events (${beforeCount} -> ${allEvents.value.length}), hasMore: ${results.hasMore}`);
+      console.log(`[KillFeed] 🚀 Added ${newEvents.length} new events (${beforeCount} -> ${allEvents.value.length}), hasMore: ${results.hasMore}`);
     }
+    
+    // Re-validate container after loading new events
+    nextTick(() => {
+      validateScrollContainer();
+    });
+    
   } catch (error) {
-    console.error('[KillFeed] Failed to load more events:', error);
-    // On error, assume no more events to prevent infinite retry
+    console.error('[KillFeed] ⚠️ Failed to load more events:', error);
+    // On error, disable hasMoreEvents temporarily and retry after delay
     hasMoreEvents.value = false;
+    
+    // Re-enable after 5 seconds to allow for retry
+    setTimeout(() => {
+      if (!hasMoreEvents.value) {
+        console.log('[KillFeed] Re-enabling hasMoreEvents after error timeout');
+        hasMoreEvents.value = true;
+      }
+    }, 5000);
   } finally {
     isLoadingMore.value = false;
-    console.log('[KillFeed] Load more events completed, isLoadingMore reset to false');
+    console.log('[KillFeed] ✅ Load more events completed, isLoadingMore reset to false');
   }
 };
 
-// Manual test function for debugging (can be called from browser console)
-const manualTestLoadMore = () => {
-  console.log('[KillFeed] Manual test triggered');
-  loadMoreEvents();
-};
-
-// Expose function to window for debugging (remove in production)
-if (typeof window !== 'undefined') {
-  (window as any).testLoadMore = manualTestLoadMore;
-  (window as any).testScrollInfo = () => {
-    if (killFeedListRef.value) {
-      const container = killFeedListRef.value;
-      console.log('[KillFeed] Current scroll info:', {
-        scrollHeight: container.scrollHeight,
-        clientHeight: container.clientHeight,
-        scrollTop: container.scrollTop,
-        canScroll: container.scrollHeight > container.clientHeight,
-        eventsCount: allEvents.value.length,
-        hasMoreEvents: hasMoreEvents.value,
-        isLoadingMore: isLoadingMore.value
-      });
-    }
-  };
-}
+// Production implementation - no debug functions
 
 
 onMounted(async () => { // Make onMounted async
@@ -879,46 +939,60 @@ onMounted(async () => { // Make onMounted async
     debouncedSearch(newQuery);
   });
 
-  // Add scroll event listener for infinite scroll
-  nextTick(() => {
+  // Enhanced scroll event listener setup with main process logging - FIXED with proper timing
+  const setupScrollListeners = () => {
     if (killFeedListRef.value) {
-      killFeedListRef.value.addEventListener('scroll', handleScroll);
-      console.log('[KillFeed] Scroll listener added for infinite scroll');
+      // Add scroll listener for infinite scroll
+      killFeedListRef.value.addEventListener('scroll', handleScroll, { passive: true });
+      console.log('[KillFeed] Scroll listener attached for infinite scroll');
       
-      // Debug: Log container dimensions
-      const container = killFeedListRef.value;
-      console.log('[KillFeed] Scroll container dimensions:', {
-        scrollHeight: container.scrollHeight,
-        clientHeight: container.clientHeight,
-        scrollTop: container.scrollTop,
-        canScroll: container.scrollHeight > container.clientHeight
+      // Set up resize observer to handle container changes
+      const resizeObserver = new ResizeObserver(() => {
+        validateScrollContainer();
+      });
+      resizeObserver.observe(killFeedListRef.value);
+      
+      // Store cleanup function for resize observer
+      cleanupFunctions.push(() => {
+        resizeObserver.disconnect();
       });
       
-      // Test scroll detection every few seconds (remove this in production)
-      const debugInterval = setInterval(() => {
-        if (container && container.parentElement) {
-          const scrollHeight = container.scrollHeight;
-          const clientHeight = container.clientHeight;
-          const scrollTop = container.scrollTop;
-          console.log('[KillFeed] Scroll status check:', {
-            scrollHeight,
-            clientHeight,
-            scrollTop,
-            canScroll: scrollHeight > clientHeight,
-            eventsCount: allEvents.value.length,
-            hasMoreEvents: hasMoreEvents.value
-          });
-        } else {
-          clearInterval(debugInterval);
-        }
-      }, 5000);
+      // Auto-enable scroll detection if container becomes ready
+      if (!scrollDetectionEnabled.value && validateScrollContainer()) {
+        scrollDetectionEnabled.value = true;
+        console.log('[KillFeed] Scroll detection enabled');
+      }
       
-      // Clear debug interval after 30 seconds
-      setTimeout(() => clearInterval(debugInterval), 30000);
+      return true; // Success
     } else {
-      console.error('[KillFeed] killFeedListRef.value is null, cannot add scroll listener');
+      console.error('[KillFeed] ⚠️ killFeedListRef.value is null, cannot add scroll listener');
+      return false; // Failed
     }
-  });
+  };
+  
+  // Try setting up scroll listeners with retry logic
+  const trySetupWithRetries = (maxRetries = 5, delay = 100) => {
+    let attempts = 0;
+    const attemptSetup = () => {
+      attempts++;
+      
+      if (setupScrollListeners()) {
+        console.log('[KillFeed] ✅ Scroll listeners setup successful!');
+        return;
+      }
+      
+      if (attempts < maxRetries) {
+        setTimeout(attemptSetup, delay * attempts); // Increasing delay
+      } else {
+        console.error('[KillFeed] ❌ Failed to setup scroll listeners after all retries');
+      }
+    };
+    
+    nextTick(attemptSetup);
+  };
+  
+  // Start the retry process
+  trySetupWithRetries();
 
   // No longer need the cleanup for the interval
 });
@@ -1027,7 +1101,10 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     </div>
     <!-- Otherwise, render the list -->
     <!-- Apply flex/scroll properties to this wrapper div -->
-    <div v-else class="kill-feed-scroll-area" ref="killFeedListRef"> <!-- Renamed class for clarity. This div now only handles flex sizing. -->
+    <div v-else class="kill-feed-scroll-area" 
+         ref="killFeedListRef"
+         tabindex="0"
+         style="outline: none;">
         <!-- Apply flex layout and gap to the transition-group's rendered div -->
         <transition-group name="feed-anim" tag="div" class="feed-items-container">
         <div
@@ -1148,21 +1225,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
      <!-- The v-else-if conditions are handled earlier, this closes the v-else div -->
     </div>
 
-    <!-- Relocated Stats Section -->
-    <div class="stats-section">
-      <span class="stats-item view-mode-indicator">
-        <span class="mode-badge" :class="{ 'server-mode': isAuthenticated }">
-          {{ isAuthenticated ? 'Server Filtered' : 'Local Only' }}
-        </span>
-        <span class="count-badge">
-          {{ currentEvents.length }} events
-        </span>
-      </span>
-      <span class="stats-item" v-if="currentPlayerShip">Ship: {{ currentPlayerShip }}</span>
-      <span class="stats-item">
-        External: {{ currentEvents.filter(e => e.metadata?.source?.external).length }}
-      </span>
-    </div>
+    <!-- Stats section removed -->
 
   </div> <!-- Close kill-feed-container -->
 </template>
@@ -1266,13 +1329,20 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .kill-feed-container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100%; /* Use parent's full height */
   width: 100%;
   margin: 0;
   background-color: #1a1a1a;
   padding: 0;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+}
+
+/* Ensure the Vue app root takes full height */
+#app {
+  height: 100vh;
+  overflow: hidden;
 }
 
 .update-banner-container {
@@ -1407,53 +1477,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .status-red { background-color: #e74c3c; } /* For errors if needed */
 
 
-/* Styles for Relocated Stats Section */
-.stats-section {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  padding: 10px 15px; /* Add padding */
-  border-top: 1px solid #333; /* Add separator */
-  background-color: #222; /* Match status bar bg */
-  flex-shrink: 0; /* Prevent shrinking */
-  font-size: 0.8em; /* Match status bar font size */
-}
-
-.stats-item {
-  color: #aaa;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.view-mode-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mode-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background-color: #e74c3c; /* Red for player mode */
-  color: white;
-  border-radius: 12px;
-  font-size: 0.8em;
-  font-weight: bold;
-}
-
-.mode-badge.server-mode {
-  background-color: #10b981; /* Green for server-filtered mode */
-}
-
-.count-badge {
-  display: inline-block;
-  padding: 2px 6px;
-  background-color: #333;
-  color: #ddd;
-  border-radius: 10px;
-  font-size: 0.75em;
-}
+/* Stats section CSS removed */
 
 /* Remove old log-status and status-indicator styles */
 /*
@@ -1472,13 +1496,19 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .kill-feed-scroll-area {
-  flex: 1;
+  flex: 1 1 auto; /* Take remaining space in flex container */
   overflow-y: auto !important;
   overflow-x: hidden;
   min-height: 0;
   padding: 10px;
   box-sizing: border-box;
+  position: relative;
+  
+  /* Enhanced scrolling behavior */
+  scroll-behavior: smooth;
 }
+
+/* Visual indicators removed - clean production look */
 
 /* Scrollbar styling */
 .kill-feed-scroll-area::-webkit-scrollbar {
@@ -1834,5 +1864,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   background-color: rgba(64, 64, 64, 0.1);
   border-radius: 8px;
 }
+
+/* All debug and stats section styles removed for clean production build */
 
 </style>

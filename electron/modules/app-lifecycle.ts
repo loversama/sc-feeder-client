@@ -160,28 +160,44 @@ function registerGlobalShortcuts(mainWindow: BrowserWindow) {
       logger.warn(MODULE_NAME, 'Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).');
   }
 
-  // F12 as backup DevTools toggle
-  const f12Ret = globalShortcut.register('F12', () => {
-      const focusedWindow = BrowserWindow.getFocusedWindow();
-      if (focusedWindow) {
-          logger.debug(MODULE_NAME, 'F12 pressed - toggling DevTools.');
-          focusedWindow.webContents.toggleDevTools();
-      }
-  });
-  if (!f12Ret) {
-      logger.warn(MODULE_NAME, 'Failed to register F12 shortcut.');
-  }
+  // Try multiple DevTools shortcuts since F12 often fails on Windows
+  const shortcuts = [
+    { key: 'F12', name: 'F12' },
+    { key: 'CommandOrCtrl+Shift+J', name: 'Ctrl+Shift+J' },
+    { key: 'CommandOrCtrl+Alt+I', name: 'Ctrl+Alt+I' },
+    { key: 'CommandOrCtrl+F12', name: 'Ctrl+F12' },
+    { key: 'Alt+F12', name: 'Alt+F12' }
+  ];
 
-  // Alternative DevTools shortcut (Ctrl+Shift+J) since F12 might fail
-  const altDevToolsRet = globalShortcut.register('CommandOrCtrl+Shift+J', () => {
+  let successCount = 0;
+  shortcuts.forEach(({ key, name }) => {
+    const success = globalShortcut.register(key, () => {
       const focusedWindow = BrowserWindow.getFocusedWindow();
       if (focusedWindow) {
-          logger.debug(MODULE_NAME, 'Ctrl+Shift+J pressed - toggling DevTools.');
-          focusedWindow.webContents.openDevTools({ mode: 'detach' });
+        logger.info(MODULE_NAME, `${name} pressed - forcing DevTools open`);
+        try {
+          // Force open DevTools - stick with docked mode for visibility
+          focusedWindow.webContents.openDevTools({ mode: 'right', activate: true });
+          focusedWindow.focus();
+          logger.info(MODULE_NAME, `${name} DevTools opened in docked mode (should be visible)`);
+        } catch (e) {
+          logger.error(MODULE_NAME, `Error opening DevTools with ${name}:`, e);
+        }
       }
+    });
+    
+    if (success) {
+      logger.info(MODULE_NAME, `Successfully registered ${name} shortcut for DevTools`);
+      successCount++;
+    } else {
+      logger.warn(MODULE_NAME, `Failed to register ${name} shortcut`);
+    }
   });
-  if (!altDevToolsRet) {
-      logger.warn(MODULE_NAME, 'Failed to register Ctrl+Shift+J shortcut.');
+
+  if (successCount === 0) {
+    logger.error(MODULE_NAME, 'CRITICAL: No DevTools shortcuts could be registered!');
+  } else {
+    logger.info(MODULE_NAME, `Successfully registered ${successCount}/${shortcuts.length} DevTools shortcuts`);
   }
 }
 

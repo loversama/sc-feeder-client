@@ -31,6 +31,80 @@ let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | null = null; /
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
+// Aggressive function to force DevTools open for any window in development
+function forceDevToolsOpen(window: BrowserWindow, windowType: string): void {
+    if (!app.isPackaged && !process.env.CI) {
+        logger.info(MODULE_NAME, `[DevTools] Setting up DevTools for ${windowType}`);
+        
+        // Method 1: Try opening immediately with docked mode (visible)
+        try {
+            window.webContents.openDevTools({ mode: 'right' });
+            logger.info(MODULE_NAME, `[DevTools] Opened immediately (docked right) for ${windowType}`);
+            
+            // Check if DevTools are actually open
+            setTimeout(() => {
+                const isOpen = window.webContents.isDevToolsOpened();
+                logger.info(MODULE_NAME, `[DevTools] Status check for ${windowType}: ${isOpen ? 'OPEN' : 'CLOSED'}`);
+                
+                if (!isOpen) {
+                    // Try bottom if right didn't work
+                    logger.warn(MODULE_NAME, `[DevTools] Right mode failed, trying bottom mode for ${windowType}`);
+                    window.webContents.openDevTools({ mode: 'bottom' });
+                    
+                    setTimeout(() => {
+                        const isOpenNow = window.webContents.isDevToolsOpened();
+                        logger.info(MODULE_NAME, `[DevTools] After bottom attempt for ${windowType}: ${isOpenNow ? 'OPEN' : 'CLOSED'}`);
+                    }, 500);
+                }
+            }, 1000);
+        } catch (e) {
+            logger.warn(MODULE_NAME, `[DevTools] Immediate open failed for ${windowType}:`, e);
+        }
+        
+        // Method 2: Open when ready to show
+        window.once('ready-to-show', () => {
+            setTimeout(() => {
+                try {
+                    const isAlreadyOpen = window.webContents.isDevToolsOpened();
+                    if (!isAlreadyOpen) {
+                        window.webContents.openDevTools({ mode: 'right' });
+                        logger.info(MODULE_NAME, `[DevTools] Opened on ready-to-show for ${windowType}`);
+                    } else {
+                        logger.info(MODULE_NAME, `[DevTools] Already open on ready-to-show for ${windowType}`);
+                    }
+                } catch (e) {
+                    logger.warn(MODULE_NAME, `[DevTools] ready-to-show open failed for ${windowType}:`, e);
+                }
+            }, 100);
+        });
+        
+        // Method 3: Open when content loads
+        window.webContents.once('did-finish-load', () => {
+            setTimeout(() => {
+                try {
+                    const isAlreadyOpen = window.webContents.isDevToolsOpened();
+                    if (!isAlreadyOpen) {
+                        window.webContents.openDevTools({ mode: 'bottom' });
+                        logger.info(MODULE_NAME, `[DevTools] Opened on did-finish-load (bottom) for ${windowType}`);
+                    } else {
+                        logger.info(MODULE_NAME, `[DevTools] Already open on did-finish-load for ${windowType}`);
+                    }
+                } catch (e) {
+                    logger.warn(MODULE_NAME, `[DevTools] did-finish-load open failed for ${windowType}:`, e);
+                }
+            }, 200);
+        });
+        
+        // Simple final check (like other windows that work correctly)
+        setTimeout(() => {
+            if (window && !window.isDestroyed()) {
+                const isOpen = window.webContents.isDevToolsOpened();
+                logger.info(MODULE_NAME, `[DevTools] Final check for ${windowType}: ${isOpen ? 'OPEN' : 'CLOSED'}`);
+            }
+        }, 1000);
+    }
+}
+
 // Helper function to inject custom titlebar CSS for dark theme
 function injectTitlebarCSS(window: BrowserWindow): void {
     window.webContents.insertCSS(`
@@ -364,7 +438,7 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
             preload: getPreloadPath('preload.mjs'),
             nodeIntegration: false,
             contextIsolation: true,
-            devTools: !app.isPackaged, // Enable DevTools only in development
+            devTools: !app.isPackaged, // Enable DevTools only in development (like other windows)
             spellcheck: false,
             webSecurity: app.isPackaged // Disable web security in development to allow HTTP images
         },
@@ -414,12 +488,8 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     mainWindow.setTitle('SC Kill Feed');
     // mainWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
-    // Open DevTools automatically in development (but not in CI)
-    if (!app.isPackaged && !process.env.CI) {
-        // Open DevTools detached for easier use during development
-        mainWindow.webContents.openDevTools({ mode: 'detach' });
-        logger.info(MODULE_NAME, 'DevTools opened in detached mode for development');
-    }
+    // Force DevTools open for main window in development
+    forceDevToolsOpen(mainWindow, 'main window');
 
     mainWindow.on('ready-to-show', () => {
         mainWindow?.show();
@@ -430,6 +500,70 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
 
     mainWindow.webContents.on('did-finish-load', () => {
         mainWindow?.webContents.send('main-process-message', `Main window loaded at ${(new Date).toLocaleString()}`);
+        
+        // FORCE DevTools open after content loads - final attempt with LONG delay
+        if (!app.isPackaged && !process.env.CI) {
+            // Try immediately
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    logger.info(MODULE_NAME, '[DevTools] FORCING DevTools open after did-finish-load (attempt 1)');
+                    try {
+                        mainWindow.webContents.openDevTools({ mode: 'right' });
+                    } catch (e) {
+                        logger.error(MODULE_NAME, '[DevTools] Immediate force failed:', e);
+                    }
+                }
+            }, 500);
+
+            // Try again after 3 seconds
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    logger.info(MODULE_NAME, '[DevTools] FORCING DevTools open (attempt 2 - 3 seconds)');
+                    try {
+                        mainWindow.webContents.openDevTools({ mode: 'bottom' });
+                    } catch (e) {
+                        logger.error(MODULE_NAME, '[DevTools] 3-second force failed:', e);
+                    }
+                }
+            }, 3000);
+
+            // Try again after 5 seconds
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    logger.info(MODULE_NAME, '[DevTools] FORCING DevTools open (attempt 3 - 5 seconds)');
+                    try {
+                        mainWindow.webContents.openDevTools({ mode: 'detach' });
+                        logger.info(MODULE_NAME, '[DevTools] Final force attempt completed');
+                    } catch (e) {
+                        logger.error(MODULE_NAME, '[DevTools] 5-second force failed:', e);
+                    }
+                }
+            }, 5000);
+
+            // Super aggressive final attempt after 10 seconds
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    const isOpen = mainWindow.webContents.isDevToolsOpened();
+                    if (!isOpen) {
+                        logger.warn(MODULE_NAME, '[DevTools] STILL NOT OPEN after 10 seconds - NUCLEAR OPTION');
+                        try {
+                            // Close and reopen
+                            mainWindow.webContents.closeDevTools();
+                            setTimeout(() => {
+                                if (mainWindow && !mainWindow.isDestroyed()) {
+                                    mainWindow.webContents.openDevTools({ mode: 'right' });
+                                }
+                            }, 200);
+                        } catch (e) {
+                            logger.error(MODULE_NAME, '[DevTools] Nuclear option failed:', e);
+                        }
+                    } else {
+                        logger.info(MODULE_NAME, '[DevTools] Finally confirmed open after delays');
+                    }
+                }
+            }, 10000);
+        }
+        
         onFinishLoad?.(); // Callback after load finishes
     });
 
@@ -593,6 +727,9 @@ export function createSettingsWindow(): BrowserWindow | null {
 
     settingsWindow = new BrowserWindow(settingsWindowOptions);
 
+    // Force DevTools open for settings window in development
+    forceDevToolsOpen(settingsWindow, 'settings window');
+
     attachTitlebarToWindow(settingsWindow); // Attach the custom title bar
     
     // Listen for console messages from settings window
@@ -743,6 +880,10 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
     }
 
     const detailsWindow = new BrowserWindow(detailsWindowOptions);
+    
+    // Force DevTools open for event details window in development
+    forceDevToolsOpen(detailsWindow, 'event details window');
+    
     attachTitlebarToWindow(detailsWindow);
 
     // Handle external links in event details window
@@ -885,6 +1026,9 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'ma
 
     webContentWindow = new BrowserWindow(webContentWindowOptions);
 
+    // Force DevTools open for web content window in development
+    forceDevToolsOpen(webContentWindow, 'web content window');
+
     attachTitlebarToWindow(webContentWindow); // Attach the custom title bar
 
     // Load web content URL
@@ -1000,6 +1144,9 @@ export function createLoginWindow(): BrowserWindow | null {
     logger.error(MODULE_NAME, 'Error creating login window BrowserWindow:', error);
     return null;
   }
+  
+  // Force DevTools open for login window in development
+  forceDevToolsOpen(loginWindow, 'login window');
   
   logger.debug(MODULE_NAME, 'Login window created, attaching custom titlebar...');
   

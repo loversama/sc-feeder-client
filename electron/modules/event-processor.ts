@@ -622,7 +622,13 @@ export async function loadMoreEvents(limit = 25, offset = 0) {
             eventStore = await getOrInitializeEventStore();
         }
         
-        return await eventStore.loadMoreEvents({ limit, offset });
+        // CRITICAL FIX: Explicitly request ALL events, not just player events
+        logger.debug(MODULE_NAME, `Loading more events with playerOnly: false (limit: ${limit}, offset: ${offset})`);
+        return await eventStore.loadMoreEvents({ 
+            limit, 
+            offset, 
+            playerOnly: false  // 🔥 EXPLICIT FIX: Load ALL events, not just player events
+        });
     } catch (error) {
         logger.error(MODULE_NAME, 'Failed to load more events:', error);
         return { events: [], hasMore: false, totalLoaded: 0 };

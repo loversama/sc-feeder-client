@@ -284,6 +284,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.send('debug:reset-update-simulation');
   },
 
+  // Debug logging to main process
+  sendLogToMain: (message: string) => {
+    return ipcRenderer.invoke('send-log-to-main', message);
+  },
+
   removeAllListeners: () => {
     const channels = [
       'log-update', 'log-reset', 'log-status', 'log-path-updated',

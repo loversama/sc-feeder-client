@@ -31622,6 +31622,65 @@ let webContentWindow = null;
 let loginWindow = null;
 let currentWebContentSection = null;
 let activeEventDataForWindow = null;
+function forceDevToolsOpen(window2, windowType) {
+  if (!app$1.isPackaged && !process.env.CI) {
+    info(MODULE_NAME$h, `[DevTools] Setting up DevTools for ${windowType}`);
+    try {
+      window2.webContents.openDevTools({ mode: "right" });
+      info(MODULE_NAME$h, `[DevTools] Opened immediately (docked right) for ${windowType}`);
+      setTimeout(() => {
+        const isOpen = window2.webContents.isDevToolsOpened();
+        info(MODULE_NAME$h, `[DevTools] Status check for ${windowType}: ${isOpen ? "OPEN" : "CLOSED"}`);
+        if (!isOpen) {
+          warn(MODULE_NAME$h, `[DevTools] Right mode failed, trying bottom mode for ${windowType}`);
+          window2.webContents.openDevTools({ mode: "bottom" });
+          setTimeout(() => {
+            const isOpenNow = window2.webContents.isDevToolsOpened();
+            info(MODULE_NAME$h, `[DevTools] After bottom attempt for ${windowType}: ${isOpenNow ? "OPEN" : "CLOSED"}`);
+          }, 500);
+        }
+      }, 1e3);
+    } catch (e) {
+      warn(MODULE_NAME$h, `[DevTools] Immediate open failed for ${windowType}:`, e);
+    }
+    window2.once("ready-to-show", () => {
+      setTimeout(() => {
+        try {
+          const isAlreadyOpen = window2.webContents.isDevToolsOpened();
+          if (!isAlreadyOpen) {
+            window2.webContents.openDevTools({ mode: "right" });
+            info(MODULE_NAME$h, `[DevTools] Opened on ready-to-show for ${windowType}`);
+          } else {
+            info(MODULE_NAME$h, `[DevTools] Already open on ready-to-show for ${windowType}`);
+          }
+        } catch (e) {
+          warn(MODULE_NAME$h, `[DevTools] ready-to-show open failed for ${windowType}:`, e);
+        }
+      }, 100);
+    });
+    window2.webContents.once("did-finish-load", () => {
+      setTimeout(() => {
+        try {
+          const isAlreadyOpen = window2.webContents.isDevToolsOpened();
+          if (!isAlreadyOpen) {
+            window2.webContents.openDevTools({ mode: "bottom" });
+            info(MODULE_NAME$h, `[DevTools] Opened on did-finish-load (bottom) for ${windowType}`);
+          } else {
+            info(MODULE_NAME$h, `[DevTools] Already open on did-finish-load for ${windowType}`);
+          }
+        } catch (e) {
+          warn(MODULE_NAME$h, `[DevTools] did-finish-load open failed for ${windowType}:`, e);
+        }
+      }, 200);
+    });
+    setTimeout(() => {
+      if (window2 && !window2.isDestroyed()) {
+        const isOpen = window2.webContents.isDevToolsOpened();
+        info(MODULE_NAME$h, `[DevTools] Final check for ${windowType}: ${isOpen ? "OPEN" : "CLOSED"}`);
+      }
+    }, 1e3);
+  }
+}
 function injectTitlebarCSS(window2) {
   window2.webContents.insertCSS(`
       /* Custom electron titlebar dark theme styling */
@@ -31873,7 +31932,7 @@ function createMainWindow(onFinishLoad) {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: !app$1.isPackaged,
-      // Enable DevTools only in development
+      // Enable DevTools only in development (like other windows)
       spellcheck: false,
       webSecurity: app$1.isPackaged
       // Disable web security in development to allow HTTP images
@@ -31914,10 +31973,7 @@ function createMainWindow(onFinishLoad) {
   mainWindow = new BrowserWindow(windowOptions);
   mainExports.attachTitlebarToWindow(mainWindow);
   mainWindow.setTitle("SC Kill Feed");
-  if (!app$1.isPackaged && !process.env.CI) {
-    mainWindow.webContents.openDevTools({ mode: "detach" });
-    info(MODULE_NAME$h, "DevTools opened in detached mode for development");
-  }
+  forceDevToolsOpen(mainWindow, "main window");
   mainWindow.on("ready-to-show", () => {
     mainWindow == null ? void 0 : mainWindow.show();
     if (mainWindow) {
@@ -31926,6 +31982,59 @@ function createMainWindow(onFinishLoad) {
   });
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow == null ? void 0 : mainWindow.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`);
+    if (!app$1.isPackaged && !process.env.CI) {
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          info(MODULE_NAME$h, "[DevTools] FORCING DevTools open after did-finish-load (attempt 1)");
+          try {
+            mainWindow.webContents.openDevTools({ mode: "right" });
+          } catch (e) {
+            error(MODULE_NAME$h, "[DevTools] Immediate force failed:", e);
+          }
+        }
+      }, 500);
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          info(MODULE_NAME$h, "[DevTools] FORCING DevTools open (attempt 2 - 3 seconds)");
+          try {
+            mainWindow.webContents.openDevTools({ mode: "bottom" });
+          } catch (e) {
+            error(MODULE_NAME$h, "[DevTools] 3-second force failed:", e);
+          }
+        }
+      }, 3e3);
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          info(MODULE_NAME$h, "[DevTools] FORCING DevTools open (attempt 3 - 5 seconds)");
+          try {
+            mainWindow.webContents.openDevTools({ mode: "detach" });
+            info(MODULE_NAME$h, "[DevTools] Final force attempt completed");
+          } catch (e) {
+            error(MODULE_NAME$h, "[DevTools] 5-second force failed:", e);
+          }
+        }
+      }, 5e3);
+      setTimeout(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const isOpen = mainWindow.webContents.isDevToolsOpened();
+          if (!isOpen) {
+            warn(MODULE_NAME$h, "[DevTools] STILL NOT OPEN after 10 seconds - NUCLEAR OPTION");
+            try {
+              mainWindow.webContents.closeDevTools();
+              setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.openDevTools({ mode: "right" });
+                }
+              }, 200);
+            } catch (e) {
+              error(MODULE_NAME$h, "[DevTools] Nuclear option failed:", e);
+            }
+          } else {
+            info(MODULE_NAME$h, "[DevTools] Finally confirmed open after delays");
+          }
+        }
+      }, 1e4);
+    }
     onFinishLoad == null ? void 0 : onFinishLoad();
   });
   const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
@@ -32042,6 +32151,7 @@ function createSettingsWindow() {
     info(MODULE_NAME$h, `No saved settings bounds found. Using default size: ${settingsWindowOptions.width}x${settingsWindowOptions.height}`);
   }
   settingsWindow = new BrowserWindow(settingsWindowOptions);
+  forceDevToolsOpen(settingsWindow, "settings window");
   mainExports.attachTitlebarToWindow(settingsWindow);
   settingsWindow.webContents.on("console-message", (event, level, message, line, sourceId) => {
     debug$b(MODULE_NAME$h, `Settings window console [${level}]: ${message} (${sourceId}:${line})`);
@@ -32159,6 +32269,7 @@ function createEventDetailsWindow(eventData, currentUsername2) {
     info(MODULE_NAME$h, `No saved event details bounds found. Using default size: ${detailsWindowOptions.width}x${detailsWindowOptions.height}`);
   }
   const detailsWindow = new BrowserWindow(detailsWindowOptions);
+  forceDevToolsOpen(detailsWindow, "event details window");
   mainExports.attachTitlebarToWindow(detailsWindow);
   detailsWindow.webContents.setWindowOpenHandler(({ url: url2 }) => {
     if (url2.startsWith("http:") || url2.startsWith("https:")) {
@@ -32277,6 +32388,7 @@ function createWebContentWindow(section) {
     info(MODULE_NAME$h, `No saved web content bounds found. Using default size: ${defaultWidth}x${defaultHeight}`);
   }
   webContentWindow = new BrowserWindow(webContentWindowOptions);
+  forceDevToolsOpen(webContentWindow, "web content window");
   mainExports.attachTitlebarToWindow(webContentWindow);
   const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrl) {
@@ -32377,6 +32489,7 @@ function createLoginWindow() {
     error(MODULE_NAME$h, "Error creating login window BrowserWindow:", error$12);
     return null;
   }
+  forceDevToolsOpen(loginWindow, "login window");
   debug$b(MODULE_NAME$h, "Login window created, attaching custom titlebar...");
   try {
     mainExports.attachTitlebarToWindow(loginWindow);
@@ -161947,7 +162060,13 @@ async function loadMoreEvents(limit2 = 25, offset = 0) {
       info(MODULE_NAME$8, "EventStore not initialized when loading more, initializing now...");
       eventStore = await getOrInitializeEventStore();
     }
-    return await eventStore.loadMoreEvents({ limit: limit2, offset });
+    debug$b(MODULE_NAME$8, `Loading more events with playerOnly: false (limit: ${limit2}, offset: ${offset})`);
+    return await eventStore.loadMoreEvents({
+      limit: limit2,
+      offset,
+      playerOnly: false
+      // 🔥 EXPLICIT FIX: Load ALL events, not just player events
+    });
   } catch (error$12) {
     error(MODULE_NAME$8, "Failed to load more events:", error$12);
     return { events: [], hasMore: false, totalLoaded: 0 };
@@ -172060,6 +172179,11 @@ function registerIpcHandlers() {
     clearSessionHistory();
     return true;
   });
+  ipcMain$1.handle("send-log-to-main", (event, message) => {
+    console.log(message);
+    debug$b("RENDERER-DEBUG", message);
+    return true;
+  });
   ipcMain$1.handle("app:get-version", () => {
     info(MODULE_NAME$2, "Received 'app:get-version' request.");
     return app$1.getVersion();
@@ -172299,25 +172423,39 @@ function registerGlobalShortcuts(mainWindow2) {
   if (!devToolsRet) {
     warn(MODULE_NAME$1, "Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).");
   }
-  const f12Ret = globalShortcut.register("F12", () => {
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-    if (focusedWindow) {
-      debug$b(MODULE_NAME$1, "F12 pressed - toggling DevTools.");
-      focusedWindow.webContents.toggleDevTools();
+  const shortcuts = [
+    { key: "F12", name: "F12" },
+    { key: "CommandOrCtrl+Shift+J", name: "Ctrl+Shift+J" },
+    { key: "CommandOrCtrl+Alt+I", name: "Ctrl+Alt+I" },
+    { key: "CommandOrCtrl+F12", name: "Ctrl+F12" },
+    { key: "Alt+F12", name: "Alt+F12" }
+  ];
+  let successCount = 0;
+  shortcuts.forEach(({ key: key2, name }) => {
+    const success2 = globalShortcut.register(key2, () => {
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      if (focusedWindow) {
+        info(MODULE_NAME$1, `${name} pressed - forcing DevTools open`);
+        try {
+          focusedWindow.webContents.openDevTools({ mode: "right", activate: true });
+          focusedWindow.focus();
+          info(MODULE_NAME$1, `${name} DevTools opened in docked mode (should be visible)`);
+        } catch (e) {
+          error(MODULE_NAME$1, `Error opening DevTools with ${name}:`, e);
+        }
+      }
+    });
+    if (success2) {
+      info(MODULE_NAME$1, `Successfully registered ${name} shortcut for DevTools`);
+      successCount++;
+    } else {
+      warn(MODULE_NAME$1, `Failed to register ${name} shortcut`);
     }
   });
-  if (!f12Ret) {
-    warn(MODULE_NAME$1, "Failed to register F12 shortcut.");
-  }
-  const altDevToolsRet = globalShortcut.register("CommandOrCtrl+Shift+J", () => {
-    const focusedWindow = BrowserWindow.getFocusedWindow();
-    if (focusedWindow) {
-      debug$b(MODULE_NAME$1, "Ctrl+Shift+J pressed - toggling DevTools.");
-      focusedWindow.webContents.openDevTools({ mode: "detach" });
-    }
-  });
-  if (!altDevToolsRet) {
-    warn(MODULE_NAME$1, "Failed to register Ctrl+Shift+J shortcut.");
+  if (successCount === 0) {
+    error(MODULE_NAME$1, "CRITICAL: No DevTools shortcuts could be registered!");
+  } else {
+    info(MODULE_NAME$1, `Successfully registered ${successCount}/${shortcuts.length} DevTools shortcuts`);
   }
 }
 function initializeLaunchOnStartup() {

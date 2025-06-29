@@ -80,6 +80,7 @@ export interface LogMonitorApi {
   resetSessions: () => Promise<boolean>;
   resetEvents: () => Promise<boolean>;
   rescanLog: () => Promise<boolean>;
+  sendLogToMain: (message: string) => Promise<boolean>;
 
   // Auth Actions
   authLogin: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;

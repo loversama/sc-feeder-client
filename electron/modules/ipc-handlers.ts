@@ -455,6 +455,15 @@ ipcMain.handle('auth:show-login', () => {
         return true;
     });
 
+    // Debug logging bridge from renderer to main process
+    ipcMain.handle('send-log-to-main', (event, message: string) => {
+        // Log to main process console for debugging scroll detection
+        console.log(message);
+        // Also log through our logger system
+        logger.debug('RENDERER-DEBUG', message);
+        return true;
+    });
+
     ipcMain.handle('app:get-version', () => {
         logger.info(MODULE_NAME, "Received 'app:get-version' request.");
         return app.getVersion();
