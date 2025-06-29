@@ -416,7 +416,9 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
 
     // Open DevTools automatically in development (but not in CI)
     if (!app.isPackaged && !process.env.CI) {
-        mainWindow.webContents.openDevTools();
+        // Open DevTools detached for easier use during development
+        mainWindow.webContents.openDevTools({ mode: 'detach' });
+        logger.info(MODULE_NAME, 'DevTools opened in detached mode for development');
     }
 
     mainWindow.on('ready-to-show', () => {

@@ -86,12 +86,24 @@ export function registerIpcHandlers() {
     });
 
     // --- Kill Event Data Handlers ---
-    ipcMain.handle('get-kill-events', (event, limit: number = 100) => {
-        return EventProcessor.getKillEvents(limit);
+    ipcMain.handle('get-kill-events', async (event, limit: number = 100) => {
+        try {
+            logger.debug(MODULE_NAME, `Getting kill events (limit: ${limit})`);
+            return await EventProcessor.getKillEvents(limit);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get kill events:', error);
+            return []; // Return empty array on error
+        }
     });
 
-    ipcMain.handle('get-global-kill-events', (event, limit: number = 100) => {
-        return EventProcessor.getGlobalKillEvents(limit);
+    ipcMain.handle('get-global-kill-events', async (event, limit: number = 100) => {
+        try {
+            logger.debug(MODULE_NAME, `Getting global kill events (limit: ${limit})`);
+            return await EventProcessor.getGlobalKillEvents(limit);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get global kill events:', error);
+            return []; // Return empty array on error
+        }
     });
 
     // --- EventStore Search and Pagination Handlers ---

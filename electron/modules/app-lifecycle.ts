@@ -171,6 +171,18 @@ function registerGlobalShortcuts(mainWindow: BrowserWindow) {
   if (!f12Ret) {
       logger.warn(MODULE_NAME, 'Failed to register F12 shortcut.');
   }
+
+  // Alternative DevTools shortcut (Ctrl+Shift+J) since F12 might fail
+  const altDevToolsRet = globalShortcut.register('CommandOrCtrl+Shift+J', () => {
+      const focusedWindow = BrowserWindow.getFocusedWindow();
+      if (focusedWindow) {
+          logger.debug(MODULE_NAME, 'Ctrl+Shift+J pressed - toggling DevTools.');
+          focusedWindow.webContents.openDevTools({ mode: 'detach' });
+      }
+  });
+  if (!altDevToolsRet) {
+      logger.warn(MODULE_NAME, 'Failed to register Ctrl+Shift+J shortcut.');
+  }
 }
 
 // Initialize launch on startup setting during app startup

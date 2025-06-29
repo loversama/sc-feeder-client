@@ -76,6 +76,17 @@ export class EventDatabase {
     // Initialize database connection
     this.db = new Database(this.dbPath);
     logger.database(MODULE_NAME, 'SQLite database connection established');
+    
+    // Check SQLite compile options for FTS5
+    try {
+      const compileOptions = this.db.prepare("SELECT json_group_array(compile_options) as opts FROM pragma_compile_options()").get() as any;
+      const hasEnableFTS5 = compileOptions?.opts?.includes('ENABLE_FTS5');
+      const hasOmitFTS5 = compileOptions?.opts?.includes('OMIT_FTS5');
+      logger.debug(MODULE_NAME, `SQLite compile options - FTS5 enabled: ${hasEnableFTS5}, FTS5 omitted: ${hasOmitFTS5}`);
+    } catch (error) {
+      logger.debug(MODULE_NAME, 'Could not check SQLite compile options');
+    }
+    
     this.db.pragma('journal_mode = WAL'); // Enable WAL mode for better performance
     this.db.pragma('synchronous = NORMAL'); // Balance between safety and speed
     this.db.pragma('cache_size = 10000'); // Increase cache size
@@ -155,17 +166,25 @@ export class EventDatabase {
     `);
 
     // Full-text search virtual table
-    this.db.exec(`
-      CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
-        id UNINDEXED,
-        content,
-        content=events,
-        content_rowid=rowid
-      );
-    `);
+    try {
+      this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+          id UNINDEXED,
+          content,
+          content=events,
+          content_rowid=rowid
+        );
+      `);
+      logger.debug(MODULE_NAME, 'FTS5 virtual table created successfully');
+    } catch (error) {
+      logger.error(MODULE_NAME, 'Failed to create FTS5 virtual table:', error);
+      logger.warn(MODULE_NAME, 'Search functionality may be limited without FTS5 support');
+      // Don't throw - continue without FTS5
+    }
 
-    // Triggers to keep FTS table in sync
-    this.db.exec(`
+    // Triggers to keep FTS table in sync (only if FTS5 is available)
+    try {
+      this.db.exec(`
       CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events
       BEGIN
         INSERT INTO events_fts(rowid, content) VALUES (new.rowid, 
@@ -219,6 +238,11 @@ export class EventDatabase {
         WHERE rowid = new.rowid;
       END;
     `);
+      logger.debug(MODULE_NAME, 'FTS5 triggers created successfully');
+    } catch (error) {
+      logger.warn(MODULE_NAME, 'Failed to create FTS5 triggers:', error);
+      // Continue without triggers
+    }
 
     // Version table for migrations
     this.db.exec(`
@@ -265,13 +289,23 @@ export class EventDatabase {
       LIMIT ? OFFSET ?
     `);
 
-    this.searchEventsStmt = this.db.prepare(`
-      SELECT events.* FROM events
-      JOIN events_fts ON events.rowid = events_fts.rowid
-      WHERE events_fts MATCH ?
-      ORDER BY timestamp DESC
-      LIMIT ? OFFSET ?
-    `);
+    // Only prepare FTS5 search statement if FTS5 is available
+    try {
+      this.searchEventsStmt = this.db.prepare(`
+        SELECT events.* FROM events
+        JOIN events_fts ON events.rowid = events_fts.rowid
+        WHERE events_fts MATCH ?
+        ORDER BY timestamp DESC
+        LIMIT ? OFFSET ?
+      `);
+      logger.debug(MODULE_NAME, 'FTS5 search statement prepared successfully');
+    } catch (error) {
+      logger.warn(MODULE_NAME, 'Failed to prepare FTS5 search statement:', error);
+      // Create a dummy statement that will always fail, forcing fallback to LIKE search
+      this.searchEventsStmt = {
+        all: () => { throw new Error('FTS5 not available'); }
+      } as any;
+    }
 
     this.deleteOldEventsStmt = this.db.prepare(`
       DELETE FROM events 
@@ -330,8 +364,13 @@ export class EventDatabase {
         logger.info(MODULE_NAME, `Cleaned up ${deleted.changes} old events (keeping ${this.MAX_LOCAL_EVENTS})`);
       }
 
-      // Rebuild FTS index for better search performance
-      this.db.exec('INSERT INTO events_fts(events_fts) VALUES("rebuild");');
+      // Rebuild FTS index for better search performance (if FTS5 is available)
+      try {
+        this.db.exec('INSERT INTO events_fts(events_fts) VALUES("rebuild");');
+        logger.debug(MODULE_NAME, 'FTS5 index rebuilt successfully');
+      } catch (error) {
+        logger.debug(MODULE_NAME, 'Skipping FTS5 index rebuild:', error instanceof Error ? error.message : 'Unknown error');
+      }
       
       logger.debug(MODULE_NAME, 'Database maintenance completed');
     } catch (error) {
@@ -427,17 +466,36 @@ export class EventDatabase {
       let totalCount = 0;
 
       if (searchQuery) {
-        // Full-text search
-        const searchTerm = this.prepareSearchQuery(searchQuery);
-        rows = this.searchEventsStmt.all(searchTerm, limit, offset) as EventRow[];
-        
-        // Get total count for search (approximate)
-        const countResult = this.db.prepare(`
-          SELECT COUNT(*) as count FROM events
-          JOIN events_fts ON events.rowid = events_fts.rowid
-          WHERE events_fts MATCH ?
-        `).get(searchTerm) as { count: number };
-        totalCount = countResult.count;
+        try {
+          // Try full-text search first
+          const searchTerm = this.prepareSearchQuery(searchQuery);
+          rows = this.searchEventsStmt.all(searchTerm, limit, offset) as EventRow[];
+          
+          // Get total count for search (approximate)
+          const countResult = this.db.prepare(`
+            SELECT COUNT(*) as count FROM events
+            JOIN events_fts ON events.rowid = events_fts.rowid
+            WHERE events_fts MATCH ?
+          `).get(searchTerm) as { count: number };
+          totalCount = countResult.count;
+        } catch (error) {
+          // Fallback to LIKE search if FTS5 is not available
+          logger.warn(MODULE_NAME, 'FTS5 search failed, falling back to LIKE search:', error);
+          const likePattern = `%${searchQuery}%`;
+          
+          rows = this.db.prepare(`
+            SELECT * FROM events 
+            WHERE event_data LIKE ? 
+            ORDER BY timestamp DESC 
+            LIMIT ? OFFSET ?
+          `).all(likePattern, limit, offset) as EventRow[];
+          
+          const countResult = this.db.prepare(`
+            SELECT COUNT(*) as count FROM events 
+            WHERE event_data LIKE ?
+          `).get(likePattern) as { count: number };
+          totalCount = countResult.count;
+        }
       } else if (playerOnly) {
         // Player-involved events only
         rows = this.getPlayerEventsStmt.all(limit, offset) as EventRow[];

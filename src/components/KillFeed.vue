@@ -174,28 +174,16 @@ const openMap = () => {
 
 // --- Computed Properties ---
 
-// Filter events: show all server events, but only local events where player is involved
+// Show all events in the kill feed
 const currentEvents = computed(() => {
   // If we're using search mode, return search results
   if (isUsingSearch.value) {
     return searchResults.value;
   }
 
-  // Otherwise, filter the memory events as before
-  return allEvents.value.filter((event: KillEvent) => {
-    // Always show server events (server has already filtered these appropriately)
-    if (event.metadata?.source?.server) {
-      return true;
-    }
-    
-    // For local events, only show if player is directly involved
-    if (event.metadata?.source?.local) {
-      return event.isPlayerInvolved;
-    }
-    
-    // Default: show the event (fallback for events without clear source metadata)
-    return true;
-  });
+  // Show all events - the EventStore already provides the appropriate events
+  // No filtering needed as the server/EventStore handles what should be displayed
+  return allEvents.value;
 });
 
 // For backward compatibility, keep the same computed name but now it just returns currentEvents
@@ -327,20 +315,26 @@ const loadSoundEffectsSetting = async () => {
 // Load kill events based on the current feed mode
 const loadKillEvents = async () => {
   try {
-    // Load events from server - server determines access based on user role
-    const serverEvents = await window.logMonitorApi.getKillEvents(100);
+    // Load initial events from EventStore
+    const serverEvents = await window.logMonitorApi.getGlobalKillEvents(25);
 
     // Update unified event array
     allEvents.value = serverEvents;
 
-    console.log(`Loaded ${serverEvents.length} events from server`);
+    // Check if there are more events available by trying to load one more batch
+    // This determines if infinite scroll should be enabled
+    const moreEventsCheck = await window.logMonitorApi.loadMoreEvents(1, serverEvents.length);
+    hasMoreEvents.value = moreEventsCheck.hasMore || moreEventsCheck.events.length > 0;
+
+    console.log(`[KillFeed] Initial load: ${serverEvents.length} events, hasMoreEvents: ${hasMoreEvents.value}`);
 
     // Scroll to top after initial load
     nextTick(() => {
       if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
     });
   } catch (error) {
-    console.error('Failed to load kill events:', error);
+    console.error('[KillFeed] Failed to load kill events:', error);
+    hasMoreEvents.value = false; // Assume no more events on error
   }
 };
 
@@ -551,51 +545,110 @@ const handleScroll = (event: Event) => {
   const scrollHeight = container.scrollHeight;
   const clientHeight = container.clientHeight;
   
+  // Calculate distance from bottom
+  const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+  
+  // Adaptive trigger distance based on screen size (minimum 100px, maximum 400px)
+  const adaptiveTriggerDistance = Math.max(100, Math.min(400, clientHeight * 0.1));
+  
   // Check if near bottom
-  const isNearBottom = scrollHeight - scrollTop - clientHeight < loadMoreTriggerDistance;
+  const isNearBottom = distanceFromBottom <= adaptiveTriggerDistance;
+  
+  // Debug logging (can be removed later)
+  if (distanceFromBottom <= adaptiveTriggerDistance * 2) { // Log when getting close
+    console.log('[KillFeed] Scroll Debug:', {
+      distanceFromBottom,
+      adaptiveTriggerDistance,
+      isNearBottom,
+      isLoadingMore: isLoadingMore.value,
+      hasMoreEvents: hasMoreEvents.value,
+      scrollTop,
+      scrollHeight,
+      clientHeight
+    });
+  }
   
   if (isNearBottom && !isLoadingMore.value && hasMoreEvents.value) {
+    console.log('[KillFeed] Triggering load more events - scroll detected near bottom');
     loadMoreEvents();
   }
 };
 
 const loadMoreEvents = async () => {
   if (isLoadingMore.value || !hasMoreEvents.value) {
+    console.log('[KillFeed] Load more events blocked:', {
+      isLoadingMore: isLoadingMore.value,
+      hasMoreEvents: hasMoreEvents.value
+    });
     return;
   }
 
   try {
     isLoadingMore.value = true;
-    console.log('[KillFeed] Loading more events...');
+    console.log('[KillFeed] Starting to load more events...');
 
     if (isUsingSearch.value && searchQuery.value.trim()) {
       // Load more search results
       const offset = searchResults.value.length;
+      console.log(`[KillFeed] Loading more search results (offset: ${offset})`);
       const results = await window.logMonitorApi.searchEvents(searchQuery.value, 25, offset);
       
       searchResults.value = [...searchResults.value, ...results.events];
       hasMoreEvents.value = results.hasMore;
-      console.log(`[KillFeed] Loaded ${results.events.length} more search results`);
+      console.log(`[KillFeed] Loaded ${results.events.length} more search results (hasMore: ${results.hasMore})`);
     } else {
       // Load more regular events via EventStore
       const offset = allEvents.value.length;
+      console.log(`[KillFeed] Loading more regular events (current count: ${allEvents.value.length}, offset: ${offset})`);
       const results = await window.logMonitorApi.loadMoreEvents(25, offset);
+      
+      console.log(`[KillFeed] Received ${results.events.length} events from API (hasMore: ${results.hasMore})`);
       
       // Add new events to existing array (avoiding duplicates)
       const newEvents = results.events.filter(event => 
         !allEvents.value.some(existing => existing.id === event.id)
       );
       
+      const beforeCount = allEvents.value.length;
       allEvents.value = [...allEvents.value, ...newEvents];
       hasMoreEvents.value = results.hasMore;
-      console.log(`[KillFeed] Loaded ${newEvents.length} more events`);
+      
+      console.log(`[KillFeed] Added ${newEvents.length} new events (${beforeCount} -> ${allEvents.value.length}), hasMore: ${results.hasMore}`);
     }
   } catch (error) {
     console.error('[KillFeed] Failed to load more events:', error);
+    // On error, assume no more events to prevent infinite retry
+    hasMoreEvents.value = false;
   } finally {
     isLoadingMore.value = false;
+    console.log('[KillFeed] Load more events completed, isLoadingMore reset to false');
   }
 };
+
+// Manual test function for debugging (can be called from browser console)
+const manualTestLoadMore = () => {
+  console.log('[KillFeed] Manual test triggered');
+  loadMoreEvents();
+};
+
+// Expose function to window for debugging (remove in production)
+if (typeof window !== 'undefined') {
+  (window as any).testLoadMore = manualTestLoadMore;
+  (window as any).testScrollInfo = () => {
+    if (killFeedListRef.value) {
+      const container = killFeedListRef.value;
+      console.log('[KillFeed] Current scroll info:', {
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        scrollTop: container.scrollTop,
+        canScroll: container.scrollHeight > container.clientHeight,
+        eventsCount: allEvents.value.length,
+        hasMoreEvents: hasMoreEvents.value,
+        isLoadingMore: isLoadingMore.value
+      });
+    }
+  };
+}
 
 
 onMounted(async () => { // Make onMounted async
@@ -831,6 +884,39 @@ onMounted(async () => { // Make onMounted async
     if (killFeedListRef.value) {
       killFeedListRef.value.addEventListener('scroll', handleScroll);
       console.log('[KillFeed] Scroll listener added for infinite scroll');
+      
+      // Debug: Log container dimensions
+      const container = killFeedListRef.value;
+      console.log('[KillFeed] Scroll container dimensions:', {
+        scrollHeight: container.scrollHeight,
+        clientHeight: container.clientHeight,
+        scrollTop: container.scrollTop,
+        canScroll: container.scrollHeight > container.clientHeight
+      });
+      
+      // Test scroll detection every few seconds (remove this in production)
+      const debugInterval = setInterval(() => {
+        if (container && container.parentElement) {
+          const scrollHeight = container.scrollHeight;
+          const clientHeight = container.clientHeight;
+          const scrollTop = container.scrollTop;
+          console.log('[KillFeed] Scroll status check:', {
+            scrollHeight,
+            clientHeight,
+            scrollTop,
+            canScroll: scrollHeight > clientHeight,
+            eventsCount: allEvents.value.length,
+            hasMoreEvents: hasMoreEvents.value
+          });
+        } else {
+          clearInterval(debugInterval);
+        }
+      }, 5000);
+      
+      // Clear debug interval after 30 seconds
+      setTimeout(() => clearInterval(debugInterval), 30000);
+    } else {
+      console.error('[KillFeed] killFeedListRef.value is null, cannot add scroll listener');
     }
   });
 

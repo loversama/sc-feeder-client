@@ -9,6 +9,7 @@ import { getCurrentUsername } from './log-parser.ts'; // To check involvement - 
 import * as logger from './logger'; // Import the logger utility
 import { getEntityName } from './definitionsService'; // Import for readable names
 import { getEventStore as getEventStoreInstance, type EventStore } from './event-store';
+import { getOrInitializeEventStore, getInitializedEventStore } from './event-store-manager';
 
 const MODULE_NAME = 'EventProcessor'; // Define module name for logger
 
@@ -516,24 +517,60 @@ export function formatKillEventDescription(
 
 // --- Accessors and Management ---
 
-export function getKillEvents(limit = MAX_KILL_EVENTS): KillEvent[] {
+export async function getKillEvents(limit = MAX_KILL_EVENTS): Promise<KillEvent[]> {
+    logger.debug(MODULE_NAME, `getKillEvents called with limit ${limit}`);
+    
+    // Ensure EventStore is initialized
+    if (!eventStore) {
+        logger.info(MODULE_NAME, 'EventStore not initialized when getting player events, initializing now...');
+        try {
+            eventStore = await getOrInitializeEventStore();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to initialize EventStore for getKillEvents:', error);
+            // Fallback to legacy array
+            logger.debug(MODULE_NAME, `EventStore initialization failed, using legacy array with ${killEvents.length} events`);
+            return killEvents.slice(0, Math.min(limit, killEvents.length));
+        }
+    }
+    
     if (eventStore) {
         // Get events from EventStore with player filter
         const memoryEvents = eventStore.getMemoryEvents();
         const playerEvents = memoryEvents.filter(e => e.isPlayerInvolved);
+        logger.debug(MODULE_NAME, `EventStore available, returning ${playerEvents.length} player events from ${memoryEvents.length} total`);
         return playerEvents.slice(0, Math.min(limit, playerEvents.length));
     }
+    
     // Fallback to legacy array
+    logger.debug(MODULE_NAME, `EventStore not available, using legacy array with ${killEvents.length} events`);
     return killEvents.slice(0, Math.min(limit, killEvents.length));
 }
 
-export function getGlobalKillEvents(limit = MAX_KILL_EVENTS): KillEvent[] {
+export async function getGlobalKillEvents(limit = MAX_KILL_EVENTS): Promise<KillEvent[]> {
+    logger.debug(MODULE_NAME, `getGlobalKillEvents called with limit ${limit}`);
+    
+    // Ensure EventStore is initialized
+    if (!eventStore) {
+        logger.info(MODULE_NAME, 'EventStore not initialized when getting events, initializing now...');
+        try {
+            eventStore = await getOrInitializeEventStore();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to initialize EventStore for getGlobalKillEvents:', error);
+            // Fallback to legacy array
+            logger.debug(MODULE_NAME, `EventStore initialization failed, using legacy array with ${globalKillEvents.length} events`);
+            return globalKillEvents.slice(0, Math.min(limit, globalKillEvents.length));
+        }
+    }
+    
     if (eventStore) {
         // Get events from EventStore
         const memoryEvents = eventStore.getMemoryEvents();
+        logger.debug(MODULE_NAME, `EventStore available, returning ${memoryEvents.length} memory events`);
         return memoryEvents.slice(0, Math.min(limit, memoryEvents.length));
     }
+    
     // Fallback to legacy array
+    logger.debug(MODULE_NAME, `EventStore not available, using legacy array with ${globalKillEvents.length} events`);
     return globalKillEvents.slice(0, Math.min(limit, globalKillEvents.length));
 }
 
@@ -559,27 +596,37 @@ export function getCurrentEventStore(): EventStore | null {
 }
 
 export async function searchEvents(query: string, limit = 25, offset = 0) {
-    if (!eventStore) {
-        logger.error(MODULE_NAME, 'Cannot search: EventStore not initialized');
-        throw new Error('EventStore not initialized');
-    }
-    
     try {
+        // Ensure EventStore is initialized
+        if (!eventStore) {
+            logger.info(MODULE_NAME, 'EventStore not initialized when searching, initializing now...');
+            eventStore = await getOrInitializeEventStore();
+        }
+        
         logger.debug(MODULE_NAME, `Searching for "${query}" (limit: ${limit}, offset: ${offset})`);
         const result = await eventStore.searchEvents(query, limit, offset);
         logger.debug(MODULE_NAME, `Search returned ${result.events.length} results (hasMore: ${result.hasMore})`);
         return result;
     } catch (error) {
         logger.error(MODULE_NAME, `Search failed for query "${query}":`, error);
-        throw error;
+        // Return empty results instead of throwing
+        return { events: [], total: 0, hasMore: false };
     }
 }
 
 export async function loadMoreEvents(limit = 25, offset = 0) {
-    if (!eventStore) {
-        throw new Error('EventStore not initialized');
+    try {
+        // Ensure EventStore is initialized
+        if (!eventStore) {
+            logger.info(MODULE_NAME, 'EventStore not initialized when loading more, initializing now...');
+            eventStore = await getOrInitializeEventStore();
+        }
+        
+        return await eventStore.loadMoreEvents({ limit, offset });
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to load more events:', error);
+        return { events: [], hasMore: false, totalLoaded: 0 };
     }
-    return await eventStore.loadMoreEvents({ limit, offset });
 }
 
 export function getEventStoreStats() {
