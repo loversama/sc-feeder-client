@@ -19,6 +19,7 @@ import { resetParserState } from './log-parser.ts'; // Import reset function - A
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
 import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession } from './auth-manager'; // Import initializeAuth and getPersistedClientId
+import { initializeEventProcessor } from './event-processor'; // Import EventProcessor initialization
 import {
   getOfflineMode,
   getLaunchOnStartup
@@ -256,11 +257,11 @@ function shouldStartMinimized(): boolean {
 
 // This is the new, correct onReady function
 async function onReady() {
-  logger.info('App is ready, initializing...');
+  logger.startup(MODULE_NAME, 'Application ready - starting initialization sequence...');
   
   // Environment setup
   process.env.APP_ROOT = app.getAppPath();
-  logger.info(MODULE_NAME, `APP_ROOT set using app.getAppPath(): ${process.env.APP_ROOT}`);
+  logger.path(MODULE_NAME, 'APP_ROOT', process.env.APP_ROOT);
 
   if (typeof process.env.APP_ROOT !== 'string' || !process.env.APP_ROOT) {
       logger.error(MODULE_NAME, `FATAL: process.env.APP_ROOT is not a valid string after app.getAppPath()! Value: ${process.env.APP_ROOT}. Cannot proceed.`);
@@ -269,11 +270,20 @@ async function onReady() {
 
   const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
   process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist');
-  logger.info(MODULE_NAME, `VITE_PUBLIC set to: ${process.env.VITE_PUBLIC}`);
+  logger.path(MODULE_NAME, 'VITE_PUBLIC', process.env.VITE_PUBLIC);
   
   // Register IPC handlers first
   registerIpcHandlers();
   registerAuthIpcHandlers();
+
+  // Initialize EventProcessor with persistent storage
+  try {
+    await initializeEventProcessor();
+    logger.success(MODULE_NAME, 'EventProcessor with persistent storage initialized successfully');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialize EventProcessor:', error);
+    // Continue with app initialization even if EventProcessor fails
+  }
 
   // Initialize launch on startup setting early in app lifecycle
   initializeLaunchOnStartup();
@@ -327,7 +337,7 @@ async function onReady() {
         });
   }, 10000); // 10-second delay
 
-  logger.info('App initialization complete.');
+  logger.startup(MODULE_NAME, '✅ Application initialization completed successfully!');
 }
 
 async function onWindowAllClosed() {
@@ -387,7 +397,7 @@ async function performCleanup() {
     // Stop watching log file
     await stopWatchingLogFile(); // This now also calls endCurrentSession
 
-    // Disconnect from server (always attempt during cleanup)
+    // Disconnect from server connections (always attempt during cleanup)
     disconnectFromServer();
 
     // Destroy tray icon

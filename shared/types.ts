@@ -93,6 +93,15 @@ export interface KillEvent {
   playerName?: string; // Current player's name for comparison
   // Optional field for additional/merged data from server
   data?: Record<string, any>;
+  // Event source metadata for secure role-based filtering and duplicate tracking
+  metadata?: {
+    source?: {
+      server: boolean;   // Event came from server
+      local: boolean;    // Event came from local parsing
+      external: boolean; // Event has been received from external source (server)
+    };
+    mergedFrom?: string[]; // Array of event IDs that were merged into this event
+  };
 }
 
 // Interface for tracking pending vehicle destruction events (used internally by parser/processor)

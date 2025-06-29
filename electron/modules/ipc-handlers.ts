@@ -94,6 +94,36 @@ export function registerIpcHandlers() {
         return EventProcessor.getGlobalKillEvents(limit);
     });
 
+    // --- EventStore Search and Pagination Handlers ---
+    ipcMain.handle('search-events', async (event, query: string, limit: number = 25, offset: number = 0) => {
+        try {
+            logger.debug(MODULE_NAME, `Searching events: "${query}" (limit: ${limit}, offset: ${offset})`);
+            return await EventProcessor.searchEvents(query, limit, offset);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to search events:', error);
+            return { events: [], total: 0, hasMore: false };
+        }
+    });
+
+    ipcMain.handle('load-more-events', async (event, limit: number = 25, offset: number = 0) => {
+        try {
+            logger.debug(MODULE_NAME, `Loading more events (limit: ${limit}, offset: ${offset})`);
+            return await EventProcessor.loadMoreEvents(limit, offset);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to load more events:', error);
+            return { events: [], hasMore: false, totalLoaded: 0 };
+        }
+    });
+
+    ipcMain.handle('get-event-store-stats', () => {
+        try {
+            return EventProcessor.getEventStoreStats();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get event store stats:', error);
+            return null;
+        }
+    });
+
     // --- Feed Mode Handlers ---
     ipcMain.handle('set-feed-mode', (event, mode: 'player' | 'global') => {
         ConfigManager.setFeedMode(mode);

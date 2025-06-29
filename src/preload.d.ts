@@ -36,6 +36,11 @@ export interface LogMonitorApi {
   setFeedMode: (mode: 'player' | 'global') => Promise<boolean>;
   getFeedMode: () => Promise<'player' | 'global'>;
 
+  // EventStore Search and Pagination
+  searchEvents: (query: string, limit?: number, offset?: number) => Promise<{ events: KillEvent[]; total: number; hasMore: boolean }>;
+  loadMoreEvents: (limit?: number, offset?: number) => Promise<{ events: KillEvent[]; hasMore: boolean; totalLoaded: number }>;
+  getEventStoreStats: () => Promise<{ memoryEvents: number; databaseEvents: number; playerEvents: number; sources: Record<string, number>; oldestEvent: Date | null; newestEvent: Date | null } | null>;
+
   // Event Details
   openEventDetailsWindow: (eventData: KillEvent) => Promise<boolean>;
   getPassedEventData: () => Promise<KillEvent | null>;
@@ -101,7 +106,7 @@ export interface LogMonitorApi {
   onLogReset: (callback: (event: IpcRendererEvent) => void) => () => void;
   onLogStatus: (callback: (event: IpcRendererEvent, status: string) => void) => () => void;
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
-  onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void) => () => void;
+  onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'server' | 'local' } | null) => void) => () => void;
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
   // For webview, it will listen to 'auth-tokens-updated' directly via window.ipcRenderer.on
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
@@ -115,6 +120,7 @@ export interface LogMonitorApi {
   downloadUpdate: () => void;
   installUpdate: () => void;
   onUpdateChecking: (callback: (event: IpcRendererEvent) => void) => () => void;
+  onUpdateCheckingTimeout: (callback: (event: IpcRendererEvent) => void) => () => void;
   onUpdateAvailable: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void) => () => void;
   onUpdateNotAvailable: (callback: (event: IpcRendererEvent) => void) => () => void;
   onUpdateDownloadProgress: (callback: (event: IpcRendererEvent, progress: number, speed: number, transferred: number, total: number) => void) => () => void;

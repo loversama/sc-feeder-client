@@ -125,6 +125,10 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getGlobalKillEvents: (limit) => require$$0.ipcRenderer.invoke("get-global-kill-events", limit),
   setFeedMode: (mode) => require$$0.ipcRenderer.invoke("set-feed-mode", mode),
   getFeedMode: () => require$$0.ipcRenderer.invoke("get-feed-mode"),
+  // EventStore Search and Pagination API
+  searchEvents: (query, limit, offset) => require$$0.ipcRenderer.invoke("search-events", query, limit, offset),
+  loadMoreEvents: (limit, offset) => require$$0.ipcRenderer.invoke("load-more-events", limit, offset),
+  getEventStoreStats: () => require$$0.ipcRenderer.invoke("get-event-store-stats"),
   // Event Details API
   openEventDetailsWindow: (eventData) => {
     console.log("Preload: Calling openEventDetailsWindow with event ID:", eventData == null ? void 0 : eventData.id);
@@ -262,6 +266,10 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   onUpdateChecking: (callback) => {
     require$$0.ipcRenderer.on("update-checking", callback);
     return () => require$$0.ipcRenderer.removeListener("update-checking", callback);
+  },
+  onUpdateCheckingTimeout: (callback) => {
+    require$$0.ipcRenderer.on("update-checking-timeout", callback);
+    return () => require$$0.ipcRenderer.removeListener("update-checking-timeout", callback);
   },
   onUpdateAvailable: (callback) => {
     require$$0.ipcRenderer.on("update-available", callback);

@@ -9,6 +9,9 @@ const levelColors = {
     error: chalk.red.bold,
     debug: chalk.gray,
     success: chalk.green,
+    startup: chalk.magenta.bold,
+    path: chalk.cyan.bold,
+    database: chalk.blue.bold,
 };
 const moduleColor = chalk.cyan;
 const timestampColor = chalk.gray;
@@ -118,7 +121,38 @@ export function debug(moduleName: string, ...args: any[]) {
 
 export function success(moduleName: string, ...args: any[]) {
     log(levelColors.success, moduleName, ...args);
-    // Removed duplicate log call from success
+}
+
+export function startup(moduleName: string, ...args: any[]) {
+    const timestamp = new Date().toLocaleTimeString();
+    const processedArgs = processArgsForColoring(args);
+    const message = processedArgs.join(' ');
+    console.log(
+        `${timestampColor(timestamp)} ${chalk.magenta(`[${moduleName}]`)}`,
+        chalk.magenta('>>'), 
+        chalk.white(message)
+    );
+}
+
+export function path(moduleName: string, label: string, filePath: string) {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(
+        `${timestampColor(timestamp)} ${moduleColor(`[${moduleName}]`)}`,
+        chalk.cyan('[PATH]'),
+        chalk.white(`${label}:`),
+        chalk.cyan(filePath)
+    );
+}
+
+export function database(moduleName: string, ...args: any[]) {
+    const timestamp = new Date().toLocaleTimeString();
+    const processedArgs = processArgsForColoring(args);
+    const message = processedArgs.join(' ');
+    console.log(
+        `${timestampColor(timestamp)} ${moduleColor(`[${moduleName}]`)}`,
+        chalk.blue('[DB]'),
+        chalk.white(message)
+    );
 }
 
 // No extra closing brace needed

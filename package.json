@@ -16,6 +16,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@tailwindcss/vite": "^4.1.4",
+    "better-sqlite3": "^9.6.0",
     "chalk": "^5.4.1",
     "chokidar": "^4.0.3",
     "custom-electron-titlebar": "^4.2.8",
@@ -31,6 +32,7 @@
     "vuex": "^4.1.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.10",
     "@types/cheerio": "^0.22.35",
     "@types/chokidar": "^1.7.5",
     "@types/node-fetch": "^2.6.12",

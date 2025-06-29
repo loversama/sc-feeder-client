@@ -8,76 +8,130 @@ import { getMainWindow } from './window-manager';
 import { getCurrentUsername } from './log-parser.ts'; // To check involvement - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { getEntityName } from './definitionsService'; // Import for readable names
+import { getEventStore as getEventStoreInstance, type EventStore } from './event-store';
 
 const MODULE_NAME = 'EventProcessor'; // Define module name for logger
 
-// --- Module State ---
+// --- Module State (Migrated to EventStore) ---
 
-const killEvents: KillEvent[] = []; // Player-involved events
-const globalKillEvents: KillEvent[] = []; // All events
-const MAX_KILL_EVENTS = 100; // Maximum number of kill events to store per array
+// Legacy arrays - maintained for compatibility but now backed by EventStore
+const killEvents: KillEvent[] = []; // Player-involved events (legacy)
+const globalKillEvents: KillEvent[] = []; // All events (legacy)
+const MAX_KILL_EVENTS = 100; // Maximum number of kill events to store per array (legacy)
+
+// EventStore instance
+let eventStore: EventStore;
 
 // --- Helper Functions ---
 
-// Helper to add/update an event in the global list and optionally the player list
-export function addOrUpdateEvent(event: KillEvent): { isNew: boolean, wasPlayerInvolved: boolean } { // Added export
-    const win = getMainWindow();
-    const currentUsername = getCurrentUsername(); // Get current player username
+/**
+ * Initialize the EventStore
+ */
+export async function initializeEventProcessor(): Promise<void> {
+    try {
+        logger.info(MODULE_NAME, 'Initializing EventProcessor with EventStore...');
+        
+        logger.debug(MODULE_NAME, 'Getting EventStore instance...');
+        eventStore = getEventStoreInstance();
+        logger.debug(MODULE_NAME, 'EventStore instance obtained');
+        
+        logger.debug(MODULE_NAME, 'Initializing EventStore...');
+        await eventStore.initialize();
+        logger.debug(MODULE_NAME, 'EventStore initialization completed');
+        
+        // Set up event listeners for UI updates
+        logger.debug(MODULE_NAME, 'Setting up EventStore event listeners...');
+        eventStore.on('events-updated', (events: KillEvent[]) => {
+            // Update legacy arrays for compatibility
+            globalKillEvents.length = 0;
+            globalKillEvents.push(...events);
+            
+            killEvents.length = 0;
+            const playerEvents = events.filter(e => e.isPlayerInvolved);
+            killEvents.push(...playerEvents);
+            
+            logger.debug(MODULE_NAME, `Updated legacy arrays: ${events.length} total, ${playerEvents.length} player events`);
+        });
+        logger.debug(MODULE_NAME, 'Event listeners set up successfully');
+        
+        logger.info(MODULE_NAME, 'EventProcessor initialized successfully');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to initialize EventProcessor:', error);
+        logger.error(MODULE_NAME, 'Initialization error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            eventStoreExists: eventStore ? 'yes' : 'no'
+        });
+        throw error;
+    }
+}
 
-    // Recalculate player involvement based on the latest data
+// Helper to add/update an event using the new EventStore
+export async function addOrUpdateEvent(event: KillEvent, source: 'local' | 'server' | 'merged' = 'local'): Promise<{ isNew: boolean, wasPlayerInvolved: boolean }> {
+    if (!eventStore) {
+        logger.warn(MODULE_NAME, 'EventStore not initialized, using legacy behavior');
+        return addOrUpdateEventLegacy(event);
+    }
+
+    try {
+        const result = await eventStore.addEvent(event, source);
+        
+        // EventStore handles all the persistence, deduplication, and UI updates
+        // Just return compatibility info for existing code
+        return { 
+            isNew: result.isNew, 
+            wasPlayerInvolved: false // EventStore doesn't track this legacy state
+        };
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to add event to EventStore:', error);
+        // Fall back to legacy behavior
+        return addOrUpdateEventLegacy(event);
+    }
+}
+
+// Legacy event handling for fallback
+function addOrUpdateEventLegacy(event: KillEvent): { isNew: boolean, wasPlayerInvolved: boolean } {
+    const win = getMainWindow();
+    const currentUsername = getCurrentUsername();
+
+    // Recalculate player involvement
     event.isPlayerInvolved = event.killers.includes(currentUsername || '') || event.victims.includes(currentUsername || '');
 
     let isNew = true;
-    let wasPlayerInvolved = false; // Track previous involvement state
+    let wasPlayerInvolved = false;
 
-    // --- Global Events Update ---
+    // Simple duplicate check by ID
     const existingGlobalIndex = globalKillEvents.findIndex(ev => ev.id === event.id);
     if (existingGlobalIndex !== -1) {
         isNew = false;
-        // Preserve original player involvement status before update
         wasPlayerInvolved = globalKillEvents[existingGlobalIndex].isPlayerInvolved;
-        // Replace existing event with the updated one
         globalKillEvents[existingGlobalIndex] = event;
-        logger.debug(MODULE_NAME, 'Updated global event:', { id: event.id });
     } else {
-        globalKillEvents.unshift(event); // Add new event to the top
-        // Limit array size
+        globalKillEvents.unshift(event);
         if (globalKillEvents.length > MAX_KILL_EVENTS) {
             globalKillEvents.pop();
         }
-        logger.debug(MODULE_NAME, 'Added new global event:', { id: event.id });
     }
 
-    // --- Player Events Update ---
+    // Update player events
     const existingPlayerIndex = killEvents.findIndex(ev => ev.id === event.id);
-
     if (event.isPlayerInvolved) {
         if (existingPlayerIndex !== -1) {
-            // Already in player list, update it
             killEvents[existingPlayerIndex] = event;
-            logger.debug(MODULE_NAME, 'Updated player event:', { id: event.id });
         } else {
-            // New player-involved event, add to top
             killEvents.unshift(event);
             if (killEvents.length > MAX_KILL_EVENTS) {
                 killEvents.pop();
             }
-            logger.debug(MODULE_NAME, 'Added new player event:', { id: event.id });
         }
-    } else {
-        // Event does NOT involve player
-        if (existingPlayerIndex !== -1) {
-            // Was previously in player list, remove it
-            killEvents.splice(existingPlayerIndex, 1);
-            logger.debug(MODULE_NAME, 'Removed event', { id: event.id }, 'from player events (no longer involved).');
-        }
-        // If it wasn't in the player list and doesn't involve player, do nothing here.
+    } else if (existingPlayerIndex !== -1) {
+        killEvents.splice(existingPlayerIndex, 1);
     }
 
-    // Send update to renderer
+    // Send to renderer
     win?.webContents.send('kill-feed-event', {
         event: event,
-        source: event.isPlayerInvolved ? 'player' : 'global'
+        source: 'local'
     });
 
     return { isNew, wasPlayerInvolved };
@@ -185,7 +239,7 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     );
 
     // 5. Add/Update Event in Lists & Send to Renderer
-    const { isNew } = addOrUpdateEvent(fullEvent); // This also sends 'kill-feed-event' IPC
+    const { isNew } = await addOrUpdateEvent(fullEvent, 'local'); // This also sends 'kill-feed-event' IPC
 
     // 6. Trigger Side Effects (Notifications, API, CSV)
     // Only trigger for significant events (e.g., hard death, collision, combat kill)
@@ -294,7 +348,7 @@ export async function correlateDeathWithDestruction(timestamp: string, playerNam
     );
 
     // Update player involvement flag & add/remove from player list if necessary
-    const { wasPlayerInvolved } = addOrUpdateEvent(targetEvent); // This handles list management and renderer update
+    const { wasPlayerInvolved } = await addOrUpdateEvent(targetEvent, 'local'); // This handles list management and renderer update
 
     // Show notification if player involvement changed or was already involved
     if (!silentMode && targetEvent.isPlayerInvolved) {
@@ -381,19 +435,74 @@ export function formatKillEventDescription(
 // --- Accessors and Management ---
 
 export function getKillEvents(limit = MAX_KILL_EVENTS): KillEvent[] {
+    if (eventStore) {
+        // Get events from EventStore with player filter
+        const memoryEvents = eventStore.getMemoryEvents();
+        const playerEvents = memoryEvents.filter(e => e.isPlayerInvolved);
+        return playerEvents.slice(0, Math.min(limit, playerEvents.length));
+    }
+    // Fallback to legacy array
     return killEvents.slice(0, Math.min(limit, killEvents.length));
 }
 
 export function getGlobalKillEvents(limit = MAX_KILL_EVENTS): KillEvent[] {
+    if (eventStore) {
+        // Get events from EventStore
+        const memoryEvents = eventStore.getMemoryEvents();
+        return memoryEvents.slice(0, Math.min(limit, memoryEvents.length));
+    }
+    // Fallback to legacy array
     return globalKillEvents.slice(0, Math.min(limit, globalKillEvents.length));
 }
 
-// Clears all in-memory events (used for rescan/debug)
-export function clearEvents(): void {
-    killEvents.length = 0;
-    globalKillEvents.length = 0;
-    logger.info(MODULE_NAME, "Cleared in-memory kill events.");
-    // Notify renderer to clear its display as well
-    const win = getMainWindow();
-    win?.webContents.send('kill-feed-event', null); // Send null event to signal clear
+// Clears all events (used for rescan/debug)
+export async function clearEvents(): Promise<void> {
+    if (eventStore) {
+        await eventStore.clearAllEvents();
+        logger.info(MODULE_NAME, "Cleared all events via EventStore.");
+    } else {
+        // Legacy behavior
+        killEvents.length = 0;
+        globalKillEvents.length = 0;
+        logger.info(MODULE_NAME, "Cleared in-memory kill events (legacy).");
+        // Notify renderer to clear its display as well
+        const win = getMainWindow();
+        win?.webContents.send('kill-feed-event', null); // Send null event to signal clear
+    }
+}
+
+// New EventStore accessor functions
+export function getCurrentEventStore(): EventStore | null {
+    return eventStore || null;
+}
+
+export async function searchEvents(query: string, limit = 25, offset = 0) {
+    if (!eventStore) {
+        logger.error(MODULE_NAME, 'Cannot search: EventStore not initialized');
+        throw new Error('EventStore not initialized');
+    }
+    
+    try {
+        logger.debug(MODULE_NAME, `Searching for "${query}" (limit: ${limit}, offset: ${offset})`);
+        const result = await eventStore.searchEvents(query, limit, offset);
+        logger.debug(MODULE_NAME, `Search returned ${result.events.length} results (hasMore: ${result.hasMore})`);
+        return result;
+    } catch (error) {
+        logger.error(MODULE_NAME, `Search failed for query "${query}":`, error);
+        throw error;
+    }
+}
+
+export async function loadMoreEvents(limit = 25, offset = 0) {
+    if (!eventStore) {
+        throw new Error('EventStore not initialized');
+    }
+    return await eventStore.loadMoreEvents({ limit, offset });
+}
+
+export function getEventStoreStats() {
+    if (!eventStore) {
+        return null;
+    }
+    return eventStore.getStats();
 }

@@ -178,6 +178,14 @@ export const useUpdateStore = defineStore('update', () => {
   // Listen to IPC events
   window.logMonitorApi.onUpdateChecking(() => {
     state.value = 'checking';
+    dismissed.value = false;
+  });
+
+  // Handle automatic timeout of checking notification
+  window.logMonitorApi.onUpdateCheckingTimeout(() => {
+    if (state.value === 'checking') {
+      state.value = 'idle';
+    }
   });
 
   window.logMonitorApi.onUpdateAvailable((event, info: UpdateInfo) => {

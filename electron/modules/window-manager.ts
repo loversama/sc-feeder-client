@@ -243,16 +243,16 @@ export function getIconPath(): string {
     } else {
         // In development, use VITE_PUBLIC which points to the 'public' source folder
         basePath = vitePublic || ''; // Use vitePublic, fallback to empty string
-        logger.info(MODULE_NAME, `Development mode detected. Using VITE_PUBLIC as base for icons: ${basePath}`);
+        logger.debug(MODULE_NAME, `Development mode detected. Using VITE_PUBLIC as base for icons: ${basePath}`);
     }
 
     if (basePath && typeof basePath === 'string') {
         const iconFullPath = path.join(basePath, preferredIconFilename);
-        logger.info(MODULE_NAME, `Checking production icon path inside app/dist: ${iconFullPath}`); // Log the full path being checked
+        logger.debug(MODULE_NAME, `Checking production icon path inside app/dist: ${iconFullPath}`); // Log the full path being checked
         try {
              if (fsSync.existsSync(iconFullPath)) {
                  iconPath = iconFullPath; // Use the preferred icon if it exists
-                 logger.info(MODULE_NAME, `Found icon at: ${iconPath}`);
+                 logger.debug(MODULE_NAME, `Found icon at: ${iconPath}`);
              } else {
                   logger.error(MODULE_NAME, `Preferred icon (${preferredIconFilename}) not found at ${iconFullPath}.`);
                   // Optional: Check for fallback SVG on Windows if ICO failed?
@@ -295,7 +295,7 @@ function getPreloadPath(filename: string): string {
     if (!app.isPackaged) { // Development
       // Path when running directly from source (e.g., with Vite dev server)
       const devPath = path.join(appRoot, 'electron', filename);
-      logger.info(MODULE_NAME, `[Dev Mode] Resolving preload path for: ${filename}. Checking: ${devPath}`);
+      logger.debug(MODULE_NAME, `[Dev Mode] Resolving preload path for: ${filename}. Checking: ${devPath}`);
       if (fsSync.existsSync(devPath)) {
         resolvedPath = devPath;
         logger.info(MODULE_NAME, `[Dev Mode] Preload path FOUND: ${resolvedPath}`);
@@ -303,7 +303,7 @@ function getPreloadPath(filename: string): string {
         logger.warn(MODULE_NAME, `[Dev Mode] Preload path NOT FOUND: ${devPath}. Attempting fallback.`);
         // Fallback for some dev scenarios or if mainDist is preferred (e.g., if built to dist-electron in dev)
         const devPathFallback = path.join(mainDist, filename);
-        logger.info(MODULE_NAME, `[Dev Mode] Checking fallback preload path: ${devPathFallback}`);
+        logger.debug(MODULE_NAME, `[Dev Mode] Checking fallback preload path: ${devPathFallback}`);
         if (fsSync.existsSync(devPathFallback)) {
           resolvedPath = devPathFallback;
           logger.info(MODULE_NAME, `[Dev Mode] Fallback preload path FOUND: ${resolvedPath}`);
@@ -595,7 +595,7 @@ export function createSettingsWindow(): BrowserWindow | null {
     
     // Listen for console messages from settings window
     settingsWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-        logger.info(MODULE_NAME, `Settings window console [${level}]: ${message} (${sourceId}:${line})`);
+        logger.debug(MODULE_NAME, `Settings window console [${level}]: ${message} (${sourceId}:${line})`);
     });
     
     // settingsWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
@@ -958,11 +958,11 @@ export function createLoginWindow(): BrowserWindow | null {
   }
 
   const appIconPath = getIconPath();
-  logger.info(MODULE_NAME, `Using app icon path: ${appIconPath}`);
+  logger.debug(MODULE_NAME, `Using app icon path: ${appIconPath}`);
   
   // Get and log preload path
   const preloadPath = getPreloadPath('preload.mjs');
-  logger.info(MODULE_NAME, `LOGIN WINDOW - Using preload path: ${preloadPath}`);
+  logger.debug(MODULE_NAME, `LOGIN WINDOW - Using preload path: ${preloadPath}`);
   
   const loginWindowOptions: Electron.BrowserWindowConstructorOptions = {
     width: 400,
@@ -993,26 +993,26 @@ export function createLoginWindow(): BrowserWindow | null {
 
   try {
     loginWindow = new BrowserWindow(loginWindowOptions);
-    logger.info(MODULE_NAME, 'Login window BrowserWindow created successfully');
+    logger.debug(MODULE_NAME, 'Login window BrowserWindow created successfully');
   } catch (error) {
     logger.error(MODULE_NAME, 'Error creating login window BrowserWindow:', error);
     return null;
   }
   
-  logger.info(MODULE_NAME, 'Login window created, attaching custom titlebar...');
+  logger.debug(MODULE_NAME, 'Login window created, attaching custom titlebar...');
   
   try {
     attachTitlebarToWindow(loginWindow);
-    logger.info(MODULE_NAME, 'Custom titlebar attached successfully');
+    logger.debug(MODULE_NAME, 'Custom titlebar attached successfully');
   } catch (error) {
     logger.error(MODULE_NAME, 'Error attaching custom titlebar:', error);
   }
   
-  logger.info(MODULE_NAME, 'Login window created, loading content...');
+  logger.debug(MODULE_NAME, 'Login window created, loading content...');
 
   // Listen for console messages from login window
   loginWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    logger.info(MODULE_NAME, `Login window console [${level}]: ${message} (${sourceId}:${line})`);
+    logger.debug(MODULE_NAME, `Login window console [${level}]: ${message} (${sourceId}:${line})`);
   });
 
   // Open DevTools for debugging in development
@@ -1041,9 +1041,9 @@ export function createLoginWindow(): BrowserWindow | null {
       const displays = screen.getAllDisplays();
       const primaryDisplay = screen.getPrimaryDisplay();
       
-      logger.info(MODULE_NAME, `Login window bounds: x=${bounds.x}, y=${bounds.y}, width=${bounds.width}, height=${bounds.height}`);
-      logger.info(MODULE_NAME, `Primary display bounds: x=${primaryDisplay.bounds.x}, y=${primaryDisplay.bounds.y}, width=${primaryDisplay.bounds.width}, height=${primaryDisplay.bounds.height}`);
-      logger.info(MODULE_NAME, `Total displays: ${displays.length}`);
+      logger.debug(MODULE_NAME, `Login window bounds: x=${bounds.x}, y=${bounds.y}, width=${bounds.width}, height=${bounds.height}`);
+      logger.debug(MODULE_NAME, `Primary display bounds: x=${primaryDisplay.bounds.x}, y=${primaryDisplay.bounds.y}, width=${primaryDisplay.bounds.width}, height=${primaryDisplay.bounds.height}`);
+      logger.debug(MODULE_NAME, `Total displays: ${displays.length}`);
       
       // Force center the window on primary display
       const centerX = Math.round(primaryDisplay.bounds.x + (primaryDisplay.bounds.width - bounds.width) / 2);
@@ -1056,15 +1056,14 @@ export function createLoginWindow(): BrowserWindow | null {
         height: bounds.height
       });
       
-      logger.info(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
+      logger.debug(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
       
       loginWindow.show();
       loginWindow.focus();
       loginWindow.setAlwaysOnTop(true);
       loginWindow.moveTop();
       
-      // Check visibility immediately after showing
-      logger.info(MODULE_NAME, `After show() - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}`);
+      logger.info(MODULE_NAME, 'Login window displayed and focused');
       
       injectTitlebarCSS(loginWindow);
       
@@ -1083,7 +1082,7 @@ export function createLoginWindow(): BrowserWindow | null {
         }
       }, 500);
       
-      logger.info(MODULE_NAME, 'Login window shown and focused');
+      logger.debug(MODULE_NAME, 'Login window shown and focused');
     }
   });
 
@@ -1092,7 +1091,7 @@ export function createLoginWindow(): BrowserWindow | null {
   });
 
   loginWindow.webContents.on('did-finish-load', () => {
-    logger.info(MODULE_NAME, 'Login window finished loading');
+    logger.debug(MODULE_NAME, 'Login window finished loading');
     
     // Check for console messages from login.ts
     if (loginWindow) {
@@ -1100,13 +1099,13 @@ export function createLoginWindow(): BrowserWindow | null {
           console.log('[WindowManager] Checking if login.ts is loaded...');
           document.getElementById('login-app') ? 'login-app div found' : 'login-app div NOT found';
         `).then(result => {
-          logger.info(MODULE_NAME, `Login window DOM check: ${result}`);
+          logger.debug(MODULE_NAME, `Login window DOM check: ${result}`);
         });
     }
     
     // Force show the window immediately after content loads
     if (loginWindow) {
-      logger.info(MODULE_NAME, 'Attempting to show login window after content load');
+      logger.debug(MODULE_NAME, 'Attempting to show login window after content load');
       
       // Get current bounds and display info for debugging
       const bounds = loginWindow.getBounds();
@@ -1127,14 +1126,14 @@ export function createLoginWindow(): BrowserWindow | null {
         height: bounds.height
       });
       
-      logger.info(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
+      logger.debug(MODULE_NAME, `Centered login window at: x=${centerX}, y=${centerY}`);
       
       loginWindow.show();
       loginWindow.focus();
       loginWindow.setAlwaysOnTop(true);
       loginWindow.moveTop();
       
-      logger.info(MODULE_NAME, `After show calls - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}`);
+      logger.debug(MODULE_NAME, `After show calls - isVisible: ${loginWindow.isVisible()}, isFocused: ${loginWindow.isFocused()}`);
       
       // Inject CSS after a brief delay
       setTimeout(() => {

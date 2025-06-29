@@ -82,6 +82,14 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getGlobalKillEvents: (limit?: number): Promise<KillEvent[]> => ipcRenderer.invoke('get-global-kill-events', limit),
   setFeedMode: (mode: 'player' | 'global'): Promise<boolean> => ipcRenderer.invoke('set-feed-mode', mode),
   getFeedMode: (): Promise<'player' | 'global'> => ipcRenderer.invoke('get-feed-mode'),
+
+  // EventStore Search and Pagination API
+  searchEvents: (query: string, limit?: number, offset?: number): Promise<{ events: KillEvent[]; total: number; hasMore: boolean }> => 
+    ipcRenderer.invoke('search-events', query, limit, offset),
+  loadMoreEvents: (limit?: number, offset?: number): Promise<{ events: KillEvent[]; hasMore: boolean; totalLoaded: number }> => 
+    ipcRenderer.invoke('load-more-events', limit, offset),
+  getEventStoreStats: (): Promise<{ memoryEvents: number; databaseEvents: number; playerEvents: number; sources: Record<string, number>; oldestEvent: Date | null; newestEvent: Date | null } | null> => 
+    ipcRenderer.invoke('get-event-store-stats'),
   
   // Event Details API
   openEventDetailsWindow: (eventData: KillEvent): Promise<boolean> => {
@@ -195,7 +203,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('log-path-updated', callback)
     return () => ipcRenderer.removeListener('log-path-updated', callback)
   },
-  onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' } | null) => void): (() => void) => {
+  onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'player' | 'global' | 'server' | 'local' } | null) => void): (() => void) => {
     ipcRenderer.on('kill-feed-event', callback)
     return () => ipcRenderer.removeListener('kill-feed-event', callback)
   },
@@ -233,6 +241,10 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   onUpdateChecking: (callback: (event: IpcRendererEvent) => void): (() => void) => {
     ipcRenderer.on('update-checking', callback);
     return () => ipcRenderer.removeListener('update-checking', callback);
+  },
+  onUpdateCheckingTimeout: (callback: (event: IpcRendererEvent) => void): (() => void) => {
+    ipcRenderer.on('update-checking-timeout', callback);
+    return () => ipcRenderer.removeListener('update-checking-timeout', callback);
   },
   onUpdateAvailable: (callback: (event: IpcRendererEvent, info: { version: string; releaseDate?: string; releaseNotes?: string }) => void): (() => void) => {
     ipcRenderer.on('update-available', callback);

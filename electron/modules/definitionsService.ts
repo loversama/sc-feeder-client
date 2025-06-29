@@ -32,7 +32,7 @@ function updateDefinitionsMap(): void {
   for (const def of definitions) {
     definitionsMap.set(def.id, def);
   }
-  logger.info(`[DefinitionsService] Definitions map updated with ${definitionsMap.size} entries.`);
+  logger.success('DefinitionsService', `Definitions map updated with ${definitionsMap.size} entries`);
 }
 
 /**
@@ -42,7 +42,7 @@ function updateDefinitionsMap(): void {
  */
 async function fetchDefinitions(serverBaseUrl: string): Promise<EntityDefinition[] | null> {
   const url = `${serverBaseUrl}${DEFINITIONS_API_URL}`;
-  logger.info(`[DefinitionsService] Fetching definitions from ${url}`);
+  logger.startup('DefinitionsService', `Downloading latest definitions from server: ${url}`);
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': getDetailedUserAgent() },
@@ -54,10 +54,10 @@ async function fetchDefinitions(serverBaseUrl: string): Promise<EntityDefinition
     }
     const data = await response.json();
     if (!Array.isArray(data)) {
-      logger.error('[DefinitionsService] Fetched definitions data is not an array.');
+      logger.error('DefinitionsService', 'Fetched definitions data is not an array.');
       return null;
     }
-    logger.info(`[DefinitionsService] Successfully fetched ${data.length} definitions.`);
+    logger.success('DefinitionsService', `Successfully downloaded ${data.length} definitions from server`);
     return data as EntityDefinition[];
   } catch (error) {
     logger.error('[DefinitionsService] Network or parsing error fetching definitions:', error);
@@ -71,7 +71,7 @@ async function fetchDefinitions(serverBaseUrl: string): Promise<EntityDefinition
  * @param defsToSave The definitions to save.
  */
 async function saveDefinitions(defsToSave: EntityDefinition[]): Promise<void> {
-  logger.info(`[DefinitionsService] Saving ${defsToSave.length} definitions to ${LOCAL_DEFINITIONS_PATH}`);
+  logger.path('DefinitionsService', `Saving ${defsToSave.length} definitions to`, LOCAL_DEFINITIONS_PATH);
   const fileContent: LocalDefinitionsFile = {
     lastUpdated: new Date().toISOString(),
     definitions: defsToSave,
@@ -80,7 +80,7 @@ async function saveDefinitions(defsToSave: EntityDefinition[]): Promise<void> {
     await fs.mkdir(path.dirname(LOCAL_DEFINITIONS_PATH), { recursive: true });
     await fs.writeFile(LOCAL_DEFINITIONS_PATH, JSON.stringify(fileContent, null, 2));
     lastSuccessfulUpdateTimestamp = new Date(fileContent.lastUpdated);
-    logger.info(`[DefinitionsService] Definitions saved successfully. Last updated: ${fileContent.lastUpdated}`);
+    logger.success('DefinitionsService', `Definitions saved locally (Last updated: ${fileContent.lastUpdated})`);
   } catch (error) {
     logger.error('[DefinitionsService] Error saving definitions to local storage:', error);
     // We don't rethrow here as a save failure shouldn't crash the app if definitions are in memory
@@ -92,7 +92,7 @@ async function saveDefinitions(defsToSave: EntityDefinition[]): Promise<void> {
  * @returns A promise that resolves to LocalDefinitionsFile or null if not found/error.
  */
 async function loadDefinitions(): Promise<LocalDefinitionsFile | null> {
-  logger.info(`[DefinitionsService] Attempting to load definitions from ${LOCAL_DEFINITIONS_PATH}`);
+  logger.path('DefinitionsService', 'Loading cached definitions from', LOCAL_DEFINITIONS_PATH);
   try {
     const data = await fs.readFile(LOCAL_DEFINITIONS_PATH, 'utf-8');
     const loadedFile = JSON.parse(data) as LocalDefinitionsFile;
@@ -107,12 +107,12 @@ async function loadDefinitions(): Promise<LocalDefinitionsFile | null> {
         }
         return null;
     }
-    logger.info(`[DefinitionsService] Successfully loaded ${loadedFile.definitions.length} definitions from local storage. Last updated: ${loadedFile.lastUpdated}`);
+    logger.success('DefinitionsService', `Successfully loaded ${loadedFile.definitions.length} cached definitions (Last updated: ${loadedFile.lastUpdated})`);
     return loadedFile;
   } catch (error) {
     // @ts-ignore
     if (error.code === 'ENOENT') {
-      logger.info('[DefinitionsService] Local definitions file not found.');
+      logger.warn('DefinitionsService', 'Local definitions file not found - will attempt to download from server');
       return null;
     }
     logger.error('[DefinitionsService] Error loading definitions from local storage:', error);
@@ -149,12 +149,12 @@ async function updateAndSaveDefinitions(serverBaseUrl: string): Promise<boolean>
  * @param serverBaseUrl The base URL of the log monitor server.
  */
 export async function initializeDefinitions(serverBaseUrl: string): Promise<void> {
-  logger.info('[DefinitionsService] Initializing definitions...');
+  logger.startup('DefinitionsService', 'Initializing entity definitions system...');
 
   let definitionsLoadedLocally = false;
 
   // 1. Attempt to fetch fresh definitions on launch
-  logger.info('[DefinitionsService] Attempting initial fetch from server...');
+  logger.startup('DefinitionsService', 'Attempting to fetch latest definitions from server...');
   const initialFetchedDefs = await fetchDefinitions(serverBaseUrl);
 
   if (initialFetchedDefs) {

@@ -20,7 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // process.env.APP_ROOT = path.join(__dirname, '..'); // REMOVED: Will be set later using app.getAppPath()
 
-logger.info(MODULE_NAME, `Application starting... APP_ROOT will be set after app is ready.`);
+logger.startup(MODULE_NAME, 'SC Feeder Client starting up...');
 
 // --- Environment Setup (Centralized) ---
 // REMOVED: Path calculations moved to app-lifecycle.ts after app is ready
@@ -179,12 +179,30 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 // --- Auto Update Check Interval ---
+let lastNotificationTime = 0;
+const NOTIFICATION_COOLDOWN = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
 // Check for updates every 5 minutes (300000 milliseconds)
 setInterval(() => {
   logger.info(MODULE_NAME, 'Checking for updates...');
   const mainWindow = getMainWindow();
-  if (mainWindow && !mainWindow.isDestroyed()) {
+  
+  // Only show notification if 24 hours have passed since last notification
+  const now = Date.now();
+  const shouldShowNotification = (now - lastNotificationTime) >= NOTIFICATION_COOLDOWN;
+  
+  if (mainWindow && !mainWindow.isDestroyed() && shouldShowNotification) {
     mainWindow.webContents.send('update-checking');
+    lastNotificationTime = now;
+    
+    // Auto-hide notification after 5 seconds
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-checking-timeout');
+      }
+    }, 5000);
   }
+  
+  // Always check for updates in background
   autoUpdater.checkForUpdates();
 }, 300000);

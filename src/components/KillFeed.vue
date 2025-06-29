@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
@@ -11,9 +11,8 @@ import type { KillEvent } from '../../shared/types'; // Import from the new shar
 
 // --- State Refs ---
 const MAX_EVENTS_DISPLAY = 100; // Local constant for display limit
-const killEvents = ref<KillEvent[]>([]); // Player-involved events
-const globalKillEvents = ref<KillEvent[]>([]); // All events including non-player ones
-const isAuthenticated = ref<boolean>(false); // Track auth status
+const allEvents = ref<KillEvent[]>([]); // Unified event array - server determines what user sees
+const isAuthenticated = ref<boolean>(false); // Track auth status for UI display
 const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
 const isOffline = ref<boolean>(false); // Track offline mode setting
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -25,6 +24,17 @@ const logStatus = ref<string>('Initializing...'); // Log file monitoring status
 const currentPlayerShip = ref<string>('');
 const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
 const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
+
+// New infinite scroll and search state
+const isLoadingMore = ref<boolean>(false);
+const hasMoreEvents = ref<boolean>(true);
+const isSearching = ref<boolean>(false);
+const searchResults = ref<KillEvent[]>([]);
+const searchOffset = ref<number>(0);
+const totalEventsLoaded = ref<number>(0);
+const isUsingSearch = ref<boolean>(false);
+const loadMoreTriggerDistance = 200; // Pixels from bottom to trigger load more
+
 let cleanupFunctions: (() => void)[] = [];
 
 // --- Icon Button Active State ---
@@ -164,39 +174,35 @@ const openMap = () => {
 
 // --- Computed Properties ---
 
-// Get the current event source based on authentication status
+// Filter events: show all server events, but only local events where player is involved
 const currentEvents = computed(() => {
-  // If authenticated, show global events, otherwise show only player events
-  return isAuthenticated.value ? globalKillEvents.value : killEvents.value;
+  // If we're using search mode, return search results
+  if (isUsingSearch.value) {
+    return searchResults.value;
+  }
+
+  // Otherwise, filter the memory events as before
+  return allEvents.value.filter((event: KillEvent) => {
+    // Always show server events (server has already filtered these appropriately)
+    if (event.metadata?.source?.server) {
+      return true;
+    }
+    
+    // For local events, only show if player is directly involved
+    if (event.metadata?.source?.local) {
+      return event.isPlayerInvolved;
+    }
+    
+    // Default: show the event (fallback for events without clear source metadata)
+    return true;
+  });
 });
 
-// Filter events based on search query and sort chronologically (newest at top)
+// For backward compatibility, keep the same computed name but now it just returns currentEvents
+// since searching is handled separately via the EventStore
 const sortedFilteredEvents = computed(() => {
-  return currentEvents.value
-    .filter((event: KillEvent) => { // Add type annotation
-      // Apply search filter
-      if (!searchQuery.value.trim()) return true;
-
-      const search = searchQuery.value.toLowerCase().trim();
-      // Search across relevant fields
-      const searchFields = [
-        ...(event.killers || []),
-        ...(event.victims || []),
-        event.vehicleType,
-        event.eventDescription,
-        event.deathType, // Use deathType
-        event.weapon,
-        event.damageType,
-        event.location,
-        event.gameMode,
-        event.victimOrg,
-        event.victimRsiRecord
-      ];
-
-      return searchFields.some(field => field?.toLowerCase().includes(search));
-    })
-    // Sort newest first (reverse chronological)
-    .sort((a: KillEvent, b: KillEvent) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Add type annotations
+  // Events are already sorted by the EventStore (newest first)
+  return currentEvents.value;
 });
 
 // --- BADGE COMPUTED PROPERTIES ---
@@ -258,15 +264,18 @@ const modeBadge = computed(() => {
 });
 
 const feedModeBadge = computed(() => {
-  if (isAuthenticated.value) {
+  // Server determines what events this client receives - client just displays them
+  const hasServerEvents = allEvents.value.some(event => event.metadata?.source?.external);
+  
+  if (hasServerEvents) {
     return {
-      text: 'Global Events',
-      class: 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset'
+      text: 'Mixed Events',
+      class: 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-600/20 ring-inset'
     };
   }
   return {
-    text: 'Player Events',
-    class: 'inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset'
+    text: 'Local Events',
+    class: 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'
   };
 });
 
@@ -318,15 +327,13 @@ const loadSoundEffectsSetting = async () => {
 // Load kill events based on the current feed mode
 const loadKillEvents = async () => {
   try {
-    // Load both event sets to ensure they're available for toggle
-    const playerEvents = await window.logMonitorApi.getKillEvents(100);
-    const globalEvents = await window.logMonitorApi.getGlobalKillEvents(100);
+    // Load events from server - server determines access based on user role
+    const serverEvents = await window.logMonitorApi.getKillEvents(100);
 
-    // Update the ref arrays
-    killEvents.value = playerEvents;
-    globalKillEvents.value = globalEvents;
+    // Update unified event array
+    allEvents.value = serverEvents;
 
-    console.log(`Loaded ${playerEvents.length} player events and ${globalEvents.length} global events`);
+    console.log(`Loaded ${serverEvents.length} events from server`);
 
     // Scroll to top after initial load
     nextTick(() => {
@@ -490,6 +497,106 @@ const getInitialWindowStates = async () => {
   }
 };
 
+// Search handling functions
+const handleSearch = async (query: string) => {
+  if (!query.trim()) {
+    // Clear search mode
+    isUsingSearch.value = false;
+    searchResults.value = [];
+    searchOffset.value = 0;
+    console.log('[KillFeed] Search cleared');
+    return;
+  }
+
+  try {
+    isSearching.value = true;
+    isUsingSearch.value = true;
+    searchOffset.value = 0;
+
+    console.log(`[KillFeed] Searching for: "${query}"`);
+    
+    // Use EventStore search functionality via IPC
+    const results = await window.logMonitorApi.searchEvents(query, 25, 0);
+    searchResults.value = results.events;
+    hasMoreEvents.value = results.hasMore;
+    
+    console.log(`[KillFeed] Search returned ${results.events.length} results`);
+  } catch (error) {
+    console.error('[KillFeed] Search failed:', error);
+    searchResults.value = [];
+    hasMoreEvents.value = false;
+  } finally {
+    isSearching.value = false;
+  }
+};
+
+// Watch for search query changes
+let searchTimeout: NodeJS.Timeout | null = null;
+const debouncedSearch = (query: string) => {
+  if (searchTimeout) {
+    clearTimeout(searchTimeout);
+  }
+  searchTimeout = setTimeout(() => {
+    handleSearch(query);
+  }, 300); // 300ms debounce
+};
+
+// Initialize search watcher (will be set up in onMounted)
+let unwatchSearch: (() => void) | null = null;
+
+// Infinite scroll functions
+const handleScroll = (event: Event) => {
+  const container = event.target as HTMLElement;
+  const scrollTop = container.scrollTop;
+  const scrollHeight = container.scrollHeight;
+  const clientHeight = container.clientHeight;
+  
+  // Check if near bottom
+  const isNearBottom = scrollHeight - scrollTop - clientHeight < loadMoreTriggerDistance;
+  
+  if (isNearBottom && !isLoadingMore.value && hasMoreEvents.value) {
+    loadMoreEvents();
+  }
+};
+
+const loadMoreEvents = async () => {
+  if (isLoadingMore.value || !hasMoreEvents.value) {
+    return;
+  }
+
+  try {
+    isLoadingMore.value = true;
+    console.log('[KillFeed] Loading more events...');
+
+    if (isUsingSearch.value && searchQuery.value.trim()) {
+      // Load more search results
+      const offset = searchResults.value.length;
+      const results = await window.logMonitorApi.searchEvents(searchQuery.value, 25, offset);
+      
+      searchResults.value = [...searchResults.value, ...results.events];
+      hasMoreEvents.value = results.hasMore;
+      console.log(`[KillFeed] Loaded ${results.events.length} more search results`);
+    } else {
+      // Load more regular events via EventStore
+      const offset = allEvents.value.length;
+      const results = await window.logMonitorApi.loadMoreEvents(25, offset);
+      
+      // Add new events to existing array (avoiding duplicates)
+      const newEvents = results.events.filter(event => 
+        !allEvents.value.some(existing => existing.id === event.id)
+      );
+      
+      allEvents.value = [...allEvents.value, ...newEvents];
+      hasMoreEvents.value = results.hasMore;
+      console.log(`[KillFeed] Loaded ${newEvents.length} more events`);
+    }
+  } catch (error) {
+    console.error('[KillFeed] Failed to load more events:', error);
+  } finally {
+    isLoadingMore.value = false;
+  }
+};
+
 
 onMounted(async () => { // Make onMounted async
   // Get initial states synchronously FIRST
@@ -585,15 +692,13 @@ onMounted(async () => { // Make onMounted async
     })()
  ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
 
- // Listen for new/updated spacecraft events
+ // Listen for events from local parsing and server filtering
  cleanupFunctions.push(
-    // Explicitly type the incoming data
-    window.logMonitorApi.onKillFeedEvent((_event, data: { event: KillEvent, source: 'player' | 'global' } | null) => {
+    window.logMonitorApi.onKillFeedEvent((_event, data: { event: KillEvent, source: 'server' | 'local' } | null) => {
       if (data === null) {
         // Handle signal to clear events
         console.log("Received signal to clear kill events.");
-        killEvents.value = [];
-        globalKillEvents.value = [];
+        allEvents.value = [];
         return;
       }
 
@@ -608,7 +713,7 @@ onMounted(async () => { // Make onMounted async
           return;
         }
 
-        killEvent = data.event; // Assign here
+        killEvent = data.event;
         const source = data.source;
 
         // Validate the event object itself
@@ -617,82 +722,83 @@ onMounted(async () => { // Make onMounted async
           return;
         }
 
-        console.log(`Received spacecraft event (${source}):`, killEvent);
+        // Enhanced logging for server events
+        if (source === 'server') {
+          console.log('\n🟢 ═══════════════════════════════════════════════════════════════');
+          console.log('📥 RENDERER: SERVER EVENT RECEIVED VIA IPC');
+          console.log(`   Event ID: ${killEvent.id}`);
+          console.log(`   Event Type: ${killEvent.deathType}`);
+          console.log(`   Killers: ${killEvent.killers.join(', ')}`);
+          console.log(`   Victims: ${killEvent.victims.join(', ')}`);
+          console.log(`   Description: ${killEvent.eventDescription}`);
+          console.log(`   Player Involved: ${killEvent.isPlayerInvolved}`);
+          console.log(`   Metadata: ${JSON.stringify(killEvent.metadata)}`);
+          console.log('🔄 Adding to unified event array...');
+        } else {
+          console.log(`Received ${source} event:`, killEvent);
+        }
 
         // Update current player's ship if included
         if (killEvent.playerShip) {
           currentPlayerShip.value = killEvent.playerShip;
         }
 
-        // Find existing event by ID in global events
-        const existingGlobalIndex = globalKillEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
+        // Add event source metadata for visual indicators
+        if (!killEvent.metadata) {
+          killEvent.metadata = {};
+        }
+        // Determine source type for metadata
+        const isServerSource = source === 'server';
+        const isLocalSource = source === 'local';
+        
+        killEvent.metadata.source = {
+          server: isServerSource,
+          local: isLocalSource,
+          external: isServerSource // Server/global events are external
+        };
 
-        if (existingGlobalIndex !== -1) {
-            // Existing event found - REPLACE it by creating a new array
-            console.log(`Received update for global event: ${killEvent.id}`);
-            const updatedEvents = [...globalKillEvents.value];
-            updatedEvents[existingGlobalIndex] = killEvent;
-            globalKillEvents.value = updatedEvents; // Assign new array
+        // Find existing event by ID in unified event array
+        const existingIndex = allEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id);
+
+        if (existingIndex !== -1) {
+          // Existing event found - REPLACE it (e.g., local event gets server verification)
+          console.log(`Updated existing event: ${killEvent.id}`);
+          const updatedEvents = [...allEvents.value];
+          updatedEvents[existingIndex] = killEvent;
+          allEvents.value = updatedEvents;
+          
           // Trigger update animation
-          const eventId = killEvent.id; // Capture ID locally
+          const eventId = killEvent.id;
           recentlyUpdatedIds.value.add(eventId);
-          setTimeout(() => recentlyUpdatedIds.value.delete(eventId), 1000); // Use local constant
+          setTimeout(() => recentlyUpdatedIds.value.delete(eventId), 1000);
         } else {
-            // No existing event found - add as new event by creating a new array
-            console.log(`Added new global event: ${killEvent.id}`);
-            // Add to the beginning (limit removed)
-            const newEvents = [killEvent, ...globalKillEvents.value]; //.slice(0, MAX_EVENTS_DISPLAY);
-            globalKillEvents.value = newEvents; // Assign new array
-            wasNewEvent = true; // Mark as new
-
-            // Play sound effect for new events
-            playKillSound();
-            // No need for separate pop() as slice() handles the limit
-        }
-
-        // Handle player events array similarly
-        if (killEvent.isPlayerInvolved) {
-          const existingPlayerIndex = killEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
-          if (existingPlayerIndex !== -1) {
-            // Existing event found - REPLACE it by creating a new array
-            console.log(`Received update for player event: ${killEvent.id}`);
-            const updatedPlayerEvents = [...killEvents.value];
-            updatedPlayerEvents[existingPlayerIndex] = killEvent;
-            killEvents.value = updatedPlayerEvents; // Assign new array
-            // Trigger update animation
-            const eventId = killEvent.id; // Capture ID locally
-            recentlyUpdatedIds.value.add(eventId);
-            setTimeout(() => recentlyUpdatedIds.value.delete(eventId), 1000); // Use local constant
+          // New event - add to unified array
+          if (source === 'server') {
+            console.log(`✅ RENDERER: Added new SERVER event: ${killEvent.id}`);
+            console.log(`   Total events in array: ${allEvents.value.length + 1}`);
+            console.log('═══════════════════════════════════════════════════════════════\n');
           } else {
-            // No existing event found - add as new event by creating a new array
-            console.log(`Added new player event: ${killEvent.id}`);
-            // Add to the beginning (limit removed)
-            const newPlayerEvents = [killEvent, ...killEvents.value]; //.slice(0, MAX_EVENTS_DISPLAY);
-            killEvents.value = newPlayerEvents; // Assign new array
-            // No need for separate pop()
+            console.log(`Added new ${source} event: ${killEvent.id}`);
           }
-        } else {
-          // If the updated event NO LONGER involves the player, remove it from player list
-          const existingPlayerIndex = killEvents.value.findIndex((ev: KillEvent) => ev.id === killEvent!.id); // Add type annotation
-          if (existingPlayerIndex !== -1) {
-              // Remove by creating a new filtered array
-              console.log(`Removing event ${killEvent.id} from player list as it no longer involves the player.`);
-              killEvents.value = killEvents.value.filter(ev => ev.id !== killEvent!.id); // Assign new array
-              killEvents.value = killEvents.value.filter(ev => ev.id !== killEvent!.id);
-          }
+          
+          const newEvents = [killEvent, ...allEvents.value];
+          allEvents.value = newEvents;
+          wasNewEvent = true;
+
+          // Play sound effect for new events
+          playKillSound();
         }
 
-        console.log(`Events count - Player: ${killEvents.value.length}, Global: ${globalKillEvents.value.length}`);
+        if (source !== 'server') {
+          console.log(`Total events: ${allEvents.value.length}`);
+        }
 
       } catch (error) {
         console.error('Error processing kill feed event:', error);
-        // Don't return here, allow scrolling logic to run if killEvent was assigned
       }
 
-      // Scroll to top based on current feed mode if new event was added
-      // Check killEvent is not null before accessing its properties
-      // Scroll to top if the new event should be visible based on auth status
-      if (killEvent && wasNewEvent && (isAuthenticated.value || killEvent.isPlayerInvolved)) {
+      // Scroll to top for new events
+      if (killEvent && wasNewEvent) {
         nextTick(() => {
           if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
         });
@@ -715,11 +821,34 @@ onMounted(async () => { // Make onMounted async
     })
   );
 
+  // Set up search watcher using Vue's reactivity
+  unwatchSearch = watch(searchQuery, (newQuery) => {
+    debouncedSearch(newQuery);
+  });
+
+  // Add scroll event listener for infinite scroll
+  nextTick(() => {
+    if (killFeedListRef.value) {
+      killFeedListRef.value.addEventListener('scroll', handleScroll);
+      console.log('[KillFeed] Scroll listener added for infinite scroll');
+    }
+  });
+
   // No longer need the cleanup for the interval
 });
 
 onUnmounted(() => {
-  // Clean up listeners
+  // Clean up search watcher
+  if (unwatchSearch) {
+    unwatchSearch();
+  }
+  
+  // Clean up scroll listener
+  if (killFeedListRef.value) {
+    killFeedListRef.value.removeEventListener('scroll', handleScroll);
+  }
+  
+  // Clean up other listeners
   cleanupFunctions.forEach(cleanup => cleanup());
 });
 </script>
@@ -830,6 +959,11 @@ onUnmounted(() => {
           <!-- Player Involved Badge -->
           <!-- Show 'YOU' badge if event involves player and user is viewing global feed -->
           <span v-if="event.isPlayerInvolved && isAuthenticated" class="player-involved-badge">YOU</span>
+          <!-- External Event Badge -->
+          <span v-if="event.metadata?.source?.external" class="external-event-badge">
+            🌐
+            EXTERNAL
+          </span>
           <span class="event-location" v-if="event.location">{{ event.location }}</span>
           <span class="event-time">{{ formatTime(event.timestamp) }}</span>
         </div>
@@ -889,20 +1023,41 @@ onUnmounted(() => {
          </div>
        </div> <!-- End of v-for element -->
        </transition-group> <!-- Close transition-group here -->
+       
+       <!-- Loading indicator for infinite scroll -->
+       <div v-if="isLoadingMore" class="loading-indicator">
+         <div class="loading-spinner"></div>
+         <span>Loading more events...</span>
+       </div>
+       
+       <!-- Search status indicator -->
+       <div v-if="isSearching" class="search-indicator">
+         <div class="loading-spinner"></div>
+         <span>Searching...</span>
+       </div>
+       
+       <!-- End of events indicator -->
+       <div v-if="!hasMoreEvents && currentEvents.length > 0 && !isLoadingMore" class="end-indicator">
+         <span>{{ isUsingSearch ? 'No more search results' : 'All events loaded' }}</span>
+       </div>
+       
      <!-- The v-else-if conditions are handled earlier, this closes the v-else div -->
     </div>
 
     <!-- Relocated Stats Section -->
     <div class="stats-section">
       <span class="stats-item view-mode-indicator">
-        <span class="mode-badge" :class="{ 'global-mode': isAuthenticated }">
-          {{ isAuthenticated ? 'All Events' : 'Player Events' }}
+        <span class="mode-badge" :class="{ 'server-mode': isAuthenticated }">
+          {{ isAuthenticated ? 'Server Filtered' : 'Local Only' }}
         </span>
         <span class="count-badge">
-          {{ currentEvents.length }} events <!-- Use currentEvents directly -->
+          {{ currentEvents.length }} events
         </span>
       </span>
       <span class="stats-item" v-if="currentPlayerShip">Ship: {{ currentPlayerShip }}</span>
+      <span class="stats-item">
+        External: {{ currentEvents.filter(e => e.metadata?.source?.external).length }}
+      </span>
     </div>
 
   </div> <!-- Close kill-feed-container -->
@@ -1183,8 +1338,8 @@ onUnmounted(() => {
   font-weight: bold;
 }
 
-.mode-badge.global-mode {
-  background-color: #2980b9; /* Blue for global mode */
+.mode-badge.server-mode {
+  background-color: #10b981; /* Green for server-filtered mode */
 }
 
 .count-badge {
@@ -1262,6 +1417,20 @@ onUnmounted(() => {
 /* Player involved badge */
 .player-involved-badge {
   background-color: #e74c3c;
+  color: white;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+/* External event badge */
+.external-event-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background-color: #f39c12; /* VIP orange/yellow */
   color: white;
   padding: 1px 4px;
   border-radius: 4px;
@@ -1477,6 +1646,48 @@ onUnmounted(() => {
 
 .kill-event-item.clickable:active {
   transform: translateY(0);
+}
+
+/* Loading and status indicators */
+.loading-indicator,
+.search-indicator,
+.end-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: #a1a1aa;
+  font-size: 0.9em;
+  gap: 8px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #404040;
+  border-top: 2px solid #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.end-indicator {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.search-indicator {
+  background-color: rgba(99, 102, 241, 0.1);
+  border-radius: 8px;
+}
+
+.loading-indicator {
+  background-color: rgba(64, 64, 64, 0.1);
+  border-radius: 8px;
 }
 
 </style>
