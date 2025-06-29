@@ -40,7 +40,7 @@ interface EventRow {
 
 /**
  * EventDatabase handles persistent storage of events using SQLite with full-text search.
- * Supports up to 1000 local events with automatic cleanup.
+ * Supports up to 10,000 local events with automatic cleanup.
  */
 export class EventDatabase {
   private db: Database.Database;
@@ -58,7 +58,7 @@ export class EventDatabase {
   private getEventCountStmt!: Database.Statement;
   private deleteEventByIdStmt!: Database.Statement;
 
-  private readonly MAX_LOCAL_EVENTS = 1000;
+  private readonly MAX_LOCAL_EVENTS = 10000;
 
   constructor() {
     // Create database in app's userData directory

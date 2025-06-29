@@ -160629,7 +160629,7 @@ class EventDatabase {
     __publicField(this, "deleteOldEventsStmt");
     __publicField(this, "getEventCountStmt");
     __publicField(this, "deleteEventByIdStmt");
-    __publicField(this, "MAX_LOCAL_EVENTS", 1e3);
+    __publicField(this, "MAX_LOCAL_EVENTS", 1e4);
     var _a3, _b2;
     const userDataPath = app$1.getPath("userData");
     const dbDir = sysPath__default.join(userDataPath, "data");

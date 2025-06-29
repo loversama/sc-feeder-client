@@ -34,7 +34,7 @@ export interface LoadMoreResult {
 /**
  * EventStore manages a multi-tier event storage system:
  * - Memory Cache: 25-50 most recent events for instant access
- * - Local Database: Up to 1000 events persisted locally
+ * - Local Database: Up to 10,000 events persisted locally
  * - Server API: Unlimited events from server (future implementation)
  */
 export class EventStore extends EventEmitter {

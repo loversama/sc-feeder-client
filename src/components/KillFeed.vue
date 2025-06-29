@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
 import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
@@ -11,7 +11,7 @@ import type { KillEvent } from '../../shared/types'; // Import from the new shar
 
 // --- State Refs ---
 const MAX_EVENTS_DISPLAY = 100; // Local constant for display limit
-const allEvents = ref<KillEvent[]>([]); // Unified event array - server determines what user sees
+const allEvents = shallowRef<KillEvent[]>([]); // Unified event array - server determines what user sees (using shallowRef for performance)
 const isAuthenticated = ref<boolean>(false); // Track auth status for UI display
 const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
 const isOffline = ref<boolean>(false); // Track offline mode setting
@@ -29,7 +29,7 @@ const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event I
 const isLoadingMore = ref<boolean>(false);
 const hasMoreEvents = ref<boolean>(true);
 const isSearching = ref<boolean>(false);
-const searchResults = ref<KillEvent[]>([]);
+const searchResults = shallowRef<KillEvent[]>([]);
 const searchOffset = ref<number>(0);
 const totalEventsLoaded = ref<number>(0);
 const isUsingSearch = ref<boolean>(false);
@@ -40,6 +40,16 @@ const scrollDetectionEnabled = ref<boolean>(false);
 const lastScrollTime = ref<number>(0);
 const scrollThrottleMs = 100; // Throttle scroll events to 100ms
 const containerReady = ref<boolean>(false); // Track if container is properly sized
+
+// Scroll-to-top button state
+const showScrollToTop = ref<boolean>(false);
+const SCROLL_TO_TOP_THRESHOLD = 4000; // Show button after ~50 events worth of scrolling
+
+// Sliding window state management
+const currentWindowOffset = ref<number>(0); // Tracks position in overall event stream
+const MAX_UI_EVENTS = 250; // Maximum events in UI at once
+const RESET_THRESHOLD = 200; // Events deep before triggering reset on scroll-to-top
+
 
 let cleanupFunctions: (() => void)[] = [];
 
@@ -524,11 +534,12 @@ const getInitialWindowStates = async () => {
 // Search handling functions
 const handleSearch = async (query: string) => {
   if (!query.trim()) {
-    // Clear search mode
+    // Clear search mode and reset to normal event view
     isUsingSearch.value = false;
     searchResults.value = [];
     searchOffset.value = 0;
-    console.log('[KillFeed] Search cleared');
+    // Note: Don't reset currentWindowOffset here - user might want to stay in their current position
+    console.log('[KillFeed] Search cleared, returning to normal event view');
     return;
   }
 
@@ -633,6 +644,9 @@ const handleScroll = (event: Event) => {
   // Also check if scrollbar is at absolute bottom
   const isAtBottom = distanceFromBottom <= 5;
   
+  // Update scroll-to-top button visibility
+  showScrollToTop.value = scrollTop > SCROLL_TO_TOP_THRESHOLD;
+  
   // Special handling for absolute bottom
   if (isAtBottom && !isLoadingMore.value && hasMoreEvents.value) {
     console.log('[KillFeed] User scrolled to bottom - loading more events');
@@ -663,26 +677,37 @@ const loadMoreEvents = async () => {
       const results = await window.logMonitorApi.searchEvents(searchQuery.value, 25, offset);
       
       searchResults.value = [...searchResults.value, ...results.events];
+      
+      // Schedule search results cleanup to prevent jitter
+      scheduleSearchUnload();
+      
       hasMoreEvents.value = results.hasMore;
       console.log(`[KillFeed] Loaded ${results.events.length} more search results (hasMore: ${results.hasMore})`);
     } else {
       // Load more regular events via EventStore
-      const offset = allEvents.value.length;
-      console.log(`[KillFeed] Loading more regular events (current count: ${allEvents.value.length}, offset: ${offset})`);
-      const results = await window.logMonitorApi.loadMoreEvents(25, offset);
+      // Calculate true offset in the overall event stream (window offset + current UI events)
+      const trueOffset = currentWindowOffset.value + allEvents.value.length;
+      console.log(`[KillFeed] Loading more regular events (UI: ${allEvents.value.length}, window offset: ${currentWindowOffset.value}, true offset: ${trueOffset})`);
+      const results = await window.logMonitorApi.loadMoreEvents(25, trueOffset);
       
       console.log(`[KillFeed] Received ${results.events.length} events from API (hasMore: ${results.hasMore})`);
       
-      // Add new events to existing array (avoiding duplicates)
-      const newEvents = results.events.filter(event => 
-        !allEvents.value.some(existing => existing.id === event.id)
-      );
+      // Add new events to existing array (avoiding duplicates) - BACK TO ORIGINAL FAST METHOD
+      const newEventIds = new Set(allEvents.value.map(e => e.id));
+      const uniqueNewEvents = results.events.filter(e => !newEventIds.has(e.id));
+      allEvents.value = [...allEvents.value, ...uniqueNewEvents];
       
-      const beforeCount = allEvents.value.length;
-      allEvents.value = [...allEvents.value, ...newEvents];
+      // Maintain sliding window of MAX_UI_EVENTS
+      if (allEvents.value.length > MAX_UI_EVENTS) {
+        const excessCount = allEvents.value.length - MAX_UI_EVENTS;
+        allEvents.value = allEvents.value.slice(excessCount);
+        currentWindowOffset.value += excessCount;
+        console.log(`[KillFeed] 🪟 Sliding window: removed ${excessCount} oldest events, window now at offset ${currentWindowOffset.value}`);
+      }
+      
       hasMoreEvents.value = results.hasMore;
       
-      console.log(`[KillFeed] 🚀 Added ${newEvents.length} new events (${beforeCount} -> ${allEvents.value.length}), hasMore: ${results.hasMore}`);
+      console.log(`[KillFeed] 🚀 Added ${uniqueNewEvents.length} new events, offset: ${currentWindowOffset.value}, hasMore: ${results.hasMore}`);
     }
     
     // Re-validate container after loading new events
@@ -708,7 +733,78 @@ const loadMoreEvents = async () => {
   }
 };
 
-// Production implementation - no debug functions
+// Batched unloading to prevent jitter during sliding window operations
+const scheduleUnload = () => {
+  if (pendingUnload.value) return; // Already scheduled
+  
+  pendingUnload.value = true;
+  requestAnimationFrame(() => {
+    if (allEvents.value.length > MAX_UI_EVENTS) {
+      const excessCount = allEvents.value.length - MAX_UI_EVENTS;
+      allEvents.value = allEvents.value.slice(excessCount);
+      currentWindowOffset.value += excessCount;
+      console.log(`[KillFeed] 🪟 Smooth unload: removed ${excessCount} oldest events, window now at offset ${currentWindowOffset.value}`);
+    }
+    pendingUnload.value = false;
+  });
+};
+
+const scheduleSearchUnload = () => {
+  requestAnimationFrame(() => {
+    if (searchResults.value.length > MAX_UI_EVENTS) {
+      const excessCount = searchResults.value.length - MAX_UI_EVENTS;
+      searchResults.value = searchResults.value.slice(excessCount);
+      console.log(`[KillFeed] 🪟 Smooth search unload: removed ${excessCount} oldest results, maintaining ${MAX_UI_EVENTS} window`);
+    }
+  });
+};
+
+// Smart scroll to top functionality
+const scrollToTop = async () => {
+  if (!killFeedListRef.value) return;
+  
+  // Check if we're deep in the event history
+  if (currentWindowOffset.value > RESET_THRESHOLD) {
+    console.log(`[KillFeed] 🔄 Deep in history (offset: ${currentWindowOffset.value}), resetting to recent events`);
+    
+    try {
+      // Reset to recent events
+      isLoadingMore.value = true;
+      currentWindowOffset.value = 0;
+      
+      // Load fresh recent events (100 events to give good context)
+      const results = await window.logMonitorApi.loadMoreEvents(100, 0);
+      
+      // Immediate update for reset (no delay needed)
+      allEvents.value = results.events;
+      hasMoreEvents.value = results.hasMore;
+      
+      // Jump to top immediately (no animation for reset)
+      killFeedListRef.value.scrollTo({ top: 0, behavior: 'instant' });
+      
+      // Re-validate container after reset to ensure infinite scroll still works
+      nextTick(() => {
+        validateScrollContainer();
+        if (!scrollDetectionEnabled.value) {
+          scrollDetectionEnabled.value = true;
+        }
+      });
+      
+      console.log(`[KillFeed] ✅ Reset complete: loaded ${results.events.length} recent events, back to top`);
+    } catch (error) {
+      console.error('[KillFeed] ❌ Failed to reset to recent events:', error);
+    } finally {
+      isLoadingMore.value = false;
+    }
+  } else {
+    // We're close to recent events, just smooth scroll to top
+    console.log(`[KillFeed] 📜 Smooth scrolling to top (offset: ${currentWindowOffset.value})`);
+    killFeedListRef.value.scrollTo({
+      top: 0,
+      behavior: 'smooth'
+    });
+  }
+};
 
 
 onMounted(async () => { // Make onMounted async
@@ -1226,6 +1322,22 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     </div>
 
     <!-- Stats section removed -->
+
+    <!-- Window Position Indicator (subtle debug info) -->
+    <div v-if="currentWindowOffset > 0" class="window-position-indicator">
+      Viewing events {{ currentWindowOffset + 1 }} - {{ currentWindowOffset + currentEvents.length }}
+    </div>
+
+    <!-- Scroll to Top Button -->
+    <button 
+      v-if="showScrollToTop"
+      @click="scrollToTop"
+      class="scroll-to-top-button"
+      :class="{ 'deep-history': currentWindowOffset > RESET_THRESHOLD }"
+      :title="currentWindowOffset > RESET_THRESHOLD ? 'Reset to recent events' : 'Scroll to top'"
+      :aria-label="currentWindowOffset > RESET_THRESHOLD ? 'Reset to recent events' : 'Scroll to top'">
+      {{ currentWindowOffset > RESET_THRESHOLD ? '⟲' : '↑' }}
+    </button>
 
   </div> <!-- Close kill-feed-container -->
 </template>
@@ -1865,6 +1977,72 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   border-radius: 8px;
 }
 
-/* All debug and stats section styles removed for clean production build */
+/* Scroll to Top Button */
+.scroll-to-top-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 48px;
+  height: 48px;
+  background-color: #2a2a2a;
+  border: 2px solid #444;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.scroll-to-top-button:hover {
+  background-color: #3a3a3a;
+  border-color: #666;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+}
+
+.scroll-to-top-button:active {
+  background-color: #1a1a1a;
+  transform: translateY(0px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Deep history state - indicates reset instead of scroll */
+.scroll-to-top-button.deep-history {
+  background-color: #3a2a0a;
+  border-color: #6a5a1a;
+  color: #ffd700;
+}
+
+.scroll-to-top-button.deep-history:hover {
+  background-color: #4a3a1a;
+  border-color: #8a7a2a;
+  box-shadow: 0 6px 16px rgba(255, 215, 0, 0.2);
+}
+
+/* Window Position Indicator */
+.window-position-indicator {
+  position: fixed;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  background-color: rgba(42, 42, 42, 0.9);
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #aaa;
+  font-family: monospace;
+  z-index: 999;
+  pointer-events: none;
+  opacity: 0.7;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
 
 </style>
