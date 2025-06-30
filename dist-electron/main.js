@@ -26503,7 +26503,7 @@ discriminator.default = def;
 const $schema = "http://json-schema.org/draft-07/schema#";
 const $id = "http://json-schema.org/draft-07/schema#";
 const title = "Core schema meta-schema";
-const definitions$1 = {
+const definitions = {
   schemaArray: {
     type: "array",
     minItems: 1,
@@ -26742,7 +26742,7 @@ const require$$3$1 = {
   $schema,
   $id,
   title,
-  definitions: definitions$1,
+  definitions,
   type,
   properties,
   "default": true
@@ -160466,62 +160466,290 @@ async function loadHistoricKillTally() {
   return killTallyInternal;
 }
 const DEFINITIONS_API_URL = "/api/definitions";
+const DEFINITIONS_VERSION_API_URL = "/api/definitions/version";
 const LOCAL_DEFINITIONS_PATH = sysPath__default.join(app$1.getPath("userData"), "local-definitions.json");
-const ONE_WEEK_IN_MS = 7 * 24 * 60 * 60 * 1e3;
-let definitions = [];
+const SYNC_INTERVAL_MS = 5 * 60 * 1e3;
+let cachedDefinitions = null;
 let definitionsMap = /* @__PURE__ */ new Map();
+let npcPatternsCompiled = [];
+let objectPatternsCompiled = [];
+let npcIgnorePatterns = [];
 let lastSuccessfulUpdateTimestamp = null;
-function updateDefinitionsMap() {
-  definitionsMap.clear();
-  for (const def2 of definitions) {
-    definitionsMap.set(def2.id, def2);
+let syncIntervalId = null;
+function updateDefinitionsCache() {
+  var _a3;
+  try {
+    if (!cachedDefinitions) {
+      definitionsMap.clear();
+      npcPatternsCompiled = [];
+      objectPatternsCompiled = [];
+      npcIgnorePatterns = [];
+      info("DefinitionsService", "Cache cleared - no definitions available");
+      return;
+    }
+    const { definitions: definitions2, npcIgnoreList } = cachedDefinitions;
+    definitionsMap.clear();
+    try {
+      for (const [category, items2] of Object.entries(definitions2)) {
+        if (category === "npcNamePatterns" || !items2 || typeof items2 !== "object") continue;
+        for (const [key2, value2] of Object.entries(items2)) {
+          if (key2 !== "_patterns") {
+            if (typeof value2 === "string") {
+              definitionsMap.set(key2, value2);
+            } else if (value2 && typeof value2 === "object" && value2.friendlyName) {
+              definitionsMap.set(key2, value2.friendlyName);
+            }
+          }
+        }
+      }
+    } catch (error$12) {
+      error("DefinitionsService", "Error building exact match cache:", error$12);
+    }
+    try {
+      npcPatternsCompiled = compilePatterns(
+        definitions2.npcNamePatterns || [],
+        "npc"
+      ).sort((a, b) => b.specificity - a.specificity);
+    } catch (error$12) {
+      error("DefinitionsService", "Error compiling NPC patterns:", error$12);
+      npcPatternsCompiled = [];
+    }
+    try {
+      const objectPatterns = (_a3 = definitions2.objects) == null ? void 0 : _a3._patterns;
+      if (Array.isArray(objectPatterns)) {
+        objectPatternsCompiled = compilePatterns(
+          objectPatterns,
+          "object"
+        ).sort((a, b) => b.specificity - a.specificity);
+      } else if (objectPatterns && typeof objectPatterns === "object") {
+        const patternsArray = Object.entries(objectPatterns).map(([regex, template]) => ({
+          regex,
+          template: String(template)
+        }));
+        objectPatternsCompiled = compilePatterns(
+          patternsArray,
+          "object"
+        ).sort((a, b) => b.specificity - a.specificity);
+      } else {
+        objectPatternsCompiled = [];
+      }
+    } catch (error$12) {
+      error("DefinitionsService", "Error compiling object patterns:", error$12);
+      objectPatternsCompiled = [];
+    }
+    try {
+      if (npcIgnoreList) {
+        npcIgnorePatterns = [];
+        for (const pattern2 of npcIgnoreList.regexPatterns || []) {
+          try {
+            npcIgnorePatterns.push(new RegExp(pattern2));
+          } catch (error2) {
+            warn("DefinitionsService", `Invalid NPC ignore pattern: ${pattern2}`);
+          }
+        }
+      }
+    } catch (error$12) {
+      error("DefinitionsService", "Error compiling NPC ignore patterns:", error$12);
+      npcIgnorePatterns = [];
+    }
+    success(
+      "DefinitionsService",
+      `Definitions cache updated: ${definitionsMap.size} exact matches, ${npcPatternsCompiled.length} NPC patterns, ${objectPatternsCompiled.length} object patterns`
+    );
+  } catch (error$12) {
+    error("DefinitionsService", "Critical error updating definitions cache:", error$12);
+    definitionsMap.clear();
+    npcPatternsCompiled = [];
+    objectPatternsCompiled = [];
+    npcIgnorePatterns = [];
+    throw error$12;
   }
-  success("DefinitionsService", `Definitions map updated with ${definitionsMap.size} entries`);
 }
-async function fetchDefinitions(serverBaseUrl) {
-  const url2 = `${serverBaseUrl}${DEFINITIONS_API_URL}`;
-  startup("DefinitionsService", `Downloading latest definitions from server: ${url2}`);
+function compilePatterns(patterns, category) {
+  const compiled = [];
+  for (const pattern2 of patterns) {
+    try {
+      const regex = new RegExp(pattern2.regex);
+      const specificity = calculatePatternSpecificity(pattern2.regex);
+      compiled.push({
+        regex,
+        template: pattern2.template,
+        category,
+        specificity
+      });
+    } catch (error2) {
+      warn("DefinitionsService", `Invalid ${category} pattern: ${pattern2.regex}`);
+    }
+  }
+  return compiled;
+}
+function calculatePatternSpecificity(pattern2) {
+  let specificity = 0;
+  specificity += (pattern2.match(/[a-zA-Z0-9_]/g) || []).length;
+  specificity -= (pattern2.match(/[.*+?]/g) || []).length * 2;
+  if (pattern2.startsWith("^")) specificity += 5;
+  if (pattern2.endsWith("$")) specificity += 5;
+  return specificity;
+}
+async function fetchVersionInfo(serverBaseUrl) {
+  const url2 = `${serverBaseUrl}${DEFINITIONS_VERSION_API_URL}`;
   try {
     const response2 = await fetch$2(url2, {
       headers: { "User-Agent": getDetailedUserAgent() }
     });
     if (!response2.ok) {
+      return null;
+    }
+    return await response2.json();
+  } catch (error2) {
+    warn("DefinitionsService", "Failed to fetch version info:", error2);
+    return null;
+  }
+}
+async function fetchDefinitions(serverBaseUrl, currentETag) {
+  const url2 = `${serverBaseUrl}${DEFINITIONS_API_URL}`;
+  startup("DefinitionsService", `Fetching definitions from server: ${url2}`);
+  try {
+    const headers2 = {
+      "User-Agent": getDetailedUserAgent()
+    };
+    if (currentETag) {
+      headers2["If-None-Match"] = currentETag;
+    }
+    const response2 = await fetch$2(url2, { headers: headers2 });
+    if (response2.status === 304) {
+      info("DefinitionsService", "Definitions not modified (304)");
+      return "not-modified";
+    }
+    if (!response2.ok) {
       error(`[DefinitionsService] Error fetching definitions: ${response2.status} ${response2.statusText}`);
       return null;
     }
     const data2 = await response2.json();
-    if (!Array.isArray(data2)) {
-      error("DefinitionsService", "Fetched definitions data is not an array.");
+    if (!data2.data || typeof data2.data !== "object") {
+      error("DefinitionsService", "Invalid definitions response format");
       return null;
     }
-    success("DefinitionsService", `Successfully downloaded ${data2.length} definitions from server`);
+    success("DefinitionsService", `Successfully downloaded definitions (version: ${data2.version})`);
     return data2;
   } catch (error$12) {
     error("[DefinitionsService] Network or parsing error fetching definitions:", error$12);
     return null;
   }
 }
-async function saveDefinitions(defsToSave) {
-  path("DefinitionsService", `Saving ${defsToSave.length} definitions to`, LOCAL_DEFINITIONS_PATH);
+async function fetchNpcIgnoreList(serverBaseUrl) {
+  const url2 = `${serverBaseUrl}/api/npc-ignore-list`;
+  try {
+    const response2 = await fetch$2(url2, {
+      headers: { "User-Agent": getDetailedUserAgent() }
+    });
+    if (!response2.ok) {
+      warn(`[DefinitionsService] Failed to fetch NPC ignore list: ${response2.status}, using defaults`);
+      return getDefaultNpcIgnoreList();
+    }
+    const data2 = await response2.json();
+    info("[DefinitionsService] Successfully fetched NPC ignore list from server");
+    return data2;
+  } catch (error2) {
+    warn("[DefinitionsService] Error fetching NPC ignore list, using defaults:", error2);
+    return getDefaultNpcIgnoreList();
+  }
+}
+function getDefaultNpcIgnoreList() {
+  return {
+    exactMatches: [
+      "Security",
+      "SecurityGuard",
+      "Civilian",
+      "UEESecurity",
+      "Pirate",
+      "NineTails",
+      "Security Backup",
+      "Stanton Security",
+      "Crusader Security",
+      "Microtech Security",
+      "Hurston Security",
+      "Arccorp Security",
+      "Bounty Hunter"
+    ],
+    regexPatterns: [
+      "^PU_Human",
+      "^NPC_",
+      "_NPC$",
+      "^Security_.*",
+      "^Guard_.*",
+      "^Civilian_.*",
+      "^Pirate_.*",
+      "^BountyTarget_.*",
+      "^[A-Za-z]+Security$",
+      "^[A-Za-z]+Guard$",
+      "^[A-Za-z]+Police$",
+      "^PU_Pilots",
+      "^AIModule_",
+      "^Kopion_",
+      "^vlk_juvenile_sentry_",
+      "^Orbital_Sentry_"
+    ]
+  };
+}
+async function saveDefinitions(serverResponse, serverBaseUrl) {
+  path("DefinitionsService", `Saving definitions to`, LOCAL_DEFINITIONS_PATH);
+  let npcIgnoreList;
+  if (serverBaseUrl) {
+    npcIgnoreList = await fetchNpcIgnoreList(serverBaseUrl);
+  } else if (cachedDefinitions == null ? void 0 : cachedDefinitions.npcIgnoreList) {
+    npcIgnoreList = cachedDefinitions.npcIgnoreList;
+  } else {
+    npcIgnoreList = getDefaultNpcIgnoreList();
+  }
+  const entityCounts = calculateEntityCounts(serverResponse.data);
   const fileContent = {
+    version: serverResponse.version,
+    timestamp: serverResponse.timestamp,
     lastUpdated: (/* @__PURE__ */ new Date()).toISOString(),
-    definitions: defsToSave
+    definitions: serverResponse.data,
+    npcIgnoreList,
+    metadata: {
+      entityCounts,
+      patternStats: {
+        compiled: 0,
+        // Will be updated by updateDefinitionsCache
+        failed: 0
+      }
+    }
   };
   try {
     await fs$m.mkdir(sysPath__default.dirname(LOCAL_DEFINITIONS_PATH), { recursive: true });
     await fs$m.writeFile(LOCAL_DEFINITIONS_PATH, JSON.stringify(fileContent, null, 2));
     lastSuccessfulUpdateTimestamp = new Date(fileContent.lastUpdated);
-    success("DefinitionsService", `Definitions saved locally (Last updated: ${fileContent.lastUpdated})`);
+    success("DefinitionsService", `Definitions saved locally (Version: ${serverResponse.version})`);
   } catch (error$12) {
     error("[DefinitionsService] Error saving definitions to local storage:", error$12);
   }
 }
-async function loadDefinitions() {
+function calculateEntityCounts(definitions2) {
+  const counts = {};
+  for (const [category, items2] of Object.entries(definitions2)) {
+    if (typeof items2 === "object" && items2 !== null) {
+      if (category === "npcNamePatterns") {
+        counts[category] = Array.isArray(items2) ? items2.length : 0;
+      } else if (category === "objects" && items2._patterns) {
+        const directCount = Object.keys(items2).filter((key2) => key2 !== "_patterns").length;
+        const patternCount = Array.isArray(items2._patterns) ? items2._patterns.length : 0;
+        counts[category] = directCount + patternCount;
+      } else {
+        counts[category] = Object.keys(items2).length;
+      }
+    }
+  }
+  return counts;
+}
+async function loadCachedDefinitions() {
   path("DefinitionsService", "Loading cached definitions from", LOCAL_DEFINITIONS_PATH);
   try {
     const data2 = await fs$m.readFile(LOCAL_DEFINITIONS_PATH, "utf-8");
     const loadedFile = JSON.parse(data2);
-    if (!loadedFile || typeof loadedFile.lastUpdated !== "string" || !Array.isArray(loadedFile.definitions)) {
+    if (!loadedFile || !loadedFile.definitions || typeof loadedFile.definitions !== "object") {
       warn("[DefinitionsService] Local definitions file is malformed.");
       try {
         await fs$m.unlink(LOCAL_DEFINITIONS_PATH);
@@ -160531,7 +160759,18 @@ async function loadDefinitions() {
       }
       return null;
     }
-    success("DefinitionsService", `Successfully loaded ${loadedFile.definitions.length} cached definitions (Last updated: ${loadedFile.lastUpdated})`);
+    if (!loadedFile.version) {
+      info("[DefinitionsService] Migrating old definitions format");
+      return null;
+    }
+    const entityCount = Object.keys(loadedFile.definitions).reduce((count, category) => {
+      const items2 = loadedFile.definitions[category];
+      return count + (typeof items2 === "object" && items2 !== null ? Object.keys(items2).length : 0);
+    }, 0);
+    success(
+      "DefinitionsService",
+      `Successfully loaded cached definitions (Version: ${loadedFile.version}, ${entityCount} total entities, Last updated: ${loadedFile.lastUpdated})`
+    );
     return loadedFile;
   } catch (error$12) {
     if (error$12.code === "ENOENT") {
@@ -160543,74 +160782,318 @@ async function loadDefinitions() {
   }
 }
 async function updateAndSaveDefinitions(serverBaseUrl) {
-  info("[DefinitionsService] Attempting to update definitions from server...");
-  const fetchedDefs = await fetchDefinitions(serverBaseUrl);
-  if (fetchedDefs) {
-    definitions = fetchedDefs;
-    updateDefinitionsMap();
-    await saveDefinitions(fetchedDefs);
-    info("[DefinitionsService] Definitions updated from server and saved locally.");
-    return true;
-  } else {
-    warn("[DefinitionsService] Failed to fetch definitions from server during update attempt.");
+  try {
+    info("[DefinitionsService] Attempting to update definitions from server...");
+    const currentETag = cachedDefinitions == null ? void 0 : cachedDefinitions.version;
+    const fetchResult = await fetchDefinitions(serverBaseUrl, currentETag);
+    if (fetchResult === "not-modified") {
+      info("[DefinitionsService] Definitions are up to date (not modified)");
+      return true;
+    }
+    if (fetchResult && typeof fetchResult === "object") {
+      try {
+        info("[DefinitionsService] Processing fetched definitions...");
+        let npcIgnoreList;
+        try {
+          npcIgnoreList = await fetchNpcIgnoreList(serverBaseUrl);
+          info("[DefinitionsService] NPC ignore list fetched successfully");
+        } catch (error2) {
+          warn("[DefinitionsService] Failed to fetch NPC ignore list, using defaults:", error2);
+          npcIgnoreList = getDefaultNpcIgnoreList();
+        }
+        let entityCounts;
+        try {
+          entityCounts = calculateEntityCounts(fetchResult.data);
+          info("[DefinitionsService] Entity counts calculated successfully");
+        } catch (error2) {
+          warn("[DefinitionsService] Failed to calculate entity counts:", error2);
+          entityCounts = {};
+        }
+        cachedDefinitions = {
+          version: fetchResult.version,
+          timestamp: fetchResult.timestamp,
+          lastUpdated: (/* @__PURE__ */ new Date()).toISOString(),
+          definitions: fetchResult.data,
+          npcIgnoreList,
+          metadata: {
+            entityCounts,
+            patternStats: { compiled: 0, failed: 0 }
+          }
+        };
+        info("[DefinitionsService] Cached definitions object created successfully");
+        try {
+          updateDefinitionsCache();
+          info("[DefinitionsService] Definitions cache updated successfully");
+        } catch (error$12) {
+          error("[DefinitionsService] Failed to update definitions cache:", error$12);
+          throw error$12;
+        }
+        try {
+          await saveDefinitions(fetchResult, serverBaseUrl);
+          info("[DefinitionsService] Definitions saved to file successfully");
+        } catch (error2) {
+          warn("[DefinitionsService] Failed to save definitions to file (will continue):", error2);
+        }
+        info("[DefinitionsService] Definitions updated from server and saved locally.");
+        return true;
+      } catch (error$12) {
+        error("[DefinitionsService] Error processing fetched definitions:", error$12);
+        return false;
+      }
+    } else {
+      warn("[DefinitionsService] Failed to fetch definitions from server during update attempt.");
+      return false;
+    }
+  } catch (error$12) {
+    error("[DefinitionsService] Critical error in updateAndSaveDefinitions:", error$12);
     return false;
   }
 }
-async function initializeDefinitions(serverBaseUrl) {
-  startup("DefinitionsService", "Initializing entity definitions system...");
-  let definitionsLoadedLocally = false;
-  startup("DefinitionsService", "Attempting to fetch latest definitions from server...");
-  const initialFetchedDefs = await fetchDefinitions(serverBaseUrl);
-  if (initialFetchedDefs) {
-    definitions = initialFetchedDefs;
-    await saveDefinitions(initialFetchedDefs);
-    updateDefinitionsMap();
-    info("[DefinitionsService] Definitions initialized from server and saved locally.");
-  } else {
-    warn("[DefinitionsService] Initial fetch failed. Attempting to load from local cache...");
-    const localData = await loadDefinitions();
-    if (localData) {
-      definitions = localData.definitions;
-      updateDefinitionsMap();
-      lastSuccessfulUpdateTimestamp = new Date(localData.lastUpdated);
-      definitionsLoadedLocally = true;
-      info(`[DefinitionsService] Definitions initialized from local cache. Last updated: ${localData.lastUpdated}`);
+async function updateNpcIgnoreList(serverBaseUrl) {
+  try {
+    info("[DefinitionsService] Fetching NPC ignore list from server...");
+    const npcIgnoreList = await fetchNpcIgnoreList(serverBaseUrl);
+    if (cachedDefinitions) {
+      cachedDefinitions.npcIgnoreList = npcIgnoreList;
+      updateDefinitionsCache();
+      const mockServerResponse = {
+        version: cachedDefinitions.version,
+        timestamp: cachedDefinitions.timestamp,
+        data: cachedDefinitions.definitions
+      };
+      await saveDefinitions(mockServerResponse);
+      info("[DefinitionsService] NPC ignore list updated successfully");
+      return true;
     } else {
-      error("[DefinitionsService] Failed to load definitions from local cache. Operating with no definitions.");
-      definitions = [];
-      updateDefinitionsMap();
-      lastSuccessfulUpdateTimestamp = null;
+      warn("[DefinitionsService] No cached definitions to update with NPC ignore list");
+      return false;
     }
-  }
-  if (lastSuccessfulUpdateTimestamp) {
-    const now = /* @__PURE__ */ new Date();
-    const timeSinceLastUpdate = now.getTime() - lastSuccessfulUpdateTimestamp.getTime();
-    if (timeSinceLastUpdate > ONE_WEEK_IN_MS) {
-      info(`[DefinitionsService] Last update was on ${lastSuccessfulUpdateTimestamp.toISOString()}, more than a week ago. Attempting background update.`);
-      updateAndSaveDefinitions(serverBaseUrl).then((updated) => {
-        if (updated) {
-          info("[DefinitionsService] Background weekly update successful.");
-        } else {
-          warn("[DefinitionsService] Background weekly update failed. Continuing with current definitions.");
-        }
-      });
-    } else {
-      info(`[DefinitionsService] Last update was on ${lastSuccessfulUpdateTimestamp.toISOString()}, within the last week. No background update needed now.`);
-    }
-  } else if (definitionsLoadedLocally) {
-    warn("[DefinitionsService] Definitions loaded from local cache, but no valid last update timestamp found. Attempting background update to ensure freshness.");
-    updateAndSaveDefinitions(serverBaseUrl).then((updated) => {
-      if (updated) {
-        info("[DefinitionsService] Background update (due to missing timestamp) successful.");
-      } else {
-        warn("[DefinitionsService] Background update (due to missing timestamp) failed. Continuing with current definitions.");
-      }
-    });
+  } catch (error$12) {
+    error("[DefinitionsService] Error updating NPC ignore list:", error$12);
+    return false;
   }
 }
+function startPeriodicSync(serverBaseUrl) {
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+  }
+  syncIntervalId = setInterval(async () => {
+    info("[DefinitionsService] Performing periodic sync check...");
+    const versionInfo = await fetchVersionInfo(serverBaseUrl);
+    if (versionInfo && cachedDefinitions && versionInfo.version !== cachedDefinitions.version) {
+      info("[DefinitionsService] New version detected, updating definitions...");
+      await updateAndSaveDefinitions(serverBaseUrl);
+    }
+    try {
+      info("[DefinitionsService] Periodic NPC ignore list sync...");
+      await updateNpcIgnoreList(serverBaseUrl);
+    } catch (error2) {
+      warn("[DefinitionsService] Error during periodic NPC ignore list sync:", error2);
+    }
+  }, SYNC_INTERVAL_MS);
+  info(`[DefinitionsService] Periodic sync started (${SYNC_INTERVAL_MS / 1e3}s interval)`);
+}
+async function initializeDefinitions(serverBaseUrl) {
+  try {
+    startup("DefinitionsService", "Initializing enhanced entity definitions system...");
+    let definitionsLoadedLocally = false;
+    try {
+      startup("DefinitionsService", "Loading cached definitions...");
+      cachedDefinitions = await loadCachedDefinitions();
+      if (cachedDefinitions) {
+        updateDefinitionsCache();
+        lastSuccessfulUpdateTimestamp = new Date(cachedDefinitions.lastUpdated);
+        definitionsLoadedLocally = true;
+        info(`[DefinitionsService] Loaded cached definitions (Version: ${cachedDefinitions.version})`);
+      }
+    } catch (error$12) {
+      error("[DefinitionsService] Error loading cached definitions:", error$12);
+      cachedDefinitions = null;
+    }
+    try {
+      startup("DefinitionsService", "Checking for updated definitions from server...");
+      const updateSuccess = await updateAndSaveDefinitions(serverBaseUrl);
+      if (updateSuccess && !definitionsLoadedLocally) {
+        info("[DefinitionsService] Definitions initialized from server.");
+      } else if (!updateSuccess && !definitionsLoadedLocally) {
+        error("[DefinitionsService] Failed to load definitions from both server and cache. Operating with no definitions.");
+        cachedDefinitions = null;
+        updateDefinitionsCache();
+        lastSuccessfulUpdateTimestamp = null;
+      }
+    } catch (error$12) {
+      error("[DefinitionsService] Error updating definitions from server:", error$12);
+      if (!definitionsLoadedLocally) {
+        warn("[DefinitionsService] No cached definitions available, operating without definitions.");
+      }
+    }
+    try {
+      startup("DefinitionsService", "Fetching NPC ignore list independently...");
+      const npcUpdateSuccess = await updateNpcIgnoreList(serverBaseUrl);
+      if (npcUpdateSuccess) {
+        info("[DefinitionsService] NPC ignore list updated independently.");
+      } else {
+        warn("[DefinitionsService] Failed to update NPC ignore list independently.");
+      }
+    } catch (error$12) {
+      error("[DefinitionsService] Error updating NPC ignore list independently:", error$12);
+    }
+    try {
+      startPeriodicSync(serverBaseUrl);
+    } catch (error$12) {
+      error("[DefinitionsService] Error starting periodic sync:", error$12);
+    }
+    success("DefinitionsService", "Entity definitions system initialized successfully");
+  } catch (error$12) {
+    error("[DefinitionsService] Critical error during initialization:", error$12);
+    throw error$12;
+  }
+}
+function getDefinitions() {
+  return (cachedDefinitions == null ? void 0 : cachedDefinitions.definitions) || null;
+}
+function getDefinitionsVersion() {
+  return (cachedDefinitions == null ? void 0 : cachedDefinitions.version) || null;
+}
+function isNpcEntity(entityId) {
+  var _a3;
+  if (!(cachedDefinitions == null ? void 0 : cachedDefinitions.npcIgnoreList)) return false;
+  if ((_a3 = cachedDefinitions.npcIgnoreList.exactMatches) == null ? void 0 : _a3.includes(entityId)) {
+    return true;
+  }
+  for (const pattern2 of npcIgnorePatterns) {
+    if (pattern2.test(entityId)) {
+      return true;
+    }
+  }
+  return false;
+}
+function resolveEntityName(entityId) {
+  if (!entityId) {
+    return {
+      displayName: "Unknown",
+      isNpc: false,
+      category: "unknown",
+      matchMethod: "fallback"
+    };
+  }
+  const isNpc = isNpcEntity(entityId);
+  const exactMatch = definitionsMap.get(entityId);
+  if (exactMatch) {
+    return {
+      displayName: exactMatch,
+      isNpc,
+      category: determineEntityCategory(entityId),
+      matchMethod: "exact"
+    };
+  }
+  for (const pattern2 of npcPatternsCompiled) {
+    const match = entityId.match(pattern2.regex);
+    if (match) {
+      return {
+        displayName: pattern2.template,
+        isNpc: true,
+        category: "npc",
+        matchMethod: "pattern"
+      };
+    }
+  }
+  for (const pattern2 of objectPatternsCompiled) {
+    const match = entityId.match(pattern2.regex);
+    if (match) {
+      return {
+        displayName: pattern2.template,
+        isNpc,
+        category: "object",
+        matchMethod: "pattern"
+      };
+    }
+  }
+  return {
+    displayName: cleanEntityName(entityId),
+    isNpc,
+    category: "unknown",
+    matchMethod: "fallback"
+  };
+}
+function determineEntityCategory(entityId) {
+  var _a3, _b2, _c2, _d2, _e2;
+  if (!cachedDefinitions) return "unknown";
+  const { definitions: definitions2 } = cachedDefinitions;
+  if ((_a3 = definitions2.ships) == null ? void 0 : _a3[entityId]) return "ship";
+  if ((_b2 = definitions2.weapons) == null ? void 0 : _b2[entityId]) return "weapon";
+  if ((_c2 = definitions2.objects) == null ? void 0 : _c2[entityId]) return "object";
+  if ((_d2 = definitions2.npcs) == null ? void 0 : _d2[entityId]) return "npc";
+  if ((_e2 = definitions2.locations) == null ? void 0 : _e2[entityId]) return "location";
+  return "unknown";
+}
+function cleanEntityName(entityId) {
+  if (!entityId) return "Unknown";
+  let cleaned = entityId.replace(/^(.+?)_\d+$/, "$1");
+  const parts2 = cleaned.split("_");
+  if (parts2.length > 1) {
+    const manufacturers = [
+      "ORIG",
+      "CRUS",
+      "RSI",
+      "AEGS",
+      "VNCL",
+      "DRAK",
+      "ANVL",
+      "BANU",
+      "MISC",
+      "CNOU",
+      "XIAN",
+      "GAMA",
+      "TMBL",
+      "ESPR",
+      "KRIG",
+      "GRIN",
+      "XNAA",
+      "MRAI"
+    ];
+    if (manufacturers.includes(parts2[0])) {
+      cleaned = parts2.slice(1).join(" ");
+    }
+  }
+  return cleaned.replace(/_/g, " ");
+}
 function getEntityName(entityId) {
-  const definition = definitionsMap.get(entityId);
-  return definition ? definition.name : entityId;
+  return resolveEntityName(entityId).displayName;
+}
+async function forceRefreshDefinitions(serverBaseUrl) {
+  info("[DefinitionsService] Force refreshing definitions from server...");
+  const success$1 = await updateAndSaveDefinitions(serverBaseUrl);
+  if (success$1) {
+    success("[DefinitionsService] Force refresh completed successfully");
+  } else {
+    error("[DefinitionsService] Force refresh failed");
+  }
+  return success$1;
+}
+function getCacheStats() {
+  if (!cachedDefinitions) {
+    return {
+      version: null,
+      timestamp: null,
+      lastUpdated: null,
+      entityCounts: {},
+      patternStats: { compiled: 0, failed: 0 },
+      isLoaded: false
+    };
+  }
+  return {
+    version: cachedDefinitions.version,
+    timestamp: cachedDefinitions.timestamp,
+    lastUpdated: cachedDefinitions.lastUpdated,
+    entityCounts: cachedDefinitions.metadata.entityCounts,
+    patternStats: {
+      compiled: npcPatternsCompiled.length + objectPatternsCompiled.length,
+      failed: 0
+      // Could track this during compilation
+    },
+    isLoaded: true
+  };
 }
 const MODULE_NAME$b = "EventDatabase";
 const DB_VERSION = 1;
@@ -161802,13 +162285,11 @@ async function processKillEvent(partialEvent, silentMode, destructionLevel = 0) 
     // Added for details window context
     playerName: currentUsername2 || ""
   };
-  fullEvent.killers = fullEvent.killers.map((id2) => getEntityName(id2));
-  fullEvent.victims = fullEvent.victims.map((id2) => getEntityName(id2));
   fullEvent.eventDescription = formatKillEventDescription(
     fullEvent.killers,
-    // Now contains resolved names
+    // Raw entity IDs (for consistent data)
     fullEvent.victims,
-    // Now contains resolved names
+    // Raw entity IDs (for consistent data)
     fullEvent.vehicleType || "Unknown",
     fullEvent.vehicleModel || "Unknown",
     fullEvent.deathType,
@@ -161868,17 +162349,16 @@ async function correlateDeathWithDestruction(timestamp2, playerName, silentMode)
       addOrUpdateEvent(targetEvent);
     }
   }).catch((err) => error(MODULE_NAME$8, "Error fetching RSI data for correlated victim", { victim: playerName }, ":", err));
-  targetEvent.killers = targetEvent.killers.map((id2) => getEntityName(id2));
   const destructionLevel = ["Hard", "Combat", "Collision", "Crash"].includes(targetEvent.deathType) ? 2 : targetEvent.deathType === "Soft" ? 1 : 0;
   targetEvent.eventDescription = formatKillEventDescription(
     targetEvent.killers,
-    // Now contains resolved names
+    // Raw entity IDs (consistent with data storage)
     targetEvent.victims,
-    // Now contains resolved player name
+    // Raw entity IDs (consistent with data storage) 
     targetEvent.vehicleType || "Unknown Vehicle",
-    // Potentially resolve if it can be an ID: getEntityName(targetEvent.vehicleType || 'Unknown Vehicle')
+    // Raw entity IDs preserved
     targetEvent.vehicleModel || "Unknown Model",
-    // Potentially resolve: getEntityName(targetEvent.vehicleModel || 'Unknown Model')
+    // Raw entity IDs preserved
     targetEvent.deathType,
     destructionLevel
   );
@@ -172324,6 +172804,88 @@ function registerIpcHandlers() {
       window2.close();
     } else {
       error(MODULE_NAME$2, "Could not find window for close command");
+    }
+  });
+  ipcMain$1.handle("entity:resolve", (event, entityId, serverEnriched) => {
+    try {
+      return resolveEntityName(entityId);
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error resolving entity:", error$12);
+      return {
+        displayName: entityId,
+        isNpc: false,
+        category: "unknown",
+        matchMethod: "fallback"
+      };
+    }
+  });
+  ipcMain$1.handle("entity:resolve-batch", (event, entityIds) => {
+    try {
+      return entityIds.map((id2) => resolveEntityName(id2));
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error resolving entities batch:", error$12);
+      return entityIds.map((id2) => ({
+        displayName: id2,
+        isNpc: false,
+        category: "unknown",
+        matchMethod: "fallback"
+      }));
+    }
+  });
+  ipcMain$1.handle("entity:is-npc", (event, entityId) => {
+    try {
+      return isNpcEntity(entityId);
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error checking NPC status:", error$12);
+      return false;
+    }
+  });
+  ipcMain$1.handle("entity:filter-npcs", (event, entityIds) => {
+    try {
+      return entityIds.filter((id2) => !isNpcEntity(id2));
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error filtering NPCs:", error$12);
+      return entityIds;
+    }
+  });
+  ipcMain$1.handle("definitions:get", () => {
+    try {
+      return getDefinitions();
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error getting definitions:", error$12);
+      return null;
+    }
+  });
+  ipcMain$1.handle("definitions:get-version", () => {
+    try {
+      return getDefinitionsVersion();
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error getting definitions version:", error$12);
+      return null;
+    }
+  });
+  ipcMain$1.handle("definitions:get-stats", () => {
+    try {
+      return getCacheStats();
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error getting cache stats:", error$12);
+      return {
+        version: null,
+        timestamp: null,
+        lastUpdated: null,
+        entityCounts: {},
+        patternStats: { compiled: 0, failed: 0 },
+        isLoaded: false
+      };
+    }
+  });
+  ipcMain$1.handle("definitions:force-refresh", async (event, serverBaseUrl) => {
+    try {
+      const SERVER_URL2 = serverBaseUrl || "http://localhost:5252";
+      return await forceRefreshDefinitions(SERVER_URL2);
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error force refreshing definitions:", error$12);
+      return false;
     }
   });
   success(MODULE_NAME$2, "IPC handlers registered.");

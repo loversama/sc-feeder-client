@@ -231,11 +231,13 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         playerName: currentUsername || ''
     };
 
-    // 3. Resolve Entity Names before formatting description
-    // Ensure we are working with copies if direct modification is not intended,
-    // but for this case, modifying fullEvent directly before description formatting is fine.
-    fullEvent.killers = fullEvent.killers.map(id => getEntityName(id));
-    fullEvent.victims = fullEvent.victims.map(id => getEntityName(id));
+    // 3. FIXED: Preserve raw entity IDs for consistent frontend resolution
+    // Previously resolved entity names here, but this caused inconsistency:
+    // - Memory cache: raw IDs
+    // - Database: resolved names
+    // Now frontend handles ALL entity resolution consistently
+    // fullEvent.killers = fullEvent.killers.map(id => getEntityName(id));
+    // fullEvent.victims = fullEvent.victims.map(id => getEntityName(id));
     // If vehicleType or vehicleModel can also be entity IDs, resolve them too:
     // fullEvent.vehicleType = getEntityName(fullEvent.vehicleType || 'Unknown');
     // fullEvent.vehicleModel = getEntityName(fullEvent.vehicleModel || 'Unknown');
@@ -243,8 +245,8 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
 
     // 4. Format Description
     fullEvent.eventDescription = formatKillEventDescription(
-        fullEvent.killers, // Now contains resolved names
-        fullEvent.victims, // Now contains resolved names
+        fullEvent.killers, // Raw entity IDs (for consistent data)
+        fullEvent.victims, // Raw entity IDs (for consistent data)
         fullEvent.vehicleType || 'Unknown',
         fullEvent.vehicleModel || 'Unknown',
         fullEvent.deathType,
@@ -345,17 +347,17 @@ export async function correlateDeathWithDestruction(timestamp: string, playerNam
      }).catch(err => logger.error(MODULE_NAME, 'Error fetching RSI data for correlated victim', { victim: playerName }, ':', err));
 
 
-    // Resolve killer names for the correlated event as well, as they might not have been if the event was processed before definitions were ready
-    // or if this is an older event being updated.
-    targetEvent.killers = targetEvent.killers.map(id => getEntityName(id));
+    // FIXED: Preserve raw entity IDs for consistent frontend resolution
+    // Previously resolved killer names here, but this caused data inconsistency
+    // targetEvent.killers = targetEvent.killers.map(id => getEntityName(id));
 
     // Update description based on new victim info (and potentially resolved killer names)
     const destructionLevel = ['Hard', 'Combat', 'Collision', 'Crash'].includes(targetEvent.deathType) ? 2 : (targetEvent.deathType === 'Soft' ? 1 : 0);
     targetEvent.eventDescription = formatKillEventDescription(
-        targetEvent.killers, // Now contains resolved names
-        targetEvent.victims, // Now contains resolved player name
-        targetEvent.vehicleType || 'Unknown Vehicle', // Potentially resolve if it can be an ID: getEntityName(targetEvent.vehicleType || 'Unknown Vehicle')
-        targetEvent.vehicleModel || 'Unknown Model',   // Potentially resolve: getEntityName(targetEvent.vehicleModel || 'Unknown Model')
+        targetEvent.killers, // Raw entity IDs (consistent with data storage)
+        targetEvent.victims, // Raw entity IDs (consistent with data storage) 
+        targetEvent.vehicleType || 'Unknown Vehicle', // Raw entity IDs preserved
+        targetEvent.vehicleModel || 'Unknown Model',   // Raw entity IDs preserved
         targetEvent.deathType,
         destructionLevel
     );

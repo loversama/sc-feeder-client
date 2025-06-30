@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
-import UserAvatar from './UserAvatar.vue'; // Import the new UserAvatar component
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 import { Setting, Tickets, User, MapLocation } from '@element-plus/icons-vue'; // Import icons
+import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
@@ -49,9 +49,13 @@ const SCROLL_TO_TOP_THRESHOLD = 4000; // Show button after ~50 events worth of s
 const currentWindowOffset = ref<number>(0); // Tracks position in overall event stream
 const MAX_UI_EVENTS = 250; // Maximum events in UI at once
 const RESET_THRESHOLD = 200; // Events deep before triggering reset on scroll-to-top
+const pendingUnload = ref<boolean>(false); // Track pending unload operations
 
 
 let cleanupFunctions: (() => void)[] = [];
+
+// --- Entity Resolution ---
+const { resolveEntity, isLoading: isResolvingEntities } = useEntityResolver();
 
 // --- Icon Button Active State ---
 const isSettingsActive = ref(false);
@@ -328,23 +332,104 @@ const loadSoundEffectsSetting = async () => {
   }
 };
 
-// Enhanced kill events loading with proper scroll setup
+// Extract all entity IDs from events for batch processing
+const extractEntityIds = (events: KillEvent[]): string[] => {
+  const entityIds = new Set<string>();
+  
+  events.forEach(event => {
+    // Add killers and victims
+    event.killers?.forEach(id => entityIds.add(id));
+    event.victims?.forEach(id => entityIds.add(id));
+    
+    // Add vehicles and weapons
+    if (event.vehicleType) entityIds.add(event.vehicleType);
+    if (event.vehicleModel) entityIds.add(event.vehicleModel);
+    if (event.weapon) entityIds.add(event.weapon);
+  });
+  
+  return Array.from(entityIds).filter(id => id && id.trim());
+};
+
+// Eager resolution for event batches to minimize UI updates (unified approach)
+const eagerResolveEventEntities = async (events: KillEvent[]): Promise<void> => {
+  if (events.length === 0) return;
+  
+  console.log(`[Eager Resolution] Processing ${events.length} events...`);
+  const startTime = performance.now();
+  
+  // Extract all unique entity IDs
+  const entityIds = extractEntityIds(events);
+  console.log(`[Eager Resolution] Found ${entityIds.length} unique entities to resolve`);
+  
+  // Unified batch resolve entities (includes both display names and NPC status)
+  await resolveBatchEntities(entityIds);
+  
+  const endTime = performance.now();
+  console.log(`[Eager Resolution] Completed in ${(endTime - startTime).toFixed(1)}ms`);
+};
+
+// Wait for definitions service to be ready (prevents race condition on app startup)
+const waitForDefinitionsReady = async (): Promise<void> => {
+  const maxWaitTime = 10000; // 10 seconds max wait
+  const checkInterval = 100; // Check every 100ms
+  let elapsed = 0;
+  
+  while (elapsed < maxWaitTime) {
+    try {
+      // Check if definitions service is ready by trying to get version
+      if (window.logMonitorApi?.getDefinitionsVersion) {
+        const version = await window.logMonitorApi.getDefinitionsVersion();
+        if (version) {
+          console.log(`[KillFeed] Definitions service ready (version: ${version})`);
+          return;
+        }
+      }
+    } catch (error) {
+      // Service not ready yet, continue waiting
+    }
+    
+    // Wait before checking again
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+    elapsed += checkInterval;
+  }
+  
+  console.warn('[KillFeed] Definitions service not ready after 10 seconds, proceeding anyway');
+};
+
+// Enhanced kill events loading with eager resolution
 const loadKillEvents = async () => {
   try {
     console.log('[KillFeed] 🚀 Starting initial event load...');
     
     // Load initial events from EventStore
     const serverEvents = await window.logMonitorApi.getGlobalKillEvents(25);
-
-    // Update unified event array
+    console.log(`[KillFeed] Loaded ${serverEvents.length} events from server`);
+    
+    // Eager resolve all entities BEFORE displaying events
+    if (serverEvents.length > 0) {
+      await eagerResolveEventEntities(serverEvents);
+    }
+    
+    // Update unified event array (this will trigger UI update with resolved entities)
     allEvents.value = serverEvents;
+    console.log(`[KillFeed] Events displayed with pre-resolved entities`);
+    
+    // Double-check: if no entities were resolved (race condition fallback), force re-resolution
+    const resolvedCount = Array.from(entityResolutionCache.value.values()).length;
+    if (resolvedCount === 0 && serverEvents.length > 0) {
+      console.warn('[KillFeed] No entities were resolved in eager resolution, retrying after 1 second...');
+      setTimeout(async () => {
+        console.log('[KillFeed] Retrying entity resolution for initial events...');
+        await eagerResolveEventEntities(serverEvents);
+      }, 1000);
+    }
 
     // Check if there are more events available by trying to load one more batch
     // This determines if infinite scroll should be enabled
     const moreEventsCheck = await window.logMonitorApi.loadMoreEvents(1, serverEvents.length);
     hasMoreEvents.value = moreEventsCheck.hasMore || moreEventsCheck.events.length > 0;
 
-    console.log(`[KillFeed] ✅ Initial load: ${serverEvents.length} events, hasMoreEvents: ${hasMoreEvents.value}`);
+    console.log(`[KillFeed] ✅ Initial load complete: ${serverEvents.length} events, hasMoreEvents: ${hasMoreEvents.value}`);
 
     // Scroll to top after initial load and setup scroll detection
     nextTick(() => {
@@ -446,20 +531,347 @@ const playKillSound = () => {
   }
 };
 
-// Helper function to clean up ship names (similar to EventDetailsPage)
-const cleanShipName = (name: string | undefined): string => {
+// Enhanced entity resolution with persistent caching (includes NPC status)
+const entityResolutionCache = ref<Map<string, ResolvedEntity>>(new Map());
+const entityDisplayCache = ref<Map<string, string>>(new Map()); // Backward compatibility
+const persistentCacheKey = 'sc-feeder-entity-cache';
+const cacheVersion = 'v2'; // Increment to invalidate old caches
+
+// Load persistent cache on startup
+const loadPersistentCache = () => {
+  try {
+    const stored = localStorage.getItem(persistentCacheKey);
+    if (stored) {
+      const data = JSON.parse(stored);
+      if (data.version === cacheVersion) {
+        // Load new format (v2+) with full resolution data
+        if (data.resolvedEntities) {
+          console.log(`[Cache] Loading ${Object.keys(data.resolvedEntities).length} cached resolved entities from localStorage`);
+          entityResolutionCache.value = new Map(Object.entries(data.resolvedEntities));
+          // Also populate display cache for backward compatibility
+          const displayEntries: [string, string][] = Object.entries(data.resolvedEntities).map(([id, entity]: [string, any]) => [id, entity.displayName]);
+          entityDisplayCache.value = new Map(displayEntries);
+          return true;
+        }
+        // Load old format (v1) with just display names
+        if (data.entities) {
+          console.log(`[Cache] Loading ${Object.keys(data.entities).length} cached display names from localStorage (legacy format)`);
+          entityDisplayCache.value = new Map(Object.entries(data.entities));
+          return true;
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[Cache] Failed to load persistent cache:', error);
+  }
+  return false;
+};
+
+// Save cache to localStorage
+const savePersistentCache = () => {
+  try {
+    const data = {
+      version: cacheVersion,
+      timestamp: Date.now(),
+      resolvedEntities: Object.fromEntries(entityResolutionCache.value),
+      entities: Object.fromEntries(entityDisplayCache.value) // Backward compatibility
+    };
+    localStorage.setItem(persistentCacheKey, JSON.stringify(data));
+  } catch (error) {
+    console.warn('[Cache] Failed to save persistent cache:', error);
+  }
+};
+
+// Fallback cleanup function (synchronous, from original cleanShipName)
+const cleanEntityNameFallback = (name: string | undefined): string => {
   if (!name) return 'Unknown';
+  
   // Basic cleanup: remove manufacturer prefix and replace underscores
   const parts = name.split('_');
   if (parts.length > 1) {
-    // Attempt to remove common manufacturer prefixes if they exist
     const manufacturers = ["ORIG", "CRUS", "RSI", "AEGS", "VNCL", "DRAK", "ANVL", "BANU", "MISC", "CNOU", "XIAN", "GAMA", "TMBL", "ESPR", "KRIG", "GRIN", "XNAA", "MRAI"];
     if (manufacturers.includes(parts[0])) {
       return parts.slice(1).join(' ').replace(/_/g, ' ');
     }
   }
-  // Fallback: just replace underscores if no prefix found or only one part
   return name.replace(/_/g, ' ');
+};
+
+// Synchronous function that returns immediate fallback, but triggers async resolution
+const cleanShipName = (name: string | undefined): string => {
+  if (!name) return 'Unknown';
+  
+  const cacheKey = name;
+  
+  // Return cached result if available
+  if (entityDisplayCache.value.has(cacheKey)) {
+    return entityDisplayCache.value.get(cacheKey)!;
+  }
+  
+  // Start async resolution in background
+  resolveEntityInBackground(name);
+  
+  // Return immediate fallback (this preserves the original behavior)
+  return cleanEntityNameFallback(name);
+};
+
+// Batch resolution for multiple entities (used for eager loading) - returns full ResolvedEntity objects
+const resolveBatchEntities = async (entityIds: string[]): Promise<Map<string, ResolvedEntity>> => {
+  const results = new Map<string, ResolvedEntity>();
+  const unknownEntities = entityIds.filter(id => !entityResolutionCache.value.has(id));
+  
+  if (unknownEntities.length === 0) {
+    // Return cached entities
+    entityIds.forEach(id => {
+      const cached = entityResolutionCache.value.get(id);
+      if (cached) {
+        results.set(id, cached);
+      }
+    });
+    return results;
+  }
+  
+  console.log(`[Batch Resolution] Resolving ${unknownEntities.length} unknown entities...`);
+  
+  // Resolve all unknown entities in parallel
+  const resolutionPromises = unknownEntities.map(async (entityId) => {
+    try {
+      const resolved = await resolveEntity(entityId);
+      return { entityId, resolved };
+    } catch (error) {
+      console.warn(`Failed to resolve entity ${entityId}:`, error);
+      // Return fallback resolved entity
+      return {
+        entityId,
+        resolved: {
+          displayName: cleanEntityNameFallback(entityId),
+          isNpc: false,
+          category: 'unknown' as const,
+          matchMethod: 'fallback' as const,
+          originalId: entityId
+        }
+      };
+    }
+  });
+  
+  const resolvedEntities = await Promise.all(resolutionPromises);
+  
+  // Update both caches with resolved entities
+  const newResolutionCache = new Map(entityResolutionCache.value);
+  const newDisplayCache = new Map(entityDisplayCache.value);
+  
+  resolvedEntities.forEach(({ entityId, resolved }) => {
+    newResolutionCache.set(entityId, resolved);
+    newDisplayCache.set(entityId, resolved.displayName); // Backward compatibility
+    results.set(entityId, resolved);
+  });
+  
+  entityResolutionCache.value = newResolutionCache;
+  entityDisplayCache.value = newDisplayCache;
+  
+  // Save to persistent cache
+  if (resolvedEntities.length > 0) {
+    savePersistentCache();
+  }
+  
+  console.log(`[Batch Resolution] Resolved ${resolvedEntities.length} entities with NPC status`);
+  return results;
+};
+
+// Background resolution that updates the reactive cache (for individual entities)
+const resolveEntityInBackground = async (entityId: string, serverEnriched?: any) => {
+  const cacheKey = entityId;
+  
+  // Skip if already resolved
+  if (entityResolutionCache.value.has(cacheKey)) {
+    return;
+  }
+  
+  try {
+    const resolved = await resolveEntity(entityId, serverEnriched);
+    
+    // Update both caches
+    const newResolutionCache = new Map(entityResolutionCache.value);
+    const newDisplayCache = new Map(entityDisplayCache.value);
+    
+    newResolutionCache.set(cacheKey, resolved);
+    newDisplayCache.set(cacheKey, resolved.displayName); // Backward compatibility
+    
+    entityResolutionCache.value = newResolutionCache;
+    entityDisplayCache.value = newDisplayCache;
+    
+    // Save to persistent cache periodically
+    if (Math.random() < 0.1) { // 10% chance to save (throttle saves)
+      savePersistentCache();
+    }
+  } catch (error) {
+    console.warn('Background entity resolution failed:', error);
+    // Don't cache failures, just use the fallback
+  }
+};
+
+// Helper to get the display name (either cached resolved or fallback)
+const getEntityDisplayName = (entityId: string | undefined): string => {
+  if (!entityId) return 'Unknown';
+  
+  const cacheKey = entityId;
+  if (entityDisplayCache.value.has(cacheKey)) {
+    return entityDisplayCache.value.get(cacheKey)!;
+  }
+  
+  return cleanEntityNameFallback(entityId);
+};
+
+// NPC detection cache for reactive updates
+const npcStatusCache = ref<Map<string, boolean>>(new Map());
+const npcCacheKey = 'sc-feeder-npc-cache';
+
+// Load persistent NPC cache on startup
+const loadPersistentNpcCache = () => {
+  try {
+    const stored = localStorage.getItem(npcCacheKey);
+    if (stored) {
+      const data = JSON.parse(stored);
+      if (data.version === cacheVersion && data.npcs) {
+        console.log(`[NPC Cache] Loading ${Object.keys(data.npcs).length} cached NPC statuses from localStorage`);
+        npcStatusCache.value = new Map(Object.entries(data.npcs).map(([k, v]) => [k, Boolean(v)]));
+        return true;
+      }
+    }
+  } catch (error) {
+    console.warn('[NPC Cache] Failed to load persistent NPC cache:', error);
+  }
+  return false;
+};
+
+// Save NPC cache to localStorage
+const savePersistentNpcCache = () => {
+  try {
+    const data = {
+      version: cacheVersion,
+      timestamp: Date.now(),
+      npcs: Object.fromEntries(npcStatusCache.value)
+    };
+    localStorage.setItem(npcCacheKey, JSON.stringify(data));
+  } catch (error) {
+    console.warn('[NPC Cache] Failed to save persistent NPC cache:', error);
+  }
+};
+
+// Legacy NPC batch resolution - now replaced by unified entity resolution
+// This function is kept for potential fallback use but should rarely be called
+const resolveBatchNpcStatus = async (entityIds: string[]): Promise<Map<string, boolean>> => {
+  console.warn('[NPC Batch] Using legacy NPC resolution - this should be rare with unified resolution');
+  const results = new Map<string, boolean>();
+  const unknownEntities = entityIds.filter(id => !npcStatusCache.value.has(id) && !entityResolutionCache.value.has(id));
+  
+  if (unknownEntities.length === 0) {
+    return results; // All entities already cached
+  }
+  
+  console.log(`[NPC Batch] Checking ${unknownEntities.length} unknown entities for NPC status...`);
+  
+  // Check all unknown entities in parallel
+  if (window.logMonitorApi?.isNpcEntity) {
+    const npcCheckPromises = unknownEntities.map(async (entityId) => {
+      try {
+        const isNpc = await window.logMonitorApi.isNpcEntity(entityId);
+        return { entityId, isNpc };
+      } catch (error) {
+        console.warn(`Failed to check NPC status for ${entityId}:`, error);
+        return { entityId, isNpc: false }; // Default to non-NPC on error
+      }
+    });
+    
+    const npcResults = await Promise.all(npcCheckPromises);
+    
+    // Update cache with results
+    const newCache = new Map(npcStatusCache.value);
+    npcResults.forEach(({ entityId, isNpc }) => {
+      newCache.set(entityId, isNpc);
+      results.set(entityId, isNpc);
+    });
+    
+    npcStatusCache.value = newCache;
+    
+    // Save to persistent cache
+    if (npcResults.length > 0) {
+      savePersistentNpcCache();
+    }
+    
+    const npcCount = npcResults.filter(r => r.isNpc).length;
+    console.log(`[NPC Batch] Found ${npcCount} NPCs out of ${unknownEntities.length} checked entities`);
+  }
+  
+  return results;
+};
+
+// Check if an entity is an NPC using resolved entity cache (unified approach)
+const isEntityNpc = (entityId: string): boolean => {
+  if (!entityId) return false;
+  
+  // Check resolved entity cache first (most reliable)
+  const resolvedEntity = entityResolutionCache.value.get(entityId);
+  if (resolvedEntity) {
+    console.log(`[NPC Check] ${entityId} -> ${resolvedEntity.isNpc ? 'NPC' : 'Player'} (from resolved cache, display: "${resolvedEntity.displayName}")`);
+    return resolvedEntity.isNpc;
+  }
+  
+  // Fallback to old NPC cache for backward compatibility
+  if (npcStatusCache.value.has(entityId)) {
+    const isNpc = npcStatusCache.value.get(entityId)!;
+    console.log(`[NPC Check] ${entityId} -> ${isNpc ? 'NPC' : 'Player'} (from legacy NPC cache)`);
+    return isNpc;
+  }
+  
+  // Start background resolution for unknown entities (this will populate both display name and NPC status)
+  console.log(`[NPC Check] ${entityId} -> Unknown, starting background resolution...`);
+  resolveEntityInBackground(entityId);
+  
+  // Return false by default (will update when background resolution completes)
+  return false;
+};
+
+// Background NPC status check that updates the reactive cache (for individual entities)
+const checkNpcStatusInBackground = async (entityId: string) => {
+  try {
+    if (window.logMonitorApi?.isNpcEntity) {
+      const isNpc = await window.logMonitorApi.isNpcEntity(entityId);
+      
+      // Update the reactive cache
+      const newCache = new Map(npcStatusCache.value);
+      newCache.set(entityId, isNpc);
+      npcStatusCache.value = newCache;
+      
+      // Save to persistent cache periodically
+      if (Math.random() < 0.2) { // 20% chance to save (throttle saves)
+        savePersistentNpcCache();
+      }
+    }
+  } catch (error) {
+    console.warn('NPC status check failed:', error);
+  }
+};
+
+// Process new events to trigger background resolution for all entities
+const processEventEntities = (event: KillEvent) => {
+  // Resolve killers/victims
+  event.killers?.forEach(killer => {
+    resolveEntityInBackground(killer);
+    checkNpcStatusInBackground(killer);
+  });
+  event.victims?.forEach(victim => {
+    resolveEntityInBackground(victim);
+    checkNpcStatusInBackground(victim);
+  });
+  
+  // Resolve vehicle and weapon
+  if (event.vehicleType) {
+    resolveEntityInBackground(event.vehicleType);
+    checkNpcStatusInBackground(event.vehicleType);
+  }
+  if (event.vehicleModel) resolveEntityInBackground(event.vehicleModel);
+  if (event.weapon) resolveEntityInBackground(event.weapon);
 };
 
 
@@ -676,6 +1088,11 @@ const loadMoreEvents = async () => {
       console.log(`[KillFeed] Loading more search results (offset: ${offset})`);
       const results = await window.logMonitorApi.searchEvents(searchQuery.value, 25, offset);
       
+      // Eager resolve entities for search results BEFORE adding to display
+      if (results.events.length > 0) {
+        await eagerResolveEventEntities(results.events);
+      }
+      
       searchResults.value = [...searchResults.value, ...results.events];
       
       // Schedule search results cleanup to prevent jitter
@@ -695,6 +1112,12 @@ const loadMoreEvents = async () => {
       // Add new events to existing array (avoiding duplicates) - BACK TO ORIGINAL FAST METHOD
       const newEventIds = new Set(allEvents.value.map(e => e.id));
       const uniqueNewEvents = results.events.filter(e => !newEventIds.has(e.id));
+      
+      // Eager resolve entities for new events BEFORE adding to display
+      if (uniqueNewEvents.length > 0) {
+        await eagerResolveEventEntities(uniqueNewEvents);
+      }
+      
       allEvents.value = [...allEvents.value, ...uniqueNewEvents];
       
       // Maintain sliding window of MAX_UI_EVENTS
@@ -899,11 +1322,26 @@ onMounted(async () => { // Make onMounted async
         console.warn('[KillFeed] onWebContentWindowStatus API not available.');
       }
     })()
- ]).then(() => loadKillEvents()); // Load events after checking auth, offline mode, and settings
+ ]).then(async () => {
+    // Load persistent caches before loading events
+    console.log('[KillFeed] Loading persistent caches...');
+    loadPersistentCache();
+    loadPersistentNpcCache();
+    
+    // Wait for definitions service to be ready before loading events
+    console.log('[KillFeed] Waiting for definitions service to initialize...');
+    await waitForDefinitionsReady();
+    
+    // TODO: Add listener for definitions updates when API is available
+    // This would invalidate caches and re-resolve entities when definitions change
+    
+    // Load events after checking auth, offline mode, caches, and definitions
+    return loadKillEvents();
+  });
 
  // Listen for events from local parsing and server filtering
  cleanupFunctions.push(
-    window.logMonitorApi.onKillFeedEvent((_event, data: { event: KillEvent, source: 'server' | 'local' } | null) => {
+    window.logMonitorApi.onKillFeedEvent(async (_event, data: { event: KillEvent, source: 'server' | 'local' } | null) => {
       if (data === null) {
         // Handle signal to clear events
         console.log("Received signal to clear kill events.");
@@ -972,6 +1410,10 @@ onMounted(async () => { // Make onMounted async
         if (existingIndex !== -1) {
           // Existing event found - REPLACE it (e.g., local event gets server verification)
           console.log(`Updated existing event: ${killEvent.id}`);
+          
+          // Eager resolve entities for the updated event
+          await eagerResolveEventEntities([killEvent]);
+          
           const updatedEvents = [...allEvents.value];
           updatedEvents[existingIndex] = killEvent;
           allEvents.value = updatedEvents;
@@ -989,6 +1431,9 @@ onMounted(async () => { // Make onMounted async
           } else {
             console.log(`Added new ${source} event: ${killEvent.id}`);
           }
+          
+          // Eager resolve entities for the new event BEFORE adding to display
+          await eagerResolveEventEntities([killEvent]);
           
           const newEvents = [killEvent, ...allEvents.value];
           allEvents.value = newEvents;
@@ -1232,7 +1677,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           <!-- Player Involved Badge -->
           <!-- Show 'OTHER' badge if event involves player and user is viewing global feed -->
           <span v-if="event.isPlayerInvolved && isAuthenticated" class="player-other-badge">OTHER</span>
-          <span class="event-location" v-if="event.location">{{ event.location }}</span>
+          <span class="event-location" v-if="event.location">{{ getEntityDisplayName(event.location) }}</span>
           <span class="event-time">{{ formatTime(event.timestamp) }}
             <!-- Server Source Indicator (subtle pip) - moved under time -->
             <span v-if="event.metadata?.source?.server || event.metadata?.source?.external" 
@@ -1251,7 +1696,10 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             <template v-if="event.killers[0] === 'Environment' || event.deathType === 'Crash'">
               <div class="victims">
                 <template v-for="(victim, index) in event.victims" :key="victim">
-                  <span class="victim">{{ victim }}</span>
+                  <span class="victim">
+                    {{ getEntityDisplayName(victim) }}
+                    <span v-if="isEntityNpc(victim)" class="npc-tag">NPC</span>
+                  </span>
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
               </div>
@@ -1265,8 +1713,10 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             <template v-else>
               <div class="attackers player-info">
                 <span v-for="(attacker, index) in event.killers" :key="attacker" class="player-entry">
-                  <UserAvatar :user-handle="attacker" :size="20" class="avatar" />
-                  <span class="player-name">{{ attacker }}</span>
+                  <span class="player-name">
+                    {{ getEntityDisplayName(attacker) }}
+                    <span v-if="isEntityNpc(attacker)" class="npc-tag">NPC</span>
+                  </span>
                   <span v-if="index < event.killers.length - 1" class="operator"> + </span>
                 </span>
               </div>
@@ -1274,9 +1724,11 @@ const getServerSourceTooltip = (event: KillEvent): string => {
               <div class="victims player-info">
                 <template v-for="(victim, index) in event.victims" :key="victim">
                   <span class="player-entry">
-                    <UserAvatar :user-handle="victim" :size="20" class="avatar" />
                     <!-- Display cleaned vehicle name if victim is a ship ID, otherwise the victim name -->
-                    <span class="player-name">{{ victim.includes('_') ? cleanShipName(event.vehicleType || victim) : victim }}</span>
+                    <span class="player-name">
+                      {{ victim.includes('_') ? getEntityDisplayName(event.vehicleType || victim) : getEntityDisplayName(victim) }}
+                      <span v-if="isEntityNpc(victim)" class="npc-tag">NPC</span>
+                    </span>
                   </span>
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
@@ -1284,13 +1736,13 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             </template>
             <!-- Show vehicle info only if victim is NOT a ship ID and vehicleType exists -->
             <div class="vehicle-info" v-if="event.vehicleType && event.vehicleType !== 'Player' && !event.victims[0]?.includes('_')">
-              ({{ cleanShipName(event.vehicleType) }})
+              ({{ getEntityDisplayName(event.vehicleType) }})
             </div>
           </div>
           <!-- Optional: Display Weapon/Damage -->
            <div class="event-details" v-if="event.weapon && event.weapon !== 'unknown' && event.weapon !== 'Collision'">
-             <span class="detail-label">Method:</span> {{ event.weapon }}
-             <span v-if="event.damageType && event.damageType !== event.weapon">({{ event.damageType }})</span>
+             <span class="detail-label">Method:</span> {{ getEntityDisplayName(event.weapon) }}
+             <span v-if="event.damageType && event.damageType !== event.weapon">({{ getEntityDisplayName(event.damageType) }})</span>
            </div>
            <!-- Optional: Display RSI Info -->
            <div class="event-details rsi-details" v-if="event.victimOrg || event.victimRsiRecord">
@@ -2043,6 +2495,35 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   opacity: 0.7;
   writing-mode: vertical-rl;
   text-orientation: mixed;
+}
+
+/* NPC Tag Styling */
+.npc-tag {
+  display: inline-block;
+  background-color: #1a1a1a; /* Dark background */
+  color: #888; /* Gray text */
+  font-size: 0.7em;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  border: 1px solid #333;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+}
+
+/* Optional hover effect for NPC tags */
+.npc-tag:hover {
+  background-color: #2a2a2a;
+  border-color: #444;
+}
+
+/* Make NPC tags slightly smaller in victim context */
+.victim .npc-tag {
+  font-size: 0.65em;
+  padding: 1px 4px;
 }
 
 </style>

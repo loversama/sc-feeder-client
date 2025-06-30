@@ -25,6 +25,7 @@ import * as CsvLogger from './csv-logger.ts'; // Added .ts
 import { getCurrentUsername } from './log-parser.ts'; // Needed for event details window - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
+import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions } from './definitionsService.ts'; // Import entity resolution functions
 
 const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
 
@@ -626,6 +627,98 @@ ipcMain.handle('auth:show-login', () => {
             window.close();
         } else {
             logger.error(MODULE_NAME, 'Could not find window for close command');
+        }
+    });
+
+    // --- Entity Resolution Handlers ---
+    ipcMain.handle('entity:resolve', (event, entityId: string, serverEnriched?: any) => {
+        try {
+            return resolveEntityName(entityId);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error resolving entity:', error);
+            return {
+                displayName: entityId,
+                isNpc: false,
+                category: 'unknown',
+                matchMethod: 'fallback'
+            };
+        }
+    });
+
+    ipcMain.handle('entity:resolve-batch', (event, entityIds: string[]) => {
+        try {
+            return entityIds.map(id => resolveEntityName(id));
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error resolving entities batch:', error);
+            return entityIds.map(id => ({
+                displayName: id,
+                isNpc: false,
+                category: 'unknown',
+                matchMethod: 'fallback'
+            }));
+        }
+    });
+
+    ipcMain.handle('entity:is-npc', (event, entityId: string) => {
+        try {
+            return isNpcEntity(entityId);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error checking NPC status:', error);
+            return false;
+        }
+    });
+
+    ipcMain.handle('entity:filter-npcs', (event, entityIds: string[]) => {
+        try {
+            return entityIds.filter(id => !isNpcEntity(id));
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error filtering NPCs:', error);
+            return entityIds;
+        }
+    });
+
+    ipcMain.handle('definitions:get', () => {
+        try {
+            return getDefinitions();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting definitions:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('definitions:get-version', () => {
+        try {
+            return getDefinitionsVersion();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting definitions version:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('definitions:get-stats', () => {
+        try {
+            return getCacheStats();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting cache stats:', error);
+            return {
+                version: null,
+                timestamp: null,
+                lastUpdated: null,
+                entityCounts: {},
+                patternStats: { compiled: 0, failed: 0 },
+                isLoaded: false
+            };
+        }
+    });
+
+    ipcMain.handle('definitions:force-refresh', async (event, serverBaseUrl?: string) => {
+        try {
+            // Use default server URL if not provided
+            const SERVER_URL = serverBaseUrl || 'http://localhost:5252'; // Default from server-config
+            return await forceRefreshDefinitions(SERVER_URL);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error force refreshing definitions:', error);
+            return false;
         }
     });
 

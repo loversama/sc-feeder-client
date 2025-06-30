@@ -72,6 +72,35 @@ export interface LogMonitorApi {
   closeWebContentWindow: () => Promise<boolean>;
   // Window controls are now handled by custom-electron-titlebar
 
+  // Entity Resolution API
+  resolveEntity: (entityId: string, serverEnriched?: any) => Promise<{
+    displayName: string;
+    isNpc: boolean;
+    category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown';
+    matchMethod: 'exact' | 'pattern' | 'fallback';
+  }>;
+  resolveEntitiesBatch: (entityIds: string[]) => Promise<Array<{
+    displayName: string;
+    isNpc: boolean;
+    category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown';
+    matchMethod: 'exact' | 'pattern' | 'fallback';
+  }>>;
+  isNpcEntity: (entityId: string) => Promise<boolean>;
+  filterNpcs: (entityIds: string[]) => Promise<string[]>;
+
+  // Definitions API
+  getDefinitions: () => Promise<any>;
+  getDefinitionsVersion: () => Promise<string | null>;
+  getDefinitionsStats: () => Promise<{
+    version: string | null;
+    timestamp: number | null;
+    lastUpdated: string | null;
+    entityCounts: Record<string, number>;
+    patternStats: { compiled: number; failed: number; };
+    isLoaded: boolean;
+  }>;
+  forceRefreshDefinitions: (serverBaseUrl?: string) => Promise<boolean>;
+
   // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
   getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }>; // Expanded

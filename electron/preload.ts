@@ -146,6 +146,26 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'),
   // Window controls are now handled by custom-electron-titlebar
 
+  // Entity Resolution API
+  resolveEntity: (entityId: string, serverEnriched?: any): Promise<any> => 
+    ipcRenderer.invoke('entity:resolve', entityId, serverEnriched),
+  resolveEntitiesBatch: (entityIds: string[]): Promise<any[]> => 
+    ipcRenderer.invoke('entity:resolve-batch', entityIds),
+  isNpcEntity: (entityId: string): Promise<boolean> => 
+    ipcRenderer.invoke('entity:is-npc', entityId),
+  filterNpcs: (entityIds: string[]): Promise<string[]> => 
+    ipcRenderer.invoke('entity:filter-npcs', entityIds),
+  
+  // Definitions API
+  getDefinitions: (): Promise<any> => 
+    ipcRenderer.invoke('definitions:get'),
+  getDefinitionsVersion: (): Promise<string | null> => 
+    ipcRenderer.invoke('definitions:get-version'),
+  getDefinitionsStats: (): Promise<any> => 
+    ipcRenderer.invoke('definitions:get-stats'),
+  forceRefreshDefinitions: (serverBaseUrl?: string): Promise<boolean> => 
+    ipcRenderer.invoke('definitions:force-refresh', serverBaseUrl),
+
   // Debug Actions
   resetSessions: (): Promise<boolean> => ipcRenderer.invoke('reset-sessions'),
   resetEvents: (): Promise<boolean> => ipcRenderer.invoke('reset-events'),

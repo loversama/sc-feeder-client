@@ -179,6 +179,16 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   closeSettingsWindow: () => require$$0.ipcRenderer.invoke("close-settings-window"),
   closeWebContentWindow: () => require$$0.ipcRenderer.invoke("close-web-content-window"),
   // Window controls are now handled by custom-electron-titlebar
+  // Entity Resolution API
+  resolveEntity: (entityId, serverEnriched) => require$$0.ipcRenderer.invoke("entity:resolve", entityId, serverEnriched),
+  resolveEntitiesBatch: (entityIds) => require$$0.ipcRenderer.invoke("entity:resolve-batch", entityIds),
+  isNpcEntity: (entityId) => require$$0.ipcRenderer.invoke("entity:is-npc", entityId),
+  filterNpcs: (entityIds) => require$$0.ipcRenderer.invoke("entity:filter-npcs", entityIds),
+  // Definitions API
+  getDefinitions: () => require$$0.ipcRenderer.invoke("definitions:get"),
+  getDefinitionsVersion: () => require$$0.ipcRenderer.invoke("definitions:get-version"),
+  getDefinitionsStats: () => require$$0.ipcRenderer.invoke("definitions:get-stats"),
+  forceRefreshDefinitions: (serverBaseUrl) => require$$0.ipcRenderer.invoke("definitions:force-refresh", serverBaseUrl),
   // Debug Actions
   resetSessions: () => require$$0.ipcRenderer.invoke("reset-sessions"),
   resetEvents: () => require$$0.ipcRenderer.invoke("reset-events"),
