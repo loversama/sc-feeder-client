@@ -165,6 +165,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.invoke('definitions:get-stats'),
   forceRefreshDefinitions: (serverBaseUrl?: string): Promise<boolean> => 
     ipcRenderer.invoke('definitions:force-refresh', serverBaseUrl),
+  forceRefreshNpcList: (): Promise<boolean> => 
+    ipcRenderer.invoke('force-refresh-npc-list'),
 
   // Debug Actions
   resetSessions: (): Promise<boolean> => ipcRenderer.invoke('reset-sessions'),
@@ -197,6 +199,13 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getPreloadPath: (scriptName: string): Promise<string> => ipcRenderer.invoke('get-preload-path', scriptName),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
   getGuestModeStatus: (): Promise<boolean> => ipcRenderer.invoke('app:get-guest-mode-status'),
+
+  // --- Generic IPC Message Listener ---
+  onIpcMessage: (channel: string, callback: (...args: any[]) => void) => {
+    const listener = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  },
 
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: any) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, authData: any) => callback(_event, authData);

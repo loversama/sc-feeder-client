@@ -32635,6 +32635,23 @@ ipcMain$1.handle("get-preload-path", (_event, filename) => {
     throw error$12;
   }
 });
+const windowManager = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  closeAllWindows,
+  closeLoginWindow,
+  closeSettingsWindow,
+  closeWebContentWindow,
+  createEventDetailsWindow,
+  createLoginWindow,
+  createMainWindow,
+  createSettingsWindow,
+  createWebContentWindow,
+  getActiveEventDataForWindow,
+  getIconPath,
+  getMainWindow,
+  getSettingsStatus,
+  getWebContentStatus
+}, Symbol.toStringTag, { value: "Module" }));
 const MODULE_NAME$g = "TrayManager";
 const __filename$2 = fileURLToPath(import.meta.url);
 path$n.dirname(__filename$2);
@@ -161062,12 +161079,28 @@ function getEntityName(entityId) {
   return resolveEntityName(entityId).displayName;
 }
 async function forceRefreshDefinitions(serverBaseUrl) {
+  var _a3;
   info("[DefinitionsService] Force refreshing definitions from server...");
   const success$1 = await updateAndSaveDefinitions(serverBaseUrl);
   if (success$1) {
     success("[DefinitionsService] Force refresh completed successfully");
+    const { getMainWindow: getMainWindow2 } = await Promise.resolve().then(() => windowManager);
+    (_a3 = getMainWindow2()) == null ? void 0 : _a3.webContents.send("definitions-updated");
   } else {
     error("[DefinitionsService] Force refresh failed");
+  }
+  return success$1;
+}
+async function forceRefreshNpcList(serverBaseUrl) {
+  var _a3;
+  info("[DefinitionsService] Force refreshing NPC ignore list from server...");
+  const success$1 = await updateNpcIgnoreList(serverBaseUrl);
+  if (success$1) {
+    success("[DefinitionsService] NPC ignore list force refresh completed successfully");
+    const { getMainWindow: getMainWindow2 } = await Promise.resolve().then(() => windowManager);
+    (_a3 = getMainWindow2()) == null ? void 0 : _a3.webContents.send("definitions-updated");
+  } else {
+    error("[DefinitionsService] NPC ignore list force refresh failed");
   }
   return success$1;
 }
@@ -172885,6 +172918,15 @@ function registerIpcHandlers() {
       return await forceRefreshDefinitions(SERVER_URL2);
     } catch (error$12) {
       error(MODULE_NAME$2, "Error force refreshing definitions:", error$12);
+      return false;
+    }
+  });
+  ipcMain$1.handle("force-refresh-npc-list", async () => {
+    try {
+      const SERVER_URL2 = "http://localhost:5252";
+      return await forceRefreshNpcList(SERVER_URL2);
+    } catch (error$12) {
+      error(MODULE_NAME$2, "Error force refreshing NPC list:", error$12);
       return false;
     }
   });

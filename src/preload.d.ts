@@ -100,6 +100,7 @@ export interface LogMonitorApi {
     isLoaded: boolean;
   }>;
   forceRefreshDefinitions: (serverBaseUrl?: string) => Promise<boolean>;
+  forceRefreshNpcList: () => Promise<boolean>;
 
   // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
@@ -137,6 +138,7 @@ export interface LogMonitorApi {
   onLogStatus: (callback: (event: IpcRendererEvent, status: string) => void) => () => void;
   onLogPathUpdated: (callback: (event: IpcRendererEvent, newPath: string) => void) => () => void;
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'server' | 'local' } | null) => void) => () => void;
+  onIpcMessage: (channel: string, callback: (...args: any[]) => void) => () => void;
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
   // For webview, it will listen to 'auth-tokens-updated' directly via window.ipcRenderer.on
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;

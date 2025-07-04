@@ -1332,8 +1332,24 @@ onMounted(async () => { // Make onMounted async
     console.log('[KillFeed] Waiting for definitions service to initialize...');
     await waitForDefinitionsReady();
     
-    // TODO: Add listener for definitions updates when API is available
-    // This would invalidate caches and re-resolve entities when definitions change
+    // Set up listener for definitions updates (from debug refresh buttons)
+    if (window.logMonitorApi?.onIpcMessage) {
+      const cleanup = window.logMonitorApi.onIpcMessage('definitions-updated', async () => {
+        console.log('[KillFeed] Definitions updated, invalidating entity caches...');
+        // Clear caches to force re-resolution with new definitions
+        entityResolutionCache.value.clear();
+        entityDisplayCache.value.clear();
+        npcStatusCache.value.clear();
+        
+        // Re-resolve all visible entities
+        if (allEvents.value.length > 0) {
+          console.log('[KillFeed] Re-resolving entities with updated definitions...');
+          await eagerResolveEventEntities(allEvents.value);
+          console.log('[KillFeed] Entity re-resolution complete');
+        }
+      });
+      cleanupFunctions.push(cleanup);
+    }
     
     // Load events after checking auth, offline mode, caches, and definitions
     return loadKillEvents();

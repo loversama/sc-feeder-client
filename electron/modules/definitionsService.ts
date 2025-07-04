@@ -847,8 +847,31 @@ export async function forceRefreshDefinitions(serverBaseUrl: string): Promise<bo
   
   if (success) {
     logger.success('[DefinitionsService] Force refresh completed successfully');
+    // Notify main window that definitions were updated
+    const { getMainWindow } = await import('./window-manager');
+    getMainWindow()?.webContents.send('definitions-updated');
   } else {
     logger.error('[DefinitionsService] Force refresh failed');
+  }
+  
+  return success;
+}
+
+/**
+ * Forces a refresh of NPC ignore list from the server.
+ */
+export async function forceRefreshNpcList(serverBaseUrl: string): Promise<boolean> {
+  logger.info('[DefinitionsService] Force refreshing NPC ignore list from server...');
+  
+  const success = await updateNpcIgnoreList(serverBaseUrl);
+  
+  if (success) {
+    logger.success('[DefinitionsService] NPC ignore list force refresh completed successfully');
+    // Notify main window that NPC list was updated
+    const { getMainWindow } = await import('./window-manager');
+    getMainWindow()?.webContents.send('definitions-updated');
+  } else {
+    logger.error('[DefinitionsService] NPC ignore list force refresh failed');
   }
   
   return success;

@@ -189,6 +189,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getDefinitionsVersion: () => require$$0.ipcRenderer.invoke("definitions:get-version"),
   getDefinitionsStats: () => require$$0.ipcRenderer.invoke("definitions:get-stats"),
   forceRefreshDefinitions: (serverBaseUrl) => require$$0.ipcRenderer.invoke("definitions:force-refresh", serverBaseUrl),
+  forceRefreshNpcList: () => require$$0.ipcRenderer.invoke("force-refresh-npc-list"),
   // Debug Actions
   resetSessions: () => require$$0.ipcRenderer.invoke("reset-sessions"),
   resetEvents: () => require$$0.ipcRenderer.invoke("reset-events"),
@@ -215,6 +216,12 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),
   getAppVersion: () => require$$0.ipcRenderer.invoke("get-app-version"),
   getGuestModeStatus: () => require$$0.ipcRenderer.invoke("app:get-guest-mode-status"),
+  // --- Generic IPC Message Listener ---
+  onIpcMessage: (channel, callback) => {
+    const listener = (_event, ...args) => callback(...args);
+    require$$0.ipcRenderer.on(channel, listener);
+    return () => require$$0.ipcRenderer.removeListener(channel, listener);
+  },
   onMainAuthUpdate: (callback) => {
     const listener = (_event, authData) => callback(_event, authData);
     require$$0.ipcRenderer.on("main-auth-update", listener);

@@ -25,7 +25,7 @@ import * as CsvLogger from './csv-logger.ts'; // Added .ts
 import { getCurrentUsername } from './log-parser.ts'; // Needed for event details window - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
-import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions } from './definitionsService.ts'; // Import entity resolution functions
+import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
 
 const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
 
@@ -718,6 +718,18 @@ ipcMain.handle('auth:show-login', () => {
             return await forceRefreshDefinitions(SERVER_URL);
         } catch (error) {
             logger.error(MODULE_NAME, 'Error force refreshing definitions:', error);
+            return false;
+        }
+    });
+
+    // --- Force Refresh NPC List Handler ---
+    ipcMain.handle('force-refresh-npc-list', async () => {
+        try {
+            // Use default server URL 
+            const SERVER_URL = 'http://localhost:5252'; // Default from server-config
+            return await forceRefreshNpcList(SERVER_URL);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error force refreshing NPC list:', error);
             return false;
         }
     });

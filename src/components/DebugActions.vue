@@ -92,6 +92,72 @@ const handleCheckForUpdate = () => {
   statusMessage.value = 'Simulating update check in main window...';
   setTimeout(() => { statusMessage.value = ''; }, 3000);
 }
+
+// --- Definitions Refresh Handlers ---
+const handleRefreshDefinitions = async () => {
+  isLoading.value = true;
+  statusMessage.value = 'Force refreshing definitions from server...';
+  try {
+    const success = await window.logMonitorApi.forceRefreshDefinitions();
+    if (success) {
+      statusMessage.value = 'Definitions refreshed successfully! Kill feed entities will update with new names.';
+    } else {
+      statusMessage.value = 'Failed to refresh definitions from server.';
+    }
+  } catch (error: any) {
+    console.error('Error refreshing definitions:', error);
+    statusMessage.value = `Error refreshing definitions: ${error.message}`;
+  } finally {
+    isLoading.value = false;
+    setTimeout(() => { statusMessage.value = ''; }, 8000);
+  }
+}
+
+const handleRefreshNpcList = async () => {
+  isLoading.value = true;
+  statusMessage.value = 'Force refreshing NPC ignore list from server...';
+  try {
+    const success = await window.logMonitorApi.forceRefreshNpcList();
+    if (success) {
+      statusMessage.value = 'NPC ignore list refreshed successfully! Kill feed NPC tags will update.';
+    } else {
+      statusMessage.value = 'Failed to refresh NPC ignore list from server.';
+    }
+  } catch (error: any) {
+    console.error('Error refreshing NPC list:', error);
+    statusMessage.value = `Error refreshing NPC list: ${error.message}`;
+  } finally {
+    isLoading.value = false;
+    setTimeout(() => { statusMessage.value = ''; }, 8000);
+  }
+}
+
+const handleRefreshBoth = async () => {
+  isLoading.value = true;
+  statusMessage.value = 'Force refreshing definitions and NPC ignore list...';
+  try {
+    const [defSuccess, npcSuccess] = await Promise.all([
+      window.logMonitorApi.forceRefreshDefinitions(),
+      window.logMonitorApi.forceRefreshNpcList()
+    ]);
+    
+    if (defSuccess && npcSuccess) {
+      statusMessage.value = 'Both definitions and NPC list refreshed successfully! Kill feed will update.';
+    } else if (defSuccess) {
+      statusMessage.value = 'Definitions refreshed successfully, but NPC list failed.';
+    } else if (npcSuccess) {
+      statusMessage.value = 'NPC list refreshed successfully, but definitions failed.';
+    } else {
+      statusMessage.value = 'Failed to refresh both definitions and NPC list.';
+    }
+  } catch (error: any) {
+    console.error('Error refreshing both:', error);
+    statusMessage.value = `Error refreshing: ${error.message}`;
+  } finally {
+    isLoading.value = false;
+    setTimeout(() => { statusMessage.value = ''; }, 8000);
+  }
+}
 </script>
 
 <template>
@@ -272,6 +338,70 @@ const handleCheckForUpdate = () => {
         </p>
       </div>
     </div>
+
+    <!-- Definitions Refresh -->
+    <div class="section">
+      <h4 class="section-title">
+        <div class="section-indicator green"></div>
+        Definitions & NPC List Refresh
+      </h4>
+      
+      <div class="button-grid button-grid-3">
+        <el-button 
+          @click="handleRefreshDefinitions" 
+          :disabled="isLoading" 
+          type="success"
+          class="debug-button"
+        >
+          <template #icon>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+          </template>
+          Refresh Definitions
+        </el-button>
+        
+        <el-button 
+          @click="handleRefreshNpcList" 
+          :disabled="isLoading" 
+          type="success"
+          class="debug-button"
+        >
+          <template #icon>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </template>
+          Refresh NPC List
+        </el-button>
+        
+        <el-button 
+          @click="handleRefreshBoth" 
+          :disabled="isLoading" 
+          type="success"
+          class="debug-button"
+        >
+          <template #icon>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+          </template>
+          Refresh Both
+        </el-button>
+      </div>
+      
+      <div class="guide-box">
+        <h5 class="guide-title">Entity Resolution Refresh:</h5>
+        <ul class="guide-list">
+          <li><strong>Refresh Definitions:</strong> Downloads latest entity name mappings (ships, weapons, locations)</li>
+          <li><strong>Refresh NPC List:</strong> Downloads latest NPC detection patterns for [NPC] tags</li> 
+          <li><strong>Refresh Both:</strong> Downloads both definitions and NPC list simultaneously</li>
+        </ul>
+        <p class="guide-note">
+          <strong>Important:</strong> After refreshing, the kill feed will automatically update with new entity names and NPC tags. This forces a fresh download bypassing cache.
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -327,6 +457,10 @@ const handleCheckForUpdate = () => {
 
 .section-indicator.blue {
   background-color: rgb(59, 130, 246);
+}
+
+.section-indicator.green {
+  background-color: rgb(34, 197, 94);
 }
 
 .button-grid {
