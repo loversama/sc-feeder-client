@@ -1,8 +1,8 @@
 <template>
   <div class="login-popup-container">
     <div class="logo-section">
-      <img src="/voidlog-icon-colour.png" alt="SC Kill Feed Logo" class="logo" />
-      <h1>SC Kill Feed</h1>
+      <img src="/voidlog-icon-colour.png" alt="VOIDLOG.GG Logo" class="logo" />
+      <h1>VOIDLOG.GG</h1>
     </div>
 
     <div v-if="showLoginForm" class="login-form-section">
@@ -136,7 +136,7 @@ const goBack = () => {
 h1 {
   font-size: 2em;
   margin: 0;
-  color: #00bfff; /* A bright blue for the title */
+  color: rgba(99, 102, 241, 0.8); /* Purple-blue accent color */
 }
 
 h2 {
@@ -177,8 +177,8 @@ h2 {
 .input-group input[type="text"]:focus,
 .input-group input[type="password"]:focus {
   outline: none;
-  border-color: #00bfff;
-  box-shadow: 0 0 0 2px rgba(0, 191, 255, 0.5);
+  border-color: rgba(99, 102, 241, 0.8);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
 }
 
 .btn-primary,
@@ -194,12 +194,12 @@ h2 {
 }
 
 .btn-primary {
-  background-color: #00bfff; /* Bright blue */
+  background-color: rgba(99, 102, 241, 0.8); /* Purple-blue accent color */
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #009acd; /* Darker blue on hover */
+  background-color: rgba(79, 82, 221, 0.9); /* Darker purple-blue on hover */
 }
 
 .btn-secondary {
