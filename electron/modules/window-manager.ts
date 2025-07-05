@@ -1355,4 +1355,34 @@ ipcMain.handle('get-preload-path', (_event, filename: string) => {
   }
 });
 
-// Add this IPC Handler
+// Add IPC Handler for resizing login window
+ipcMain.handle('auth:resize-login-window', (_event, newHeight: number) => {
+  try {
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      const currentBounds = loginWindow.getBounds();
+      const newBounds = {
+        x: currentBounds.x,
+        y: currentBounds.y,
+        width: currentBounds.width,
+        height: newHeight
+      };
+      
+      // Center window vertically if it goes off screen
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const maxY = primaryDisplay.bounds.y + primaryDisplay.bounds.height - newHeight;
+      if (newBounds.y < primaryDisplay.bounds.y) {
+        newBounds.y = primaryDisplay.bounds.y;
+      } else if (newBounds.y > maxY) {
+        newBounds.y = maxY;
+      }
+      
+      loginWindow.setBounds(newBounds);
+      logger.info(MODULE_NAME, `Login window resized to height: ${newHeight}`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to resize login window:', error);
+    return false;
+  }
+});

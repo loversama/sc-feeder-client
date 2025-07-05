@@ -13,7 +13,7 @@ var __privateMethod = (obj, member, method) => (__accessCheck(obj, member, "acce
 var _validator, _encryptionKey, _options, _defaultValues, _a2, _handler, _b, _c, _paused, _reason, _aborted, _abort, _handler2, _controller, _d, _client, _ProxyAgent_instances, getUrl_fn, shouldConnect_fn, _e, _noProxyValue, _noProxyEntries, _opts, _EnvHttpProxyAgent_instances, getProxyAgentForUrl_fn, shouldProxy_fn, parseNoProxy_fn, noProxyChanged_get, noProxyEnv_get, _agent, _options2, _client2, _H2CClient_instances, buildConnector_fn, _handler3, _onCompleteCalled, _onErrorCalled, _onResponseStartCalled, _f, _statusCode, _contentType, _decoder, _headers, _body, _ResponseErrorHandler_instances, checkContentType_fn, _maxSize, _dumped, _size, _controller2, _DumpHandler_instances, abort_fn, _maxTTL, _maxItems, _records, _DNSInstance_instances, defaultLookup_fn, defaultPick_fn, _state, _opts2, _dispatch, _origin, _controller3, _newOrigin, _firstTry, _cacheKey, _cacheType, _cacheByDefault, _store, _handler4, _writeStream, _g, _maxCount, _maxSize2, _maxEntrySize, _size2, _count, _entries, _hasEmittedMaxSizeEvent, _h, _successful, _callback, _handler5, _context, _allowErrorStatusCodes, _i, _maxEntrySize2, _maxCount2, _db, _getValuesQuery, _updateValueQuery, _insertValueQuery, _deleteExpiredValuesQuery, _deleteByUrlQuery, _countEntriesQuery, _deleteOldValuesQuery, _SqliteCacheStore_instances, prune_fn, makeValueUrl_fn, findValue_fn, _j;
 import url$1, { fileURLToPath, URL as URL$5 } from "node:url";
 import path$n, { resolve as resolve$5, join, relative, sep } from "node:path";
-import require$$1$7, { ipcMain as ipcMain$1, app as app$1, screen, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, webContents, dialog, globalShortcut } from "electron";
+import require$$1$7, { ipcMain as ipcMain$1, screen, app as app$1, BrowserWindow, shell as shell$1, Tray, nativeImage, Menu, Notification, webContents, dialog, globalShortcut } from "electron";
 import require$$1$4, { unwatchFile, watchFile, watch as watch$1, stat as stat$7 } from "fs";
 import require$$0$2 from "constants";
 import Stream$1 from "stream";
@@ -32633,6 +32633,33 @@ ipcMain$1.handle("get-preload-path", (_event, filename) => {
   } catch (error$12) {
     error(MODULE_NAME$h, `IPC 'get-preload-path' failed for '${filename}':`, error$12);
     throw error$12;
+  }
+});
+ipcMain$1.handle("auth:resize-login-window", (_event, newHeight) => {
+  try {
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      const currentBounds = loginWindow.getBounds();
+      const newBounds = {
+        x: currentBounds.x,
+        y: currentBounds.y,
+        width: currentBounds.width,
+        height: newHeight
+      };
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const maxY = primaryDisplay.bounds.y + primaryDisplay.bounds.height - newHeight;
+      if (newBounds.y < primaryDisplay.bounds.y) {
+        newBounds.y = primaryDisplay.bounds.y;
+      } else if (newBounds.y > maxY) {
+        newBounds.y = maxY;
+      }
+      loginWindow.setBounds(newBounds);
+      info(MODULE_NAME$h, `Login window resized to height: ${newHeight}`);
+      return true;
+    }
+    return false;
+  } catch (error$12) {
+    error(MODULE_NAME$h, "Failed to resize login window:", error$12);
+    return false;
   }
 });
 const windowManager = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -162736,7 +162763,12 @@ async function parseLogContent(content2, silentMode = false) {
             coordinates: { x: parseFloat(pos_x || "0"), y: parseFloat(pos_y || "0"), z: parseFloat(pos_z || "0") },
             isPlayerInvolved
           };
-          await processKillEvent(partialEvent, silentMode, destructionLevel);
+          if (isPlayerInvolved) {
+            debug$b(MODULE_NAME$7, `Processing vehicle destruction event - user involved: ${currentUsername}`);
+            await processKillEvent(partialEvent, silentMode, destructionLevel);
+          } else {
+            debug$b(MODULE_NAME$7, `Skipping vehicle destruction event - user not involved. Event killers: [${initialKillers.join(", ")}], victims: [${initialVictims.join(", ")}], current user: ${currentUsername || "none"}`);
+          }
         }
         continue;
       }
@@ -162786,7 +162818,16 @@ async function parseLogContent(content2, silentMode = false) {
             playerShip: currentPlayerShip,
             isPlayerInvolved
           };
-          await processKillEvent(partialEvent, silentMode, 2);
+          if (isPlayerInvolved) {
+            if (deathType === "Crash") {
+              debug$b(MODULE_NAME$7, `Skipping Crash death event - handled by Vehicle Destruction. Victim: ${EnemyPilot}, current user: ${currentUsername}`);
+            } else {
+              debug$b(MODULE_NAME$7, `Processing combat death event - user involved: ${currentUsername}`);
+              await processKillEvent(partialEvent, silentMode, 2);
+            }
+          } else {
+            debug$b(MODULE_NAME$7, `Skipping combat death event - user not involved. Attacker: ${Player}, victim: ${EnemyPilot}, current user: ${currentUsername || "none"}`);
+          }
         }
         continue;
       }
@@ -162820,7 +162861,12 @@ async function parseLogContent(content2, silentMode = false) {
           playerShip: currentPlayerShip,
           isPlayerInvolved
         };
-        await processKillEvent(partialEvent, silentMode, 2);
+        if (isPlayerInvolved) {
+          debug$b(MODULE_NAME$7, `Processing environmental death event - user involved: ${currentUsername}`);
+          await processKillEvent(partialEvent, silentMode, 2);
+        } else {
+          debug$b(MODULE_NAME$7, `Skipping environmental death event - user not involved. Victim: ${playerName}, current user: ${currentUsername || "none"}`);
+        }
         continue;
       }
       const incapMatch = line.match(incapRegex);

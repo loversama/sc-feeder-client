@@ -10,6 +10,9 @@ import * as logger from './logger'; // Import the logger utility
 const MODULE_NAME = 'LogParser'; // Define module name for logger
 
 // --- Module State ---
+// FILTERING NOTE: This module now filters client-generated events to only process those where
+// the current user is involved (as killer or victim). Server-sent events bypass this filtering
+// and are handled separately by the server-connection module.
 // State variables specific to parsing context
 let currentUsername: string | null = getLastLoggedInUser() || null; // Initialize from store
 let currentPlayerShip: string = "Unknown";
@@ -209,8 +212,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                         isPlayerInvolved: isPlayerInvolved,
                     };
 
-                    // Let event processor handle creation/update and RSI fetching
-                    await processKillEvent(partialEvent, silentMode, destructionLevel);
+                    // Only process events where the current user is involved
+                    if (isPlayerInvolved) {
+                        logger.debug(MODULE_NAME, `Processing vehicle destruction event - user involved: ${currentUsername}`);
+                        await processKillEvent(partialEvent, silentMode, destructionLevel);
+                    } else {
+                        logger.debug(MODULE_NAME, `Skipping vehicle destruction event - user not involved. Event killers: [${initialKillers.join(', ')}], victims: [${initialVictims.join(', ')}], current user: ${currentUsername || 'none'}`);
+                    }
                 }
                 continue; // Destruction line processed
             }
@@ -273,8 +281,19 @@ export async function parseLogContent(content: string, silentMode = false) {
                         isPlayerInvolved: isPlayerInvolved,
                     };
 
-                    // Let event processor handle creation/update and RSI fetching
-                    await processKillEvent(partialEvent, silentMode, 2); // Assume combat kill is level 2
+                    // Only process events where the current user is involved
+                    if (isPlayerInvolved) {
+                        // Skip Crash deaths when we already handle them as Vehicle Destruction events
+                        // This prevents duplicate entries for the same incident
+                        if (deathType === 'Crash') {
+                            logger.debug(MODULE_NAME, `Skipping Crash death event - handled by Vehicle Destruction. Victim: ${EnemyPilot}, current user: ${currentUsername}`);
+                        } else {
+                            logger.debug(MODULE_NAME, `Processing combat death event - user involved: ${currentUsername}`);
+                            await processKillEvent(partialEvent, silentMode, 2); // Assume combat kill is level 2
+                        }
+                    } else {
+                        logger.debug(MODULE_NAME, `Skipping combat death event - user not involved. Attacker: ${Player}, victim: ${EnemyPilot}, current user: ${currentUsername || 'none'}`);
+                    }
                 }
                 continue; // Kill line processed
             }
@@ -312,8 +331,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                     isPlayerInvolved: isPlayerInvolved,
                 };
 
-                // Let event processor handle creation/update and RSI fetching
-                await processKillEvent(partialEvent, silentMode, 2); // Treat as significant event
+                // Only process events where the current user is involved
+                if (isPlayerInvolved) {
+                    logger.debug(MODULE_NAME, `Processing environmental death event - user involved: ${currentUsername}`);
+                    await processKillEvent(partialEvent, silentMode, 2); // Treat as significant event
+                } else {
+                    logger.debug(MODULE_NAME, `Skipping environmental death event - user not involved. Victim: ${playerName}, current user: ${currentUsername || 'none'}`);
+                }
                 continue; // Env death line processed
             }
 

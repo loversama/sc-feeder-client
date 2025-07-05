@@ -206,6 +206,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authLoginSuccess: () => require$$0.ipcRenderer.invoke("auth:loginSuccess"),
   authContinueAsGuest: () => require$$0.ipcRenderer.invoke("auth:continueAsGuest"),
   authCloseLoginWindow: () => require$$0.ipcRenderer.invoke("auth:closeLoginWindow"),
+  authResizeLoginWindow: (newHeight) => require$$0.ipcRenderer.invoke("auth:resize-login-window", newHeight),
   // Profile Action
   getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
   // Window Status Getters

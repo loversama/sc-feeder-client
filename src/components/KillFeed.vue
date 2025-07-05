@@ -1573,13 +1573,20 @@ onUnmounted(() => {
 const getServerSourceTooltip = (event: KillEvent): string => {
   const hasServer = event.metadata?.source?.server;
   const hasLocal = event.metadata?.source?.local;
+  const hasExternal = event.metadata?.source?.external;
+  const isPlayerInvolved = event.isPlayerInvolved && isAuthenticated.value;
   
+  // Priority order for tooltip messages
   if (hasServer && hasLocal) {
     return "Server confirmed this local event";
   } else if (hasServer && !hasLocal) {
     return "Event from another client";
-  } else {
+  } else if (hasExternal) {
     return "External event";
+  } else if (isPlayerInvolved) {
+    return "Player-involved event";
+  } else {
+    return "Event source";
   }
 };
 </script>
@@ -1690,20 +1697,20 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           </span>
           <!-- Game Mode Pill -->
           <span v-if="event.gameMode && event.gameMode !== 'Unknown'" class="event-mode-pill">{{ event.gameMode }}</span>
-          <!-- Player Involved Badge -->
-          <!-- Show 'OTHER' badge if event involves player and user is viewing global feed -->
-          <span v-if="event.isPlayerInvolved && isAuthenticated" class="player-other-badge">OTHER</span>
           <span class="event-location" v-if="event.location">{{ getEntityDisplayName(event.location) }}</span>
-          <span class="event-time">{{ formatTime(event.timestamp) }}
-            <!-- Server Source Indicator (subtle pip) - moved under time -->
-            <span v-if="event.metadata?.source?.server || event.metadata?.source?.external" 
-                  class="server-source-pip" 
-                  :title="getServerSourceTooltip(event)">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM6.838 12.434c.068 1.217.347 2.358.784 3.364l.952-.952c-.225-.627-.359-1.329-.41-2.102h-1.326zm1.326-1.668c.051-.773.185-1.475.41-2.102l-.952-.952c-.437 1.006-.716 2.147-.784 3.364h1.326zm1.979-4.515l.952.952c.627-.225 1.329-.359 2.102-.41V5.467c-1.217.068-2.358.347-3.364.784zm3.857.41c.773.051 1.475.185 2.102.41l.952-.952c-1.006-.437-2.147-.716-3.364-.784v1.326zm4.515 1.979l-.952.952c.225.627.359 1.329.41 2.102h1.326c-.068-1.217-.347-2.358-.784-3.364zm-.41 3.857c-.051.773-.185 1.475-.41 2.102l.952.952c.437-1.006.716-2.147.784-3.364h-1.326zm-1.979 4.515l-.952-.952c-.627.225-1.329.359-2.102.41v1.326c1.217-.068 2.358-.347 3.364-.784zm-3.857-.41c-.773-.051-1.475-.185-2.102-.41l-.952.952c1.006.437 2.147.716 3.364.784v-1.326zM12 8c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z"/>
-              </svg>
-            </span>
-          </span>
+          <div class="event-time-container">
+            <span class="event-time">{{ formatTime(event.timestamp) }}</span>
+            <!-- Server Source Indicator (world icon pip under timestamp) -->
+            <div v-if="(event.metadata?.source?.server || event.metadata?.source?.external) || (event.isPlayerInvolved && isAuthenticated)" 
+                 class="server-source-pip-container">
+              <span class="server-source-pip" 
+                    :title="getServerSourceTooltip(event)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM6.838 12.434c.068 1.217.347 2.358.784 3.364l.952-.952c-.225-.627-.359-1.329-.41-2.102h-1.326zm1.326-1.668c.051-.773.185-1.475.41-2.102l-.952-.952c-.437 1.006-.716 2.147-.784 3.364h1.326zm1.979-4.515l.952.952c.627-.225 1.329-.359 2.102-.41V5.467c-1.217.068-2.358.347-3.364.784zm3.857.41c.773.051 1.475.185 2.102.41l.952-.952c-1.006-.437-2.147-.716-3.364-.784v1.326zm4.515 1.979l-.952.952c.225.627.359 1.329.41 2.102h1.326c-.068-1.217-.347-2.358-.784-3.364zm-.41 3.857c-.051.773-.185 1.475-.41 2.102l.952.952c.437-1.006.716-2.147.784-3.364h-1.326zm-1.979 4.515l-.952-.952c-.627.225-1.329.359-2.102.41v1.326c1.217-.068 2.358-.347 3.364-.784zm-3.857-.41c-.773-.051-1.475-.185-2.102-.41l-.952.952c1.006.437 2.147.716 3.364.784v-1.326zM12 8c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z"/>
+                </svg>
+              </span>
+            </div>
+          </div>
         </div>
 
         <div class="event-content">
@@ -2139,43 +2146,49 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   margin-left: 5px;
 }
 
-/* Player other badge (for events involving other players) */
-.player-other-badge {
-  background-color: #3498db; /* Blue color */
-  color: white;
-  padding: 1px 4px;
-  border-radius: 4px;
-  font-size: 0.7em;
-  font-weight: bold;
-  margin-left: 5px;
+/* Event time container - holds timestamp and world icon */
+.event-time-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-left: auto; /* Pushes time container to the right */
+  padding-left: 10px; /* Ensure space from other elements */
 }
 
-/* Server source indicator (subtle pip) */
+/* Server source indicator pip container */
+.server-source-pip-container {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* Server source indicator (world icon pip under timestamp) */
 .server-source-pip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 12px;
-  height: 12px;
-  background-color: #f39c12; /* Yellow/orange color */
-  color: white;
+  width: 14px;
+  height: 14px;
+  background-color: rgba(243, 156, 18, 0.2); /* Semi-transparent orange background */
+  color: #f39c12; /* Orange color for icon */
+  border: 1px solid #f39c12;
   border-radius: 50%;
-  margin-left: 4px;
   font-size: 0.6em;
   opacity: 0.8;
   transition: all 0.3s ease;
-  animation: subtle-pulse 0.6s ease-out;
-  vertical-align: baseline; /* Align with text baseline */
+  cursor: help;
 }
 
 .server-source-pip:hover {
   opacity: 1;
+  background-color: rgba(243, 156, 18, 0.3);
   transform: scale(1.1);
 }
 
 .server-source-pip svg {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 /* Subtle animation when pip appears (server confirmation) */
@@ -2249,11 +2262,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .event-time {
-  margin-left: auto; /* Pushes time to the right */
   color: #888;
   font-size: 0.85em;
   white-space: nowrap;
-  padding-left: 10px; /* Ensure space from other elements */
 }
 
 .event-content {

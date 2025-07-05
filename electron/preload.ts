@@ -186,6 +186,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authLoginSuccess: (): Promise<void> => ipcRenderer.invoke('auth:loginSuccess'),
   authContinueAsGuest: (): Promise<void> => ipcRenderer.invoke('auth:continueAsGuest'),
   authCloseLoginWindow: (): Promise<void> => ipcRenderer.invoke('auth:closeLoginWindow'),
+  authResizeLoginWindow: (newHeight: number): Promise<boolean> => ipcRenderer.invoke('auth:resize-login-window', newHeight),
 
   // Profile Action
   getProfile: (): Promise<UserProfile | null> => ipcRenderer.invoke('get-profile'),

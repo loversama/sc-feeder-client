@@ -23,7 +23,7 @@ try {
   if (loginApp) {
     loginApp.innerHTML = `
       <div style="color: white; text-align: center; padding: 20px;">
-        <h1>SC Kill Feed - Login</h1>
+        <h1>VOIDLOG.GG - Login</h1>
         <p>Error loading login interface: ${error}</p>
         <button onclick="window.close()">Close</button>
       </div>

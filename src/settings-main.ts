@@ -30,7 +30,7 @@ try {
   if (settingsApp) {
     settingsApp.innerHTML = `
       <div style="color: white; text-align: center; padding: 20px;">
-        <h1>SC Kill Feed - Settings</h1>
+        <h1>VOIDLOG.GG - Settings</h1>
         <p>Error loading settings interface: ${error}</p>
         <button onclick="window.close()">Close</button>
       </div>

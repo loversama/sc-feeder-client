@@ -2,7 +2,12 @@
   <div class="login-popup-container">
     <div class="logo-section">
       <img src="/voidlog-icon-colour.png" alt="VOIDLOG.GG Logo" class="logo" />
-      <h1>VOIDLOG.GG</h1>
+      <div class="brand-container">
+        <h1><span class="brand-white">VOIDLOG</span><span class="brand-purple">.GG</span></h1>
+        <div class="alpha-badge">
+          <span class="alpha-tag">Alpha</span>
+        </div>
+      </div>
     </div>
 
     <div v-if="showLoginForm" class="login-form-section">
@@ -41,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 
 // State management
 const isLoading = ref(false)
@@ -106,6 +111,21 @@ const goBack = () => {
   loginForm.identifier = ''
   loginForm.password = ''
 }
+
+// Watch for login form visibility and resize window accordingly
+watch(showLoginForm, async (newValue) => {
+  try {
+    if (newValue) {
+      // Login form is showing - resize to taller height (original + 300px)
+      await window.logMonitorApi?.authResizeLoginWindow(800)
+    } else {
+      // Back to initial view - resize to original height
+      await window.logMonitorApi?.authResizeLoginWindow(500)
+    }
+  } catch (error) {
+    console.error('Failed to resize login window:', error)
+  }
+})
 </script>
 
 <style scoped>
@@ -114,29 +134,68 @@ const goBack = () => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  min-height: 100vh;
   background-color: #2c2c2c;
   color: #f0f0f0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  padding: 20px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  padding: 40px 20px;
   box-sizing: border-box;
+  transition: all 0.3s ease;
 }
 
 .logo-section {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: all 0.3s ease;
 }
 
 .logo {
-  width: 100px;
-  height: 100px;
-  margin-bottom: 10px;
+  width: 140px;
+  height: 140px;
+  margin-bottom: 15px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 h1 {
-  font-size: 2em;
+  font-size: 1.125rem;
   margin: 0;
-  color: rgba(99, 102, 241, 0.8); /* Purple-blue accent color */
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.brand-white {
+  color: #ffffff;
+}
+
+.brand-purple {
+  color: rgba(99, 102, 241, 0.8);
+}
+
+.brand-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alpha-badge {
+  display: flex;
+  align-items: center;
+}
+
+.alpha-tag {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: rgba(99, 102, 241, 0.9);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 h2 {
@@ -145,12 +204,23 @@ h2 {
   color: #f0f0f0;
 }
 
-.initial-options-section,
+.initial-options-section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 320px;
+}
+
 .login-form-section {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 300px;
+  max-width: 400px;
+  background-color: #3a3a3a;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  margin-top: 20px;
 }
 
 .input-group {
@@ -230,5 +300,44 @@ h2 {
   color: #aaa;
   text-align: center;
   margin-top: 10px;
+}
+
+/* Adjustments when login form is visible */
+.login-popup-container:has(.login-form-section) .logo-section {
+  margin-bottom: 20px;
+}
+
+.login-popup-container:has(.login-form-section) .logo {
+  width: 100px;
+  height: 100px;
+}
+
+.login-popup-container:has(.login-form-section) h1 {
+  font-size: 1.5em;
+}
+
+/* Fallback for browsers that don't support :has() */
+@media (max-height: 700px) {
+  .logo {
+    width: 100px !important;
+    height: 100px !important;
+  }
+  
+  .logo-section {
+    margin-bottom: 20px !important;
+  }
+  
+  h1 {
+    font-size: 1.5em !important;
+  }
+  
+  .login-popup-container {
+    padding: 20px;
+  }
+  
+  .login-form-section {
+    padding: 20px;
+    margin-top: 10px;
+  }
 }
 </style>
