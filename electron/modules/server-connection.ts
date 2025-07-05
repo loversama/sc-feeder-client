@@ -138,7 +138,7 @@ export function connectToServer(): void {
 
   logger.info(
     MODULE_NAME,
-    `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`,
+    `Attempting to connect to server at ${SERVER_URL}/client (Env: ${process.env.NODE_ENV}) using ${tokenType}`,
   );
   sendConnectionStatus('connecting'); // Update status: Connecting
 
@@ -171,7 +171,7 @@ export function connectToServer(): void {
     return;
   }
 
-  socket = io(SERVER_URL, {
+  socket = io(`${SERVER_URL}/client`, {
     // path: '/api/socket.io/', // REMOVED: Use default path for default adapter
     reconnection: false, // Disable automatic reconnection
     // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax

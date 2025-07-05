@@ -171847,7 +171847,7 @@ function connectToServer() {
   }
   info(
     MODULE_NAME$4,
-    `Attempting to connect to server at ${SERVER_URL} (Env: ${process.env.NODE_ENV}) using ${tokenType}`
+    `Attempting to connect to server at ${SERVER_URL}/client (Env: ${process.env.NODE_ENV}) using ${tokenType}`
   );
   sendConnectionStatus("connecting");
   if (socket) {
@@ -171870,7 +171870,7 @@ function connectToServer() {
     );
     return;
   }
-  socket = lookup(SERVER_URL, {
+  socket = lookup(`${SERVER_URL}/client`, {
     // path: '/api/socket.io/', // REMOVED: Use default path for default adapter
     reconnection: false,
     // Disable automatic reconnection
