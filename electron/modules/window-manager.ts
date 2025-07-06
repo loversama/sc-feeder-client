@@ -634,7 +634,7 @@ export function getIconPath(): string {
     return iconPath; // Return found path or empty string
 }
 
-function getPreloadPath(filename: string): string {
+export function getPreloadPath(filename: string): string {
     const appRoot = process.env.APP_ROOT;
     if (!appRoot) {
         logger.error(MODULE_NAME, "APP_ROOT not set when trying to get preload path. Cannot proceed.");
@@ -2347,6 +2347,182 @@ export async function sendAuthTokensToWebContentWindow(tokens: AuthTokens | null
 }
 
 // Function to send auth tokens specifically to WebContentsView architecture
+export async function sendAuthTokensToWebContentBaseWindow(tokens: AuthTokens | null): Promise<void> {
+    try {
+        logger.debug(MODULE_NAME, 'Sending auth tokens to WebContentBaseWindow');
+        
+        if (webContentBaseWindow && webContentView) {
+            // Set authentication cookies directly
+            const session = webContentView.webContents.session;
+            const currentUrl = webContentView.webContents.getURL();
+            
+            if (tokens && currentUrl) {
+                logger.info(MODULE_NAME, 'Setting authentication cookies for WebContentBaseWindow');
+                await windowManager._setExternalWebsiteCookies(
+                    { webContents: { session } } as any,
+                    currentUrl,
+                    tokens
+                );
+            }
+            
+            // Send tokens via IPC
+            webContentView.webContents.send('auth-tokens-updated', {
+                accessToken: tokens?.accessToken || null,
+                refreshToken: tokens?.refreshToken || null,
+                user: tokens?.user || null
+            });
+            
+            logger.info(MODULE_NAME, 'Auth tokens sent to WebContentBaseWindow successfully');
+        } else {
+            logger.warn(MODULE_NAME, 'WebContentBaseWindow or WebContentView not available');
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to send auth tokens to WebContentBaseWindow:', error);
+    }
+}
+
+// Enhanced WebContentsView Manager Integration
+import { 
+    createWebContentViewManager, 
+    getWebContentViewManager, 
+    closeWebContentViewManager 
+} from './webcontents-view-manager';
+
+// Create WebContentsView-based window (new architecture)
+export async function createEnhancedWebContentWindow(
+    section: 'profile' | 'leaderboard' | 'map' = 'profile'
+): Promise<boolean> {
+    try {
+        logger.info(MODULE_NAME, `Creating enhanced WebContentView window for section: ${section}`);
+        
+        const manager = await createWebContentViewManager();
+        await manager.navigateToSection(section);
+        manager.show();
+        
+        // Update current section tracking
+        currentWebContentSection = section;
+        
+        // Send status update to main window
+        getMainWindow()?.webContents.send('web-content-window-status', {
+            isOpen: true,
+            activeSection: section,
+            architecture: 'webcontentsview'
+        });
+        
+        logger.info(MODULE_NAME, 'Enhanced WebContentView window created successfully');
+        return true;
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to create enhanced WebContentView window:', error);
+        return false;
+    }
+}
+
+// Close WebContentsView-based window
+export function closeEnhancedWebContentWindow(): boolean {
+    try {
+        const success = closeWebContentViewManager();
+        
+        if (success) {
+            currentWebContentSection = null;
+            
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', {
+                isOpen: false,
+                activeSection: null,
+                architecture: 'webcontentsview'
+            });
+        }
+        
+        return success;
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to close enhanced WebContentView window:', error);
+        return false;
+    }
+}
+
+// Get enhanced WebContentView status
+export function getEnhancedWebContentStatus(): {
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | null;
+    architecture: string;
+    authenticationEnabled: boolean;
+} {
+    try {
+        const manager = getWebContentViewManager();
+        
+        if (manager) {
+            return {
+                isOpen: manager.isVisible(),
+                activeSection: manager.getCurrentSection(),
+                architecture: 'webcontentsview',
+                authenticationEnabled: manager.isAuthenticationEnabled()
+            };
+        } else {
+            return {
+                isOpen: false,
+                activeSection: null,
+                architecture: 'none',
+                authenticationEnabled: false
+            };
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to get enhanced WebContentView status:', error);
+        return {
+            isOpen: false,
+            activeSection: null,
+            architecture: 'error',
+            authenticationEnabled: false
+        };
+    }
+}
+
+// Unified function that uses legacy BrowserWindow + WebContentsView integration
+export async function createUnifiedWebContentWindow(
+    section: 'profile' | 'leaderboard' | 'map' = 'profile'
+): Promise<{ success: boolean; architecture: string; error?: string }> {
+    try {
+        // Use legacy BrowserWindow approach (which loads WebContentPage.vue)
+        // WebContentPage.vue will automatically attach WebContentsView on load
+        logger.info(MODULE_NAME, 'Creating web content window with BrowserWindow + WebContentsView integration');
+        
+        const legacyWindow = createWebContentWindow(section);
+        
+        if (legacyWindow) {
+            return {
+                success: true,
+                architecture: 'browserwindow-with-webcontentsview'
+            };
+        } else {
+            // Fallback to pure WebContentsView if BrowserWindow fails
+            logger.warn(MODULE_NAME, 'BrowserWindow creation failed, falling back to pure WebContentsView');
+            
+            const success = await createEnhancedWebContentWindow(section);
+            
+            return {
+                success: success,
+                architecture: success ? 'webcontentsview' : 'failed'
+            };
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to create unified web content window:', error);
+        
+        // Final fallback to pure WebContentsView
+        try {
+            const success = await createEnhancedWebContentWindow(section);
+            return {
+                success: success,
+                architecture: success ? 'webcontentsview' : 'failed',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        } catch (fallbackError) {
+            return {
+                success: false,
+                architecture: 'failed',
+                error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error'
+            };
+        }
+    }
+}
 export async function sendAuthTokensToWebContentsView(tokens: AuthTokens | null): Promise<void> {
     try {
         const manager = await getWebContentsViewManager();

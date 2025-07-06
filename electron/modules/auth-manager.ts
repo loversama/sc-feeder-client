@@ -146,7 +146,7 @@ function broadcastAuthStatusChange(): void {
 
   // Also send to WebContentsView instances
   webContents.getAllWebContents().forEach(wc => {
-    if (wc.getType() === 'webContents' && !wc.isDestroyed()) {
+    if (wc.getType() !== 'webview' && wc.getType() !== 'window' && !wc.isDestroyed()) {
       // Check if this WebContents belongs to a WebContentsView
       try {
         // Send auth tokens to WebContentsView content
@@ -518,6 +518,42 @@ export function registerAuthIpcHandlers(): void {
 }
 
 // --- Initialization ---
+// Store tokens from external source (like WebContentsView)
+export async function storeTokens(tokens: {
+    accessToken: string;
+    refreshToken: string;
+    user?: any;
+}): Promise<{ success: boolean; error?: string }> {
+    try {
+        if (!tokens.accessToken || !tokens.refreshToken) {
+            return { success: false, error: 'Missing required tokens' };
+        }
+
+        if (tokens.user && tokens.user.userId && tokens.user.username) {
+            const userProfile = {
+                userId: tokens.user.userId,
+                username: tokens.user.username,
+                rsiHandle: tokens.user.rsiHandle || null,
+                rsiMoniker: tokens.user.rsiMoniker || null,
+                avatar: tokens.user.avatar || null,
+                roles: tokens.user.roles || ['user']
+            };
+
+            await storeTokensAndUser(tokens.accessToken, tokens.refreshToken, userProfile);
+            guestToken = null;
+            hasActiveSession = true;
+
+            logger.info(MODULE_NAME, `Tokens stored successfully for user: ${userProfile.username}`);
+            return { success: true };
+        } else {
+            return { success: false, error: 'Missing user data' };
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to store tokens:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
 export async function initializeAuth(): Promise<boolean> {
     logger.info(MODULE_NAME, 'Initializing authentication state...');
     let connectionReady = false;

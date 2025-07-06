@@ -21,7 +21,14 @@ import {
     closeAuthenticatedWebContentWindow // Added for WebContentsView cleanup
 } from './window-manager.ts'; // Added close functions and status getters
 
-// Note: Using BaseWindow implementation from window-manager.ts instead of separate webcontents-view-manager.ts
+// Import enhanced WebContentsView functions
+import {
+    createUnifiedWebContentWindow,
+    createEnhancedWebContentWindow,
+    closeEnhancedWebContentWindow,
+    getEnhancedWebContentStatus
+} from './window-manager.ts';
+
 import { setGuestModeAndRemember } from './auth-manager';
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
@@ -32,6 +39,7 @@ import { getCurrentUsername } from './log-parser.ts'; // Needed for event detail
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
+import { registerEnhancedIPCHandlers } from '../enhanced-ipc-handlers'; // Import enhanced handlers
 
 const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
 
@@ -335,12 +343,12 @@ try {
         return !!success; // Return true if window creation was attempted
     });
 
-    // Enhanced Handler for Web Content Window with new architecture support
-    ipcMain.handle('open-web-content-window', async (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => { // Type the initialTab
+    // Enhanced Handler for Web Content Window with new WebContentsView architecture
+    ipcMain.handle('open-web-content-window', async (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => {
       logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
       
-      // Filter to only supported sections for createWebContentWindow
-      let supportedSection: 'profile' | 'leaderboard' | 'map' | undefined = undefined;
+      // Filter to only supported sections
+      let supportedSection: 'profile' | 'leaderboard' | 'map' = 'profile';
       if (initialTab === 'profile' || initialTab === 'leaderboard' || initialTab === 'map') {
         supportedSection = initialTab;
       } else if (initialTab === 'stats' || initialTab === '/') {
@@ -350,57 +358,46 @@ try {
       }
       
       try {
-        // Try BaseWindow + WebContentsView architecture first
-        logger.debug(MODULE_NAME, 'Attempting to create window with BaseWindow + WebContentsView architecture');
-        const webWindow = createWebContentBaseWindow(supportedSection);
-
-        if (webWindow) {
-          // Get the current status from the new manager
-          const status = getWebContentStatus();
-          
+        // Use new unified WebContentsView system
+        const result = await createUnifiedWebContentWindow(supportedSection);
+        
+        if (result.success) {
           // Send status update to main window
           getMainWindow()?.webContents.send('web-content-window-status', { 
-            isOpen: status.isOpen, 
-            activeSection: status.activeSection,
-            architecture: 'basewindow'
+            isOpen: true, 
+            activeSection: supportedSection,
+            architecture: result.architecture,
+            timestamp: new Date().toISOString()
           });
-          logger.info(MODULE_NAME, `Sent web-content-window-status with BaseWindow architecture:`, status);
-
-          // Focus window (BaseWindow)
-          if (webWindow.isMinimized()) webWindow.restore();
-          webWindow.focus();
           
-          return { success: true, architecture: 'basewindow' };
+          logger.info(MODULE_NAME, `Successfully created web content window with ${result.architecture} architecture for section: ${supportedSection}`);
+          
+          return { 
+            success: true, 
+            architecture: result.architecture,
+            section: supportedSection,
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          logger.error(MODULE_NAME, `Failed to create web content window: ${result.error || 'Unknown error'}`);
+          
+          return { 
+            success: false, 
+            architecture: result.architecture,
+            error: result.error || 'Failed to create window',
+            timestamp: new Date().toISOString()
+          };
         }
       } catch (error) {
-        logger.warn(MODULE_NAME, 'BaseWindow architecture failed, falling back to legacy BrowserWindow:', error);
+        logger.error(MODULE_NAME, 'Unexpected error in open-web-content-window:', error);
         
-        // Fallback to legacy BrowserWindow approach
-        try {
-          const legacyWindow = createWebContentWindow(supportedSection);
-          
-          if (legacyWindow) {
-            // Send status update with legacy architecture
-            getMainWindow()?.webContents.send('web-content-window-status', { 
-              isOpen: true, 
-              activeSection: supportedSection,
-              architecture: 'browserwindow'
-            });
-            logger.info(MODULE_NAME, `Sent web-content-window-status with legacy architecture for section: ${supportedSection}`);
-
-            // Focus legacy window
-            if (legacyWindow.isMinimized()) legacyWindow.restore();
-            legacyWindow.focus();
-            
-            return { success: true, architecture: 'browserwindow' };
-          }
-        } catch (fallbackError) {
-          logger.error(MODULE_NAME, 'Both WebContentsView and BrowserWindow approaches failed:', fallbackError);
-          return { success: false, error: 'Failed to create web content window with any architecture' };
-        }
+        return { 
+          success: false, 
+          architecture: 'error',
+          error: error.message,
+          timestamp: new Date().toISOString()
+        };
       }
-      
-      return { success: false, error: 'No window created' };
     });
 
     ipcMain.handle('get-passed-event-data', () => {
@@ -740,6 +737,45 @@ ipcMain.handle('auth:show-login', () => {
       }
     });
 
+    // Get diagnostic information for debugging
+    ipcMain.handle('web-content:get-diagnostic-info', () => {
+      logger.info(MODULE_NAME, "Received 'web-content:get-diagnostic-info' request.");
+      
+      try {
+        const diagnosticInfo = getDiagnosticInfo();
+        return { success: true, diagnosticInfo };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to get diagnostic info:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to get diagnostic info' };
+      }
+    });
+
+    // Reset error state
+    ipcMain.handle('web-content:reset-error-state', () => {
+      logger.info(MODULE_NAME, "Received 'web-content:reset-error-state' request.");
+      
+      try {
+        resetErrorState();
+        return { success: true };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to reset error state:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to reset error state' };
+      }
+    });
+
+    // Force a specific architecture (for testing/debugging)
+    ipcMain.handle('web-content:force-architecture', (_event, architecture: 'webcontentsview' | 'browserwindow') => {
+      logger.info(MODULE_NAME, `Received 'web-content:force-architecture' request for: ${architecture}`);
+      
+      try {
+        const result = forceArchitecture(architecture);
+        return { success: true, ...result };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to force architecture:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to force architecture' };
+      }
+    });
+
     // Window controls are now handled by custom-electron-titlebar
 
     // --- Debug Action Handlers ---
@@ -1026,5 +1062,9 @@ ipcMain.handle('auth:show-login', () => {
         }
     });
 
-    logger.success(MODULE_NAME, "IPC handlers registered.");
+    // --- Enhanced WebContentsView IPC Handlers ---
+    logger.info(MODULE_NAME, "Registering enhanced WebContentsView IPC handlers...");
+    registerEnhancedIPCHandlers();
+
+    logger.success(MODULE_NAME, "IPC handlers registered (including enhanced WebContentsView handlers).");
 }

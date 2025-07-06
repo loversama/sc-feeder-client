@@ -58,6 +58,81 @@ watch(isAuthenticated, (newVal, oldVal) => {
   console.log(`Navigation.vue: isAuthenticated changed from ${oldVal} to ${newVal}`)
 })
 
+// Enhanced helper function to open external website with new architecture support
+const openExternalSection = async (section: string, title?: string) => {
+  try {
+    // First try the new enhanced WebContentsView system for Steam-like embedded experience
+    if (['profile', 'leaderboard', 'map'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {
+      try {
+        console.log(`[Navigation] Attempting enhanced WebContentsView for ${section}`);
+        const result = await window.logMonitorApi.openEnhancedWebContentWindow(section as 'profile' | 'leaderboard' | 'map');
+        
+        if (result?.success) {
+          console.log(`[Navigation] Enhanced WebContentsView opened successfully for ${section}:`, result);
+          return;
+        } else {
+          console.warn(`[Navigation] Enhanced WebContentsView failed for ${section}:`, result?.error);
+        }
+      } catch (error) {
+        console.warn(`[Navigation] Enhanced WebContentsView error for ${section}:`, error);
+      }
+    }
+
+    // Determine the correct URL based on environment for fallback external window
+    const currentUrl = window.location.href;
+    const isDev = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
+    const baseUrl = isDev ? 'http://localhost:3001' : 'https://voidlog.gg';
+    const websiteUrl = section === 'profile' ? baseUrl : `${baseUrl}/${section}`;
+    
+    // Fallback to external window for scenarios where WebContentsView isn't suitable
+    try {
+      console.log(`[Navigation] Falling back to external window for ${section}`);
+      const result = await window.logMonitorApi?.openExternalWebWindow?.(websiteUrl, {
+        width: section === 'map' ? 1600 : 1400,
+        height: section === 'map' ? 1000 : 900,
+        title: title || `VOIDLOG.GG - ${section.charAt(0).toUpperCase() + section.slice(1)}`,
+        enableAuth: true
+      });
+      
+      if (result?.success) {
+        console.log(`[Navigation] External window opened successfully for ${section}`);
+        return;
+      } else {
+        console.warn(`[Navigation] External window failed for ${section}:`, result?.error);
+      }
+    } catch (error) {
+      console.warn(`[Navigation] External window error for ${section}:`, error);
+    }
+
+    // Check if legacy WebContentsView navigation is available
+    if (window.logMonitorApi?.webContentNavigateToSection && ['profile', 'leaderboard', 'map'].includes(section)) {
+      try {
+        console.log(`[Navigation] Trying legacy WebContentsView navigation for ${section}`);
+        const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
+        if (navResult?.success) {
+          console.log(`[Navigation] Legacy WebContentsView navigation successful for ${section}:`, navResult);
+          return;
+        } else {
+          console.warn(`[Navigation] Legacy WebContentsView navigation failed for ${section}:`, navResult?.error);
+        }
+      } catch (error) {
+        console.warn(`[Navigation] Legacy WebContentsView navigation error for ${section}:`, error);
+      }
+    }
+
+    // Final fallback to legacy webview system
+    try {
+      console.log(`[Navigation] Final fallback to legacy webview for ${section}`);
+      const result = await window.logMonitorApi?.openWebContentWindow?.(section);
+      console.log(`[Navigation] Legacy webview fallback result for ${section}:`, result);
+    } catch (fallbackError) {
+      console.error(`[Navigation] All fallbacks failed for ${section}:`, fallbackError);
+    }
+  } catch (error) {
+    console.error(`[Navigation] Failed to open ${section}:`, error);
+  }
+};
+
 // Handlers
 const handleCommand = async (command: string) => {
   try {
@@ -65,11 +140,11 @@ const handleCommand = async (command: string) => {
       await window.logMonitorApi?.authLogout?.()
       resetUser()
     } else if (command === 'login') {
-      await window.logMonitorApi?.openWebContentWindow?.('profile')
+      await openExternalSection('profile', 'VOIDLOG.GG - Login')
     } else if (command === 'profile') {
-      await window.logMonitorApi?.openWebContentWindow?.('profile')
+      await openExternalSection('profile', 'VOIDLOG.GG - Profile')
     } else if (command === 'map') {
-      await window.logMonitorApi?.openWebContentWindow?.('map')
+      await openExternalSection('map', 'VOIDLOG.GG - Star Citizen Map')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     }

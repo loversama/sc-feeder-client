@@ -257,6 +257,29 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     error?: string;
   }> => ipcRenderer.invoke('close-authenticated-web-content-window'),
 
+  // --- Enhanced WebContentsView API ---
+
+  // Open enhanced WebContentsView window (new architecture)
+  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map'): Promise<{
+    success: boolean;
+    architecture?: string;
+    section?: string;
+    error?: string;
+    timestamp?: string;
+  }> => ipcRenderer.invoke('enhanced-window:attach-to-existing', section),
+
+  // Close enhanced WebContentsView window
+  closeEnhancedWebContentWindow: (): Promise<boolean> => 
+    ipcRenderer.invoke('enhanced-window:close-window'),
+
+  // Get enhanced WebContentsView window status
+  getEnhancedWebContentStatus: (): Promise<{
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | null;
+    architecture: string;
+    authenticationEnabled: boolean;
+  }> => ipcRenderer.invoke('enhanced-window:get-status'),
+
   // Window Status Methods
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => 
     ipcRenderer.invoke('get-settings-window-status'),

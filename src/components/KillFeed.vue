@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
-import { Setting, Tickets, User, MapLocation } from '@element-plus/icons-vue'; // Import icons
+import { Setting, Tickets, User, MapLocation, Connection, Monitor } from '@element-plus/icons-vue'; // Import icons
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
 
 // Using the interface from the main process instead
@@ -24,6 +24,7 @@ const logStatus = ref<string>('Initializing...'); // Log file monitoring status
 const currentPlayerShip = ref<string>('');
 const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
 const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
+const eventFilter = ref<'all' | 'local'>('all'); // Filter for showing all events or local only
 
 // New infinite scroll and search state
 const isLoadingMore = ref<boolean>(false);
@@ -150,60 +151,163 @@ const openSettingsWindow = () => {
   }
 }
 
-const openProfile = () => {
+const openProfile = async () => {
   try {
     if (isProfileActive.value) {
       console.log('Profile button clicked while active: Closing window.');
-      window.logMonitorApi.closeWebContentWindow();
+      window.logMonitorApi.closeEnhancedWebContentWindow();
     } else {
-      console.log('Profile button clicked while inactive: Opening window to profile.');
-      window.logMonitorApi.openWebContentWindow('profile');
+      console.log('Profile button clicked while inactive: Opening enhanced WebContentsView for profile.');
+      
+      // Use the new enhanced WebContentsView system for Steam-like embedded experience
+      const result = await window.logMonitorApi.openEnhancedWebContentWindow('profile');
+      
+      console.log('Enhanced WebContentsView result:', result);
+      
+      if (!result.success) {
+        console.error('Failed to open enhanced WebContentsView:', result.error);
+        console.log('Falling back to legacy webview...');
+        // Fallback to legacy system only if enhanced fails
+        window.logMonitorApi.openWebContentWindow('profile');
+      } else {
+        console.log('Enhanced WebContentsView opened successfully for profile section');
+      }
     }
   } catch (error) {
-    console.error("Failed to toggle web content window for profile:", error);
+    console.error("Exception caught in openProfile:", error);
+    if (error instanceof Error) {
+      console.log('Error details:', error.message, error.stack);
+    } else {
+      console.log('Error details:', error);
+    }
+    // Fallback to legacy webview
+    console.log('Using fallback webview due to exception...');
+    try {
+      window.logMonitorApi.openWebContentWindow('profile');
+    } catch (fallbackError) {
+      console.error("Fallback also failed:", fallbackError);
+    }
   }
 }
 
-const openLeaderboard = () => {
+const openLeaderboard = async () => {
   try {
     if (isLeaderboardActive.value) {
       console.log('Leaderboard button clicked while active: Closing window.');
-      window.logMonitorApi.closeWebContentWindow();
+      window.logMonitorApi.closeEnhancedWebContentWindow();
     } else {
-      console.log('Leaderboard button clicked while inactive: Opening window to leaderboard.');
-      window.logMonitorApi.openWebContentWindow('leaderboard');
+      console.log('Leaderboard button clicked while inactive: Opening enhanced WebContentsView for leaderboard.');
+      
+      // Use the new enhanced WebContentsView system for Steam-like embedded experience
+      const result = await window.logMonitorApi.openEnhancedWebContentWindow('leaderboard');
+      
+      console.log('Enhanced WebContentsView result:', result);
+      
+      if (!result.success) {
+        console.error('Failed to open enhanced WebContentsView:', result.error);
+        console.log('Falling back to legacy webview...');
+        // Fallback to legacy system only if enhanced fails
+        window.logMonitorApi.openWebContentWindow('leaderboard');
+      } else {
+        console.log('Enhanced WebContentsView opened successfully for leaderboard section');
+      }
     }
   } catch (error) {
-    console.error("Failed to toggle web content window for leaderboard:", error);
+    console.error("Failed to open leaderboard window:", error);
+    // Fallback to legacy webview
+    try {
+      window.logMonitorApi.openWebContentWindow('leaderboard');
+    } catch (fallbackError) {
+      console.error("Fallback also failed:", fallbackError);
+    }
   }
 }
 
-const openMap = () => {
+const openMap = async () => {
   try {
     if (isMapActive.value) {
       console.log('Map button clicked while active: Closing window.');
-      window.logMonitorApi.closeWebContentWindow();
+      window.logMonitorApi.closeEnhancedWebContentWindow();
     } else {
-      console.log('Map button clicked while inactive: Opening window to map.');
-      window.logMonitorApi.openWebContentWindow('map');
+      console.log('Map button clicked while inactive: Opening enhanced WebContentsView for map.');
+      
+      // Use the new enhanced WebContentsView system for Steam-like embedded experience
+      const result = await window.logMonitorApi.openEnhancedWebContentWindow('map');
+      
+      console.log('Enhanced WebContentsView result:', result);
+      
+      if (!result.success) {
+        console.error('Failed to open enhanced WebContentsView:', result.error);
+        console.log('Falling back to legacy webview...');
+        // Fallback to legacy system only if enhanced fails
+        window.logMonitorApi.openWebContentWindow('map');
+      } else {
+        console.log('Enhanced WebContentsView opened successfully for map section');
+      }
     }
   } catch (error) {
-    console.error("Failed to toggle web content window for map:", error);
+    console.error("Failed to open map window:", error);
+    // Fallback to legacy webview
+    try {
+      window.logMonitorApi.openWebContentWindow('map');
+    } catch (fallbackError) {
+      console.error("Fallback also failed:", fallbackError);
+    }
   }
-}
+};
+
+// Generic function to open external website sections
+const openExternalSection = async (section: string, customTitle?: string, customSize?: { width: number, height: number }) => {
+  try {
+    // Determine the correct URL based on environment
+    const currentUrl = window.location.href;
+    const isDev = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
+    const baseUrl = isDev ? 'http://localhost:3001' : 'https://voidlog.gg';
+    const websiteUrl = `${baseUrl}/${section}`;
+    
+    console.log(`Opening ${section}: ${websiteUrl} (dev mode: ${isDev})`);
+    
+    const result = await window.logMonitorApi.openExternalWebWindow(websiteUrl, {
+      width: customSize?.width || 1400,
+      height: customSize?.height || 900,
+      title: customTitle || `VOIDLOG.GG - ${section.charAt(0).toUpperCase() + section.slice(1)}`,
+      enableAuth: true
+    });
+    
+    if (!result.success) {
+      console.error(`Failed to open ${section} window:`, result.error);
+      return false;
+    } else {
+      console.log(`${section} window opened successfully with ID:`, result.windowId);
+      return true;
+    }
+  } catch (error) {
+    console.error(`Failed to open ${section} window:`, error);
+    return false;
+  }
+};
 
 // --- Computed Properties ---
 
 // Show all events in the kill feed
 const currentEvents = computed(() => {
-  // If we're using search mode, return search results
+  let events: KillEvent[];
+  
+  // Determine which event source to use
   if (isUsingSearch.value) {
-    return searchResults.value;
+    events = searchResults.value;
+  } else {
+    events = allEvents.value;
   }
 
-  // Show all events - the EventStore already provides the appropriate events
-  // No filtering needed as the server/EventStore handles what should be displayed
-  return allEvents.value;
+  // Apply event filter based on dropdown selection
+  if (eventFilter.value === 'local') {
+    // Hide server events, show only local events
+    return events.filter(event => !event.metadata?.source?.external && !event.metadata?.source?.server);
+  }
+  
+  // Show all events (default)
+  return events;
 });
 
 // For backward compatibility, keep the same computed name but now it just returns currentEvents
@@ -211,6 +315,31 @@ const currentEvents = computed(() => {
 const sortedFilteredEvents = computed(() => {
   // Events are already sorted by the EventStore (newest first)
   return currentEvents.value;
+});
+
+// Watch for filter changes and reload events to ensure pagination consistency
+watch(eventFilter, async (newFilter, oldFilter) => {
+  if (newFilter !== oldFilter) {
+    console.log(`[KillFeed] Event filter changed from '${oldFilter}' to '${newFilter}' - reloading events`);
+    
+    // Clear search if active to avoid confusion
+    if (isUsingSearch.value) {
+      searchQuery.value = '';
+      searchResults.value = [];
+      isUsingSearch.value = false;
+    }
+    
+    // Reset state and reload events
+    currentWindowOffset.value = 0;
+    hasMoreEvents.value = true;
+    
+    try {
+      await loadKillEvents();
+      console.log(`[KillFeed] Successfully reloaded events for '${newFilter}' filter`);
+    } catch (error) {
+      console.error('[KillFeed] Failed to reload events after filter change:', error);
+    }
+  }
 });
 
 // --- BADGE COMPUTED PROPERTIES ---
@@ -271,21 +400,7 @@ const modeBadge = computed(() => {
   }
 });
 
-const feedModeBadge = computed(() => {
-  // Server determines what events this client receives - client just displays them
-  const hasServerEvents = allEvents.value.some(event => event.metadata?.source?.external);
-  
-  if (hasServerEvents) {
-    return {
-      text: 'Mixed Events',
-      class: 'inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-600/20 ring-inset'
-    };
-  }
-  return {
-    text: 'Local Events',
-    class: 'inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset'
-  };
-});
+// Remove feedModeBadge - replaced with eventFilter dropdown
 
 // Removed old statusIndicatorClass computed property
 
@@ -1612,7 +1727,32 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     <!-- Status bar with Pips -->
     <div class="status-bar">
       <div class="status-badges-container">
-        <span :class="feedModeBadge.class">{{ feedModeBadge.text }}</span>
+        <!-- Event Filter Dropdown -->
+        <el-select 
+          v-model="eventFilter" 
+          size="small"
+          class="event-filter-select"
+          placeholder="Filter events"
+        >
+          <el-option 
+            label="All Events" 
+            value="all"
+          >
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <el-icon size="14"><Connection /></el-icon>
+              All Events
+            </span>
+          </el-option>
+          <el-option 
+            label="Local Events" 
+            value="local"
+          >
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <el-icon size="14"><Monitor /></el-icon>
+              Local Events
+            </span>
+          </el-option>
+        </el-select>
         <span :class="loginBadge.class">{{ loginBadge.text }}</span>
         <span :class="monitoringBadge.class">{{ monitoringBadge.text }}</span>
         <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
@@ -1822,6 +1962,69 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+/* Event Filter Dropdown - Element Plus Select */
+.event-filter-select {
+  width: 110px;
+}
+
+/* Style the Element Plus select to match app theme */
+.event-filter-select :deep(.el-input__wrapper) {
+  background-color: rgba(26, 26, 26, 0.8);
+  border-color: rgba(163, 163, 163, 0.2);
+  box-shadow: none;
+}
+
+.event-filter-select :deep(.el-input__inner) {
+  color: rgb(163, 163, 163);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.event-filter-select :deep(.el-input__wrapper:hover) {
+  border-color: rgba(99, 99, 247, 0.5);
+}
+
+.event-filter-select :deep(.el-input__wrapper.is-focus) {
+  border-color: rgb(99, 99, 247);
+}
+
+.event-filter-select :deep(.el-select__caret) {
+  color: rgb(163, 163, 163);
+}
+
+.event-filter-select :deep(.el-select__placeholder) {
+  color: rgba(163, 163, 163, 0.6);
+}
+
+/* Dark theme for dropdown menu matching app colors */
+:global(.el-select-dropdown) {
+  background-color: #1a1a1a !important;
+  border-color: rgba(163, 163, 163, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+:global(.el-select-dropdown__item) {
+  color: rgb(163, 163, 163) !important;
+  font-size: 0.75rem !important;
+  transition: all 0.2s ease !important;
+}
+
+:global(.el-select-dropdown__item:hover) {
+  background-color: rgba(99, 99, 247, 0.15) !important;
+  color: rgb(99, 99, 247) !important;
+}
+
+:global(.el-select-dropdown__item.selected) {
+  color: rgb(77, 77, 234) !important;
+  background-color: rgba(77, 77, 234, 0.1) !important;
+  font-weight: 600 !important;
+}
+
+:global(.el-select-dropdown__item.selected:hover) {
+  color: rgb(99, 99, 247) !important;
+  background-color: rgba(99, 99, 247, 0.15) !important;
 }
 
 /* Badge base style (for fallback if Tailwind is not present) */

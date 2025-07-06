@@ -67,9 +67,42 @@ export interface LogMonitorApi {
 
   // Window Actions
   openSettingsWindow: () => Promise<void>;
-  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => Promise<void>; // Expanded
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow';
+    error?: string;
+  }>; // Enhanced with architecture info
   closeSettingsWindow: () => Promise<boolean>;
-  closeWebContentWindow: () => Promise<boolean>;
+  closeWebContentWindow: () => Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }>; // Enhanced with architecture info
+  
+  // External website window with authentication
+  openExternalWebWindow: (url: string, options?: {
+    width?: number;
+    height?: number;
+    title?: string;
+    enableAuth?: boolean;
+  }) => Promise<{ success: boolean; windowId?: number; error?: string }>;
+
+  // Enhanced WebContentsView window operations
+  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map') => Promise<{
+    success: boolean;
+    architecture?: string;
+    section?: string;
+    error?: string;
+    timestamp?: string;
+  }>;
+  closeEnhancedWebContentWindow: () => Promise<boolean>;
+  getEnhancedWebContentStatus: () => Promise<{
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | null;
+    architecture: string;
+    authenticationEnabled: boolean;
+  }>;
+  
   // Window controls are now handled by custom-electron-titlebar
 
   // Entity Resolution API
@@ -104,7 +137,12 @@ export interface LogMonitorApi {
 
   // Window Status
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
-  getWebContentWindowStatus: () => Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }>; // Expanded
+  getWebContentWindowStatus: () => Promise<{
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
+    architecture: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }>; // Enhanced with architecture info
 
   // Debug Actions
   resetSessions: () => Promise<boolean>;
@@ -125,6 +163,42 @@ export interface LogMonitorApi {
   authLoginSuccess: () => Promise<void>;
   authContinueAsGuest: () => Promise<void>;
   authCloseLoginWindow: () => Promise<void>;
+  authResizeLoginWindow: (newHeight: number) => Promise<boolean>;
+
+  // --- New WebContentsView Architecture API ---
+  
+  // Navigate to a specific section in WebContentsView
+  webContentNavigateToSection: (section: 'profile' | 'leaderboard' | 'map') => Promise<{
+    success: boolean;
+    section?: string;
+    architecture?: 'webcontentsview' | 'browserwindow';
+    error?: string;
+  }>;
+
+  // Update authentication tokens in WebContentsView
+  webContentUpdateAuthTokens: (tokens: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: UserProfile;
+  } | null) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+
+  // Switch between WebContentsView and BrowserWindow architecture
+  webContentSetArchitecture: (useWebContentsView: boolean) => Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    useWebContentsView?: boolean;
+    error?: string;
+  }>;
+
+  // Get current architecture being used
+  webContentGetArchitecture: () => Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }>;
 
   // Resource Path
   getResourcePath: () => Promise<string>;
@@ -144,7 +218,11 @@ export interface LogMonitorApi {
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }) => void) => () => void; // Expanded
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: {
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+  }) => void) => () => void; // Enhanced with architecture info
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: AuthData) => void) => () => void; // Added
 
   // Update Events

@@ -178,6 +178,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   openWebContentWindow: (section) => require$$0.ipcRenderer.invoke("open-web-content-window", section),
   closeSettingsWindow: () => require$$0.ipcRenderer.invoke("close-settings-window"),
   closeWebContentWindow: () => require$$0.ipcRenderer.invoke("close-web-content-window"),
+  // External website window with authentication
+  openExternalWebWindow: (url, options) => require$$0.ipcRenderer.invoke("open-external-web-window", url, options),
   // Window controls are now handled by custom-electron-titlebar
   // Entity Resolution API
   resolveEntity: (entityId, serverEnriched) => require$$0.ipcRenderer.invoke("entity:resolve", entityId, serverEnriched),
@@ -207,11 +209,32 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authContinueAsGuest: () => require$$0.ipcRenderer.invoke("auth:continueAsGuest"),
   authCloseLoginWindow: () => require$$0.ipcRenderer.invoke("auth:closeLoginWindow"),
   authResizeLoginWindow: (newHeight) => require$$0.ipcRenderer.invoke("auth:resize-login-window", newHeight),
-  // Profile Action
-  getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
-  // Window Status Getters
+  // --- New WebContentsView Architecture API ---
+  // Navigate to a specific section in WebContentsView
+  webContentNavigateToSection: (section) => require$$0.ipcRenderer.invoke("web-content:navigate-to-section", section),
+  // Update authentication tokens in WebContentsView
+  webContentUpdateAuthTokens: (tokens) => require$$0.ipcRenderer.invoke("web-content:update-auth-tokens", tokens),
+  // Switch between WebContentsView and BrowserWindow architecture
+  webContentSetArchitecture: (useWebContentsView) => require$$0.ipcRenderer.invoke("web-content:set-architecture", useWebContentsView),
+  // Get current architecture being used
+  webContentGetArchitecture: () => require$$0.ipcRenderer.invoke("web-content:get-architecture"),
+  // --- Authenticated WebContentsView Methods ---
+  // Open authenticated WebContentsView window
+  openAuthenticatedWebContentWindow: (section) => require$$0.ipcRenderer.invoke("open-authenticated-web-content-window", section),
+  // Close authenticated WebContentsView window
+  closeAuthenticatedWebContentWindow: () => require$$0.ipcRenderer.invoke("close-authenticated-web-content-window"),
+  // --- Enhanced WebContentsView API ---
+  // Open enhanced WebContentsView window (new architecture)
+  openEnhancedWebContentWindow: (section) => require$$0.ipcRenderer.invoke("enhanced-window:attach-to-existing", section),
+  // Close enhanced WebContentsView window
+  closeEnhancedWebContentWindow: () => require$$0.ipcRenderer.invoke("enhanced-window:close-window"),
+  // Get enhanced WebContentsView window status
+  getEnhancedWebContentStatus: () => require$$0.ipcRenderer.invoke("enhanced-window:get-status"),
+  // Window Status Methods
   getSettingsWindowStatus: () => require$$0.ipcRenderer.invoke("get-settings-window-status"),
   getWebContentWindowStatus: () => require$$0.ipcRenderer.invoke("get-web-content-window-status"),
+  // Profile Action
+  getProfile: () => require$$0.ipcRenderer.invoke("get-profile"),
   // Resource Path
   getResourcePath: () => require$$0.ipcRenderer.invoke("get-resource-path"),
   getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),

@@ -54,6 +54,27 @@ ipcRenderer.on('auth-tokens-updated', (_event, authData: { accessToken: string |
   }
 });
 
+// --- Request Interception for Authorization Headers ---
+// Intercept fetch requests to add Authorization headers
+const originalFetch = window.fetch;
+window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+  const request = new Request(input, init);
+  
+  // Only add auth headers for same-origin requests or API requests
+  const url = request.url;
+  const isApiRequest = url.includes('/api/') || url.includes('localhost') || url.includes('voidlog.gg') || url.includes('killfeed.sinfulshadows.com');
+  
+  if (isApiRequest) {
+    const accessToken = localStorage.getItem('auth.accessToken');
+    if (accessToken && !request.headers.get('Authorization')) {
+      request.headers.set('Authorization', `Bearer ${accessToken}`);
+      console.log(`${MODULE_NAME}: Added Authorization header to request: ${url}`);
+    }
+  }
+  
+  return originalFetch(request);
+};
+
 // --- Custom Title Bar Initialization ---
 window.addEventListener('DOMContentLoaded', () => {
   new Titlebar({
@@ -69,4 +90,42 @@ window.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', () => {
   console.log(`${MODULE_NAME}: DOMContentLoaded event fired. Sending 'webview-ready-for-token' to main process.`);
   ipcRenderer.send('webview-ready-for-token');
+  
+  // Also check if we have cookies and set up localStorage from them
+  const accessTokenCookie = document.cookie.split(';').find(cookie => cookie.trim().startsWith('access_token='));
+  const refreshTokenCookie = document.cookie.split(';').find(cookie => cookie.trim().startsWith('refresh_token='));
+  const userDataCookie = document.cookie.split(';').find(cookie => cookie.trim().startsWith('user_data='));
+  
+  if (accessTokenCookie) {
+    const accessToken = accessTokenCookie.split('=')[1];
+    localStorage.setItem('auth.accessToken', accessToken);
+    console.log(`${MODULE_NAME}: Found access_token cookie, stored in localStorage`);
+  }
+  
+  if (refreshTokenCookie) {
+    const refreshToken = refreshTokenCookie.split('=')[1];
+    localStorage.setItem('auth.refreshToken', refreshToken);
+    console.log(`${MODULE_NAME}: Found refresh_token cookie, stored in localStorage`);
+  }
+  
+  if (userDataCookie) {
+    try {
+      const userData = decodeURIComponent(userDataCookie.split('=')[1]);
+      localStorage.setItem('auth.user', userData);
+      console.log(`${MODULE_NAME}: Found user_data cookie, stored in localStorage`);
+    } catch (error) {
+      console.error(`${MODULE_NAME}: Failed to parse user_data cookie:`, error);
+    }
+  }
+  
+  // Dispatch event to notify the web app of available authentication
+  if (accessTokenCookie || refreshTokenCookie) {
+    window.dispatchEvent(new CustomEvent('electron-auth-ready', { 
+      detail: { 
+        source: 'cookies',
+        hasAccessToken: !!accessTokenCookie,
+        hasRefreshToken: !!refreshTokenCookie 
+      } 
+    }));
+  }
 });
