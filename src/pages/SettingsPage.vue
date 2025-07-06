@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import AuthenticatedWebContentsView from '../components/AuthenticatedWebContentsView.vue'
 
 const pageTitle = ref<string>('Settings Placeholder')
 
@@ -26,6 +27,11 @@ const openSettings = () => {
           Open Settings Window
         </button>
         <p class="text-sm text-theme-text-muted">(You can also open Settings from the tray menu)</p>
+      </div>
+      
+      <!-- Demo: Authenticated WebContentsView -->
+      <div class="w-full max-w-4xl">
+        <AuthenticatedWebContentsView />
       </div>
     </main>
   </div>

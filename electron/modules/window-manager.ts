@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, app, screen, Rectangle, ipcMain } from 'electron'; // Import screen and Rectangle, and ipcMain
+import { BrowserWindow, shell, app, screen, Rectangle, ipcMain, BaseWindow, WebContentsView } from 'electron'; // Import screen and Rectangle, BaseWindow, WebContentsView, and ipcMain
 import path from 'node:path';
 import url from 'node:url'; // Import the url module
 import fsSync from 'node:fs';
@@ -8,6 +8,7 @@ import { isQuitting } from './app-lifecycle'; // Import the flag
 import { KillEvent } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 import { attachTitlebarToWindow } from "custom-electron-titlebar/main"; // Import for custom title bar
+import { webContentsViewAuth } from './webcontents-view-auth'; // Import WebContentsView authentication
 const MODULE_NAME = 'WindowManager'; // Define module name for logger
 
 // Type for auth tokens
@@ -15,6 +16,20 @@ interface AuthTokens {
     accessToken?: string;
     refreshToken?: string;
     user?: any;
+}
+
+// Import WebContentsView manager for integration
+let webContentsViewManager: any = null;
+async function getWebContentsViewManager() {
+    if (!webContentsViewManager) {
+        try {
+            webContentsViewManager = await import('./webcontents-view-manager');
+            logger.debug(MODULE_NAME, 'WebContentsView manager loaded successfully');
+        } catch (error) {
+            logger.warn(MODULE_NAME, 'Failed to load WebContentsView manager:', error);
+        }
+    }
+    return webContentsViewManager;
 }
 
 // Define __dirname for ES module scope
@@ -26,6 +41,8 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let webContentWindow: BrowserWindow | null = null; // Added for Web Content Window
+let webContentBaseWindow: BaseWindow | null = null; // New BaseWindow for web content
+let webContentView: WebContentsView | null = null; // Web content view for BaseWindow
 let loginWindow: BrowserWindow | null = null;
 let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | null = null; // Track active section
 // Store data for the event details window temporarily
@@ -164,6 +181,14 @@ class WindowManager {
         }
     }
 
+    // Method to send auth tokens to BaseWindow web content view
+    public sendAuthTokensToWebContentBaseWindow(tokens: AuthTokens | null): void {
+        if (webContentView && !webContentView.webContents.isDestroyed()) {
+            webContentView.webContents.send('auth-tokens-updated', tokens);
+            this._handleAuthTokensForBaseWindowCookie(tokens);
+        }
+    }
+
     // Private method to handle auth tokens for cookie setting
     private async _handleAuthTokensForCookie(tokens: AuthTokens | null): Promise<void> {
         console.log('[WindowManager CookieDebug] Entered _handleAuthTokensForCookie. Tokens:', tokens ? 'present' : 'null or undefined');
@@ -226,6 +251,261 @@ class WindowManager {
             logger.info(MODULE_NAME, '[WindowManager CookieDebug] All cookies set successfully');
         } catch (error) {
             logger.error(MODULE_NAME, '[WindowManager CookieDebug] Error setting cookies:', error);
+        }
+    }
+
+    // Private method to handle auth tokens for BaseWindow cookie setting
+    private async _handleAuthTokensForBaseWindowCookie(tokens: AuthTokens | null): Promise<void> {
+        console.log('[WindowManager BaseWindowCookieDebug] Entered _handleAuthTokensForBaseWindowCookie. Tokens:', tokens ? 'present' : 'null or undefined');
+        
+        if (!tokens) {
+            logger.info(MODULE_NAME, 'No tokens provided to _handleAuthTokensForBaseWindowCookie');
+            return;
+        }
+
+        if (!webContentView || webContentView.webContents.isDestroyed()) {
+            logger.warn(MODULE_NAME, 'WebContentView is null or destroyed in _handleAuthTokensForBaseWindowCookie');
+            return;
+        }
+
+        logger.info(MODULE_NAME, 'Setting auth cookies for BaseWindow web content view');
+        
+        try {
+            const cookieUrl = this.webAppUrl;
+            logger.info(MODULE_NAME, `[WindowManager BaseWindowCookieDebug] Attempting to set cookies for URL: ${cookieUrl}`);
+
+            if (tokens.accessToken) {
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Setting access token cookie');
+                await webContentView.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'access_token',
+                    value: tokens.accessToken,
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Successfully set access token cookie');
+            }
+
+            if (tokens.refreshToken) {
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Setting refresh token cookie');
+                await webContentView.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'refresh_token',
+                    value: tokens.refreshToken,
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Successfully set refresh token cookie');
+            }
+
+            if (tokens.user) {
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Setting user data cookie');
+                await webContentView.webContents.session.cookies.set({
+                    url: cookieUrl,
+                    name: 'user_data',
+                    value: JSON.stringify(tokens.user),
+                    httpOnly: false,
+                    secure: cookieUrl.startsWith('https'),
+                    sameSite: 'lax'
+                });
+                logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Successfully set user data cookie');
+            }
+
+            logger.info(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] All cookies set successfully');
+        } catch (error) {
+            logger.error(MODULE_NAME, '[WindowManager BaseWindowCookieDebug] Error setting cookies:', error);
+        }
+    }
+
+    // Enhanced method to create external website window with authentication
+    public async createExternalWebWindow(url: string, options: { 
+        width?: number, 
+        height?: number, 
+        title?: string,
+        enableAuth?: boolean 
+    } = {}): Promise<BrowserWindow | null> {
+        try {
+            const { width = 1200, height = 800, title = 'External Website', enableAuth = true } = options;
+            
+            // Create external web window with authentication preload
+            const externalWindow = new BrowserWindow({
+                width,
+                height,
+                title,
+                webPreferences: {
+                    nodeIntegration: false,
+                    contextIsolation: true,
+                    preload: enableAuth ? 
+                        getPreloadPath('webview-preload.mjs') : undefined,
+                    webSecurity: true,
+                    allowRunningInsecureContent: false
+                },
+                show: false,
+                resizable: true,
+                minimizable: true,
+                maximizable: true,
+                closable: true,
+                icon: getIconPath(),
+                autoHideMenuBar: true,
+                center: true, // Center the window on screen
+                skipTaskbar: false, // Ensure it appears in taskbar
+                alwaysOnTop: false // Don't make it always on top
+            });
+            
+            logger.info(MODULE_NAME, `Created external window with dimensions: ${width}x${height}, title: ${title}`);
+
+            // Set up authentication for external website if enabled
+            if (enableAuth) {
+                logger.info(MODULE_NAME, `Setting up authentication for external window: ${url}`);
+                
+                // Get current auth tokens from auth manager
+                const authModule = await import('./auth-manager');
+                const currentTokens = authModule.getCurrentAuthTokens();
+                
+                logger.info(MODULE_NAME, `Current tokens available: ${!!currentTokens}`);
+                if (currentTokens) {
+                    logger.info(MODULE_NAME, `Access token present: ${!!currentTokens.accessToken}, Refresh token present: ${!!currentTokens.refreshToken}`);
+                    
+                    // Set cookies for the external domain if it's our server domain
+                    await this._setExternalWebsiteCookies(externalWindow, url, currentTokens);
+                    
+                    // Send tokens to the webview via IPC once loaded
+                    externalWindow.webContents.once('dom-ready', () => {
+                        logger.info(MODULE_NAME, 'DOM ready, sending auth tokens via IPC');
+                        externalWindow.webContents.send('auth-tokens-updated', {
+                            accessToken: currentTokens.accessToken,
+                            refreshToken: currentTokens.refreshToken,
+                            user: currentTokens.user
+                        });
+                    });
+                } else {
+                    logger.warn(MODULE_NAME, 'No authentication tokens available for external window');
+                }
+            }
+
+            // Load the external URL
+            logger.info(MODULE_NAME, `Loading URL in external window: ${url}`);
+            await externalWindow.loadURL(url);
+            
+            // Show window once loaded
+            externalWindow.once('ready-to-show', () => {
+                logger.info(MODULE_NAME, `External window ready to show - displaying now`);
+                externalWindow.show();
+                externalWindow.focus(); // Ensure it's brought to front
+            });
+            
+            // Backup show mechanism - force show after 3 seconds if ready-to-show doesn't fire
+            const showTimeout = setTimeout(() => {
+                if (!externalWindow.isDestroyed() && !externalWindow.isVisible()) {
+                    logger.warn(MODULE_NAME, `ready-to-show didn't fire, forcing window to show`);
+                    externalWindow.show();
+                    externalWindow.focus();
+                }
+            }, 3000);
+            
+            // Add additional debugging
+            externalWindow.webContents.on('did-finish-load', () => {
+                logger.info(MODULE_NAME, `External window finished loading: ${url}`);
+                clearTimeout(showTimeout); // Cancel backup show since page loaded
+                // Force show if not already visible
+                if (!externalWindow.isDestroyed() && !externalWindow.isVisible()) {
+                    logger.info(MODULE_NAME, `Page loaded but window not visible, showing now`);
+                    externalWindow.show();
+                    externalWindow.focus();
+                }
+            });
+            
+            externalWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+                logger.error(MODULE_NAME, `External window failed to load: ${errorCode} - ${errorDescription}`);
+                clearTimeout(showTimeout);
+            });
+            
+            externalWindow.webContents.on('did-start-loading', () => {
+                logger.info(MODULE_NAME, `External window started loading: ${url}`);
+            });
+
+            // Handle window closed
+            externalWindow.on('closed', () => {
+                logger.info(MODULE_NAME, `External web window closed: ${url}`);
+            });
+
+            // Clean up timeout if window is destroyed
+            externalWindow.on('closed', () => {
+                clearTimeout(showTimeout);
+                logger.info(MODULE_NAME, `External web window closed: ${url}`);
+            });
+            
+            logger.info(MODULE_NAME, `Created external web window for: ${url}`);
+            return externalWindow;
+            
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to create external web window:', error);
+            return null;
+        }
+    }
+
+    // Set authentication cookies for external websites
+    private async _setExternalWebsiteCookies(window: BrowserWindow, url: string, tokens: AuthTokens): Promise<void> {
+        try {
+            const urlObj = new URL(url);
+            const domain = urlObj.hostname;
+            
+            // Only set cookies for trusted domains (our server domains)
+            const trustedDomains = [
+                'killfeed.sinfulshadows.com',
+                'server-killfeed.sinfulshadows.com',
+                'voidlog.gg',
+                'localhost' // For development
+            ];
+            
+            const isTrustedDomain = trustedDomains.some(trusted => 
+                domain === trusted || domain.endsWith(`.${trusted}`)
+            );
+            
+            if (!isTrustedDomain) {
+                logger.debug(MODULE_NAME, `Skipping cookie injection for untrusted domain: ${domain}`);
+                return;
+            }
+
+            const session = window.webContents.session;
+            const cookieOptions = {
+                url: urlObj.origin,
+                httpOnly: false,
+                secure: urlObj.protocol === 'https:',
+                sameSite: 'lax' as const
+            };
+
+            logger.info(MODULE_NAME, `Setting cookies for domain: ${domain} with tokens: access=${!!tokens.accessToken}, refresh=${!!tokens.refreshToken}`);
+            
+            // Set authentication cookies
+            await Promise.all([
+                session.cookies.set({
+                    ...cookieOptions,
+                    name: 'access_token',
+                    value: tokens.accessToken || '',
+                    expirationDate: Date.now() / 1000 + (15 * 60) // 15 minutes
+                }).then(() => logger.info(MODULE_NAME, 'Successfully set access_token cookie')),
+                session.cookies.set({
+                    ...cookieOptions,
+                    name: 'refresh_token',
+                    value: tokens.refreshToken || '',
+                    httpOnly: true,
+                    expirationDate: Date.now() / 1000 + (7 * 24 * 60 * 60) // 7 days
+                }).then(() => logger.info(MODULE_NAME, 'Successfully set refresh_token cookie')),
+                session.cookies.set({
+                    ...cookieOptions,
+                    name: 'user_data',
+                    value: JSON.stringify(tokens.user || {}),
+                    expirationDate: Date.now() / 1000 + (24 * 60 * 60) // 24 hours
+                }).then(() => logger.info(MODULE_NAME, 'Successfully set user_data cookie'))
+            ]);
+
+            logger.info(MODULE_NAME, `Set authentication cookies for domain: ${domain}`);
+            
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to set external website cookies:', error);
         }
     }
 }
@@ -940,6 +1220,487 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
     return detailsWindow;
 }
 
+export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' | 'map'): BaseWindow | null {
+    if (webContentBaseWindow) {
+        if (webContentBaseWindow.isMinimized()) {
+            webContentBaseWindow.restore(); // Restore if minimized
+        }
+        webContentBaseWindow.focus(); // Bring to front
+
+        // Check if section needs changing
+        const newSection = section || null; // Default to null if undefined
+        if (newSection && newSection !== currentWebContentSection) {
+            logger.info(MODULE_NAME, `Switching section from ${currentWebContentSection} to ${newSection}`);
+            // Send IPC to renderer to navigate
+            if (webContentView && !webContentView.webContents.isDestroyed()) {
+                webContentView.webContents.send('navigate-to-section', newSection);
+            }
+            // Update tracked section
+            currentWebContentSection = newSection;
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+            logger.info(MODULE_NAME, `Sent web-content-window-status update for section switch: { isOpen: true, activeSection: ${currentWebContentSection} }`);
+        } else {
+             logger.debug(MODULE_NAME, `Requested section (${section}) is same as current (${currentWebContentSection}) or null. No navigation needed.`);
+        }
+        return webContentBaseWindow; // Return existing window
+    }
+
+    // --- Create New BaseWindow ---
+    logger.info(MODULE_NAME, `Creating new web content BaseWindow for section: ${section}`);
+    currentWebContentSection = section || null; // Set initial section *before* loading
+
+    // --- Web Content Window Bounds ---
+    const savedBounds = store.get('webContentWindowBounds');
+    const defaultWidth = 1024;
+    const defaultHeight = 768;
+
+    let windowBounds = {
+        x: undefined as number | undefined,
+        y: undefined as number | undefined,
+        width: defaultWidth,
+        height: defaultHeight
+    };
+
+    // Validate and apply saved bounds
+    if (savedBounds) {
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+            const displayBounds = display.workArea;
+            return (
+                savedBounds.x < displayBounds.x + displayBounds.width &&
+                savedBounds.x + savedBounds.width > displayBounds.x &&
+                savedBounds.y < displayBounds.y + displayBounds.height &&
+                savedBounds.y + savedBounds.height > displayBounds.y
+            );
+        });
+
+        if (isVisible) {
+            logger.info(MODULE_NAME, 'Applying saved web content window bounds:', savedBounds);
+            windowBounds.x = savedBounds.x;
+            windowBounds.y = savedBounds.y;
+            windowBounds.width = savedBounds.width;
+            windowBounds.height = savedBounds.height;
+        } else {
+            logger.warn(MODULE_NAME, 'Saved web content window bounds are outside visible screen area. Using defaults.');
+            store.delete('webContentWindowBounds'); // Clear invalid bounds
+        }
+    } else {
+        logger.info(MODULE_NAME, `No saved web content bounds found. Using default size: ${defaultWidth}x${defaultHeight}`);
+    }
+
+    // Create the BaseWindow
+    webContentBaseWindow = new BaseWindow({
+        ...windowBounds,
+        title: 'SC Feeder - Web Content',
+        titleBarStyle: 'hidden',
+        autoHideMenuBar: true,
+        show: false, // Don't show until ready
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        closable: true,
+        skipTaskbar: false,
+        alwaysOnTop: false,
+        minWidth: 800,
+        minHeight: 600,
+        backgroundColor: '#1a1a1a'
+    });
+
+    // Set icon if available
+    const iconPath = getIconPath();
+    if (iconPath) {
+        webContentBaseWindow.setIcon(iconPath);
+    }
+
+    // Create the navigation header view
+    const headerHeight = 80;
+    const headerView = new WebContentsView({
+        webPreferences: {
+            preload: getPreloadPath('preload.mjs'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            webSecurity: app.isPackaged
+        }
+    });
+
+    // Create the web content view
+    webContentView = new WebContentsView({
+        webPreferences: {
+            preload: getPreloadPath('webview-preload.mjs'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: !app.isPackaged,
+            spellcheck: false,
+            webSecurity: app.isPackaged,
+            partition: 'persist:logmonitorweb'
+        }
+    });
+
+    // Add views to the BaseWindow
+    webContentBaseWindow.contentView.addChildView(headerView);
+    webContentBaseWindow.contentView.addChildView(webContentView);
+
+    // Set up view bounds
+    const updateViewBounds = () => {
+        const bounds = webContentBaseWindow!.getBounds();
+        
+        // Header view at the top
+        headerView.setBounds({
+            x: 0,
+            y: 0,
+            width: bounds.width,
+            height: headerHeight
+        });
+
+        // Web content view below header
+        webContentView!.setBounds({
+            x: 0,
+            y: headerHeight,
+            width: bounds.width,
+            height: bounds.height - headerHeight
+        });
+    };
+
+    // Initial bounds setup
+    updateViewBounds();
+
+    // Update bounds when window resizes
+    webContentBaseWindow.on('resize', updateViewBounds);
+
+    // Load the navigation header content
+    const loadHeaderContent = () => {
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
+        
+        if (devServerUrl) {
+            // In development, create a simple header HTML
+            const headerHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Navigation Header</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: #171717;
+            border-bottom: 1px solid #262626;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 50px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e5e5e5;
+            user-select: none;
+            -webkit-app-region: drag;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 16px;
+            -webkit-app-region: no-drag;
+        }
+        .nav-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #e5e5e5;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #4d4dea;
+        }
+        .nav-btn.active {
+            background: rgba(255, 255, 255, 0.05);
+            color: #6363f7;
+        }
+        .window-controls {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            display: flex;
+            -webkit-app-region: no-drag;
+        }
+        .control-btn {
+            width: 46px;
+            height: 100%;
+            border: none;
+            background: transparent;
+            color: #e5e5e5;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .control-btn.close:hover {
+            background: #e81123;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-buttons">
+        <button class="nav-btn" data-section="profile" id="profile-btn">Profile</button>
+        <button class="nav-btn" data-section="leaderboard" id="leaderboard-btn">Leaderboard</button>
+        <button class="nav-btn" data-section="map" id="map-btn">Map</button>
+    </div>
+    <div class="window-controls">
+        <button class="control-btn minimize" id="minimize-btn">—</button>
+        <button class="control-btn maximize" id="maximize-btn">⧠</button>
+        <button class="control-btn close" id="close-btn">×</button>
+    </div>
+    <script>
+        // Set active section based on initial value
+        const currentSection = '${section || 'profile'}';
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.section === currentSection);
+        });
+        
+        // Handle navigation clicks
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const section = btn.dataset.section;
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Send section change to main process
+                window.electronAPI?.invoke('web-content-section-change', section);
+            });
+        });
+        
+        // Handle window controls
+        document.getElementById('minimize-btn').addEventListener('click', () => {
+            window.electronAPI?.invoke('web-content-window-minimize');
+        });
+        
+        document.getElementById('maximize-btn').addEventListener('click', () => {
+            window.electronAPI?.invoke('web-content-window-maximize');
+        });
+        
+        document.getElementById('close-btn').addEventListener('click', () => {
+            window.electronAPI?.invoke('web-content-window-close');
+        });
+        
+        // Listen for section changes from main process
+        window.addEventListener('section-changed', (event) => {
+            const section = event.detail.section;
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.section === section);
+            });
+        });
+    </script>
+</body>
+</html>`;
+            headerView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(headerHtml)}`);
+        } else {
+            // In production, use the same header HTML
+            const headerHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Navigation Header</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: #171717;
+            border-bottom: 1px solid #262626;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 50px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e5e5e5;
+            user-select: none;
+            -webkit-app-region: drag;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 16px;
+            -webkit-app-region: no-drag;
+        }
+        .nav-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #e5e5e5;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #4d4dea;
+        }
+        .nav-btn.active {
+            background: rgba(255, 255, 255, 0.05);
+            color: #6363f7;
+        }
+        .window-controls {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            display: flex;
+            -webkit-app-region: no-drag;
+        }
+        .control-btn {
+            width: 46px;
+            height: 100%;
+            border: none;
+            background: transparent;
+            color: #e5e5e5;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        .control-btn.close:hover {
+            background: #e81123;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-buttons">
+        <button class="nav-btn" data-section="profile" id="profile-btn">Profile</button>
+        <button class="nav-btn" data-section="leaderboard" id="leaderboard-btn">Leaderboard</button>
+        <button class="nav-btn" data-section="map" id="map-btn">Map</button>
+    </div>
+    <div class="window-controls">
+        <button class="control-btn minimize" id="minimize-btn">—</button>
+        <button class="control-btn maximize" id="maximize-btn">⧠</button>
+        <button class="control-btn close" id="close-btn">×</button>
+    </div>
+    <script>
+        // Set active section based on initial value
+        const currentSection = '${section || 'profile'}';
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.section === currentSection);
+        });
+        
+        // Handle navigation clicks
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const section = btn.dataset.section;
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                // Send section change to main process (simplified for embedded context)
+                console.log('Section change requested:', section);
+            });
+        });
+        
+        // Handle window controls
+        document.getElementById('minimize-btn').addEventListener('click', () => {
+            console.log('Minimize clicked');
+        });
+        
+        document.getElementById('maximize-btn').addEventListener('click', () => {
+            console.log('Maximize clicked');
+        });
+        
+        document.getElementById('close-btn').addEventListener('click', () => {
+            console.log('Close clicked');
+        });
+        
+        // Listen for section changes from main process
+        window.addEventListener('section-changed', (event) => {
+            const section = event.detail.section;
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.section === section);
+            });
+        });
+    </script>
+</body>
+</html>`;
+            headerView.webContents.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(headerHtml)}`);
+        }
+    };
+
+    // Load the web content
+    const loadWebContent = () => {
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const webAppBaseUrl = isDevelopment
+            ? 'http://localhost:3001'
+            : 'https://killfeed.sinfulshadows.com';
+        
+        let url = '';
+        
+        if (section === 'profile') {
+            url = `${webAppBaseUrl}/profile?source=electron`;
+        } else if (section === 'leaderboard') {
+            url = `${webAppBaseUrl}/leaderboard?source=electron`;
+        } else if (section === 'map') {
+            url = `${webAppBaseUrl}/map?source=electron`;
+        } else {
+            url = `${webAppBaseUrl}?source=electron`;
+        }
+        
+        logger.info(MODULE_NAME, `Loading web content: ${url}`);
+        webContentView.webContents.loadURL(url);
+    };
+
+    // Force DevTools open for web content view in development
+    if (!app.isPackaged) {
+        forceDevToolsOpen({ webContents: webContentView.webContents } as any, 'web content view');
+    }
+
+    // Load content when ready
+    webContentBaseWindow.once('ready-to-show', () => {
+        loadHeaderContent();
+        loadWebContent();
+        
+        webContentBaseWindow?.show();
+        if (!app.isPackaged) {
+            // Open dev tools for debugging
+            headerView.webContents.openDevTools({ mode: 'detach' });
+            webContentView.webContents.openDevTools({ mode: 'detach' });
+        }
+    });
+
+    // Handle window closed
+    webContentBaseWindow.on('closed', () => {
+        webContentBaseWindow = null;
+        webContentView = null;
+        currentWebContentSection = null;
+        logger.info(MODULE_NAME, 'Web content BaseWindow closed. Cleared active section.');
+        
+        // Send status update to main window
+        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: false, activeSection: null });
+    });
+
+    // --- Save Web Content Window Bounds ---
+    const saveWebContentBounds = createSaveBoundsHandler(webContentBaseWindow as any, 'webContentWindowBounds');
+    webContentBaseWindow.on('resize', saveWebContentBounds);
+    webContentBaseWindow.on('move', saveWebContentBounds);
+
+    // Send initial status update to main window
+    getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+
+    return webContentBaseWindow;
+}
+
 export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map'): BrowserWindow | null {
     if (webContentWindow) {
         if (webContentWindow.isMinimized()) {
@@ -1080,6 +1841,210 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'ma
     return webContentWindow;
 }
 
+// New authenticated WebContentsView-based web content window
+export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leaderboard' | 'map'): BaseWindow | null {
+    // Check if we should reuse existing window
+    if (webContentBaseWindow && webContentView) {
+        if (webContentBaseWindow.isMinimized()) {
+            webContentBaseWindow.restore();
+        }
+        webContentBaseWindow.focus();
+
+        // Handle section navigation
+        const newSection = section || null;
+        if (newSection && newSection !== currentWebContentSection) {
+            logger.info(MODULE_NAME, `[AuthWebContents] Switching section from ${currentWebContentSection} to ${newSection}`);
+            currentWebContentSection = newSection;
+            
+            // Navigate to new section
+            const isDevelopment = process.env.NODE_ENV === 'development';
+            const webAppBaseUrl = isDevelopment
+                ? 'http://localhost:3001'
+                : 'https://killfeed.sinfulshadows.com';
+            
+            let newUrl = '';
+            if (newSection === 'profile') {
+                newUrl = `${webAppBaseUrl}/profile?source=electron&auth=webcontents`;
+            } else if (newSection === 'leaderboard') {
+                newUrl = `${webAppBaseUrl}/leaderboard?source=electron&auth=webcontents`;
+            } else if (newSection === 'map') {
+                newUrl = `${webAppBaseUrl}/map?source=electron&auth=webcontents`;
+            } else {
+                newUrl = `${webAppBaseUrl}?source=electron&auth=webcontents`;
+            }
+            
+            webContentView.webContents.loadURL(newUrl);
+            
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', { 
+                isOpen: true, 
+                activeSection: currentWebContentSection,
+                windowType: 'webcontents-view' 
+            });
+        }
+        
+        return webContentBaseWindow;
+    }
+
+    logger.info(MODULE_NAME, `[AuthWebContents] Creating new authenticated web content window for section: ${section}`);
+    currentWebContentSection = section || null;
+
+    // Get saved bounds
+    const savedBounds = store.get('webContentWindowBounds');
+    const defaultWidth = 1024;
+    const defaultHeight = 768;
+
+    const baseWindowOptions = {
+        width: defaultWidth,
+        height: defaultHeight,
+        x: undefined,
+        y: undefined,
+        title: 'SC Feeder - Web Content (Authenticated)',
+        titleBarStyle: 'hiddenInset' as const,
+        show: false,
+        backgroundColor: '#1a1a1a',
+        minWidth: 800,
+        minHeight: 600
+    };
+
+    // Apply saved bounds if valid
+    if (savedBounds) {
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+            const displayBounds = display.workArea;
+            return (
+                savedBounds.x < displayBounds.x + displayBounds.width &&
+                savedBounds.x + savedBounds.width > displayBounds.x &&
+                savedBounds.y < displayBounds.y + displayBounds.height &&
+                savedBounds.y + savedBounds.height > displayBounds.y
+            );
+        });
+
+        if (isVisible) {
+            logger.info(MODULE_NAME, '[AuthWebContents] Applying saved bounds:', savedBounds);
+            baseWindowOptions.x = savedBounds.x;
+            baseWindowOptions.y = savedBounds.y;
+            baseWindowOptions.width = savedBounds.width;
+            baseWindowOptions.height = savedBounds.height;
+        }
+    }
+
+    try {
+        // Create BaseWindow
+        webContentBaseWindow = new BaseWindow(baseWindowOptions);
+        logger.info(MODULE_NAME, '[AuthWebContents] Created BaseWindow');
+
+        // Determine URL based on section and environment
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const webAppBaseUrl = isDevelopment
+            ? 'http://localhost:3001'
+            : 'https://killfeed.sinfulshadows.com';
+        
+        let webContentUrl = '';
+        if (currentWebContentSection === 'profile') {
+            webContentUrl = `${webAppBaseUrl}/profile?source=electron&auth=webcontents`;
+        } else if (currentWebContentSection === 'leaderboard') {
+            webContentUrl = `${webAppBaseUrl}/leaderboard?source=electron&auth=webcontents`;
+        } else if (currentWebContentSection === 'map') {
+            webContentUrl = `${webAppBaseUrl}/map?source=electron&auth=webcontents`;
+        } else {
+            webContentUrl = `${webAppBaseUrl}?source=electron&auth=webcontents`;
+        }
+
+        // Create authenticated WebContentsView
+        webContentView = webContentsViewAuth.createAuthenticatedWebContentsView({
+            url: webContentUrl,
+            partition: 'persist:authenticated-webcontent',
+            enableAuth: true
+        });
+
+        logger.info(MODULE_NAME, '[AuthWebContents] Created authenticated WebContentsView');
+
+        // Set up the WebContentsView in the BaseWindow
+        webContentBaseWindow.contentView = webContentView;
+        webContentView.setBounds({ x: 0, y: 0, width: baseWindowOptions.width, height: baseWindowOptions.height });
+
+        // Handle window ready to show
+        webContentBaseWindow.once('ready-to-show', () => {
+            logger.info(MODULE_NAME, '[AuthWebContents] BaseWindow ready to show');
+            webContentBaseWindow?.show();
+            
+            // Open dev tools in development
+            if (!app.isPackaged) {
+                webContentView?.webContents.openDevTools({ mode: 'detach' });
+            }
+        });
+
+        // Handle window resize to update WebContentsView bounds
+        webContentBaseWindow.on('resize', () => {
+            if (webContentView && webContentBaseWindow) {
+                const bounds = webContentBaseWindow.getBounds();
+                webContentView.setBounds({ x: 0, y: 0, width: bounds.width, height: bounds.height });
+            }
+        });
+
+        // Handle window closed
+        webContentBaseWindow.on('closed', () => {
+            logger.info(MODULE_NAME, '[AuthWebContents] BaseWindow closed');
+            webContentBaseWindow = null;
+            webContentView = null;
+            currentWebContentSection = null;
+            
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', { 
+                isOpen: false, 
+                activeSection: null,
+                windowType: 'webcontents-view' 
+            });
+        });
+
+        // Set up authentication token updates
+        const updateAuthTokens = async () => {
+            if (webContentView) {
+                const currentTokens = AuthManager.getCurrentAuthTokens();
+                await webContentsViewAuth.updateAuthTokens(webContentView, currentTokens);
+            }
+        };
+
+        // Listen for auth status changes from AuthManager
+        ipcMain.on('auth-status-changed-internal', updateAuthTokens);
+
+        // Clean up listener when window closes
+        webContentBaseWindow.once('closed', () => {
+            ipcMain.removeListener('auth-status-changed-internal', updateAuthTokens);
+        });
+
+        // Save window bounds
+        const saveWebContentBounds = createSaveBoundsHandler(webContentBaseWindow as any, 'webContentWindowBounds');
+        webContentBaseWindow.on('resize', saveWebContentBounds);
+        webContentBaseWindow.on('move', saveWebContentBounds);
+
+        // Send initial status update
+        getMainWindow()?.webContents.send('web-content-window-status', { 
+            isOpen: true, 
+            activeSection: currentWebContentSection,
+            windowType: 'webcontents-view' 
+        });
+
+        logger.info(MODULE_NAME, '[AuthWebContents] Authenticated web content window created successfully');
+        return webContentBaseWindow;
+
+    } catch (error) {
+        logger.error(MODULE_NAME, '[AuthWebContents] Failed to create authenticated web content window:', error);
+        
+        // Clean up on error
+        if (webContentBaseWindow) {
+            webContentBaseWindow.close();
+            webContentBaseWindow = null;
+        }
+        if (webContentView) {
+            webContentView = null;
+        }
+        
+        return null;
+    }
+}
+
 export function closeSettingsWindow() {
     if (settingsWindow) {
         settingsWindow.close();
@@ -1091,6 +2056,25 @@ export function closeWebContentWindow(): void {
   if (webContentWindow && !webContentWindow.isDestroyed()) {
     webContentWindow.close();
     webContentWindow = null;
+  }
+}
+
+export function closeWebContentBaseWindow(): void {
+  if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
+    webContentBaseWindow.close();
+    webContentBaseWindow = null;
+    webContentView = null;
+    currentWebContentSection = null;
+  }
+}
+
+export function closeAuthenticatedWebContentWindow(): void {
+  if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
+    logger.info(MODULE_NAME, '[AuthWebContents] Closing authenticated web content window');
+    webContentBaseWindow.close();
+    webContentBaseWindow = null;
+    webContentView = null;
+    currentWebContentSection = null;
   }
 }
 
@@ -1321,8 +2305,11 @@ export function getSettingsStatus(): { isOpen: boolean } {
 }
 
 export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | null } {
-    return { isOpen: webContentWindow !== null, activeSection: currentWebContentSection };
+    return { isOpen: webContentWindow !== null || webContentBaseWindow !== null, activeSection: currentWebContentSection };
 }
+
+// Export BaseWindow variables for IPC access
+export { webContentBaseWindow, webContentView };
 
 export function getActiveEventDataForWindow(): KillEvent | null {
     return activeEventDataForWindow;
@@ -1338,9 +2325,50 @@ export function closeAllWindows() {
 
 // --- Public API Functions ---
 
-// Function to send auth tokens to web content window using WindowManager
-export function sendAuthTokensToWebContentWindow(tokens: AuthTokens | null): void {
-    windowManager.sendAuthTokensToWebContentWindow(tokens);
+// Enhanced function to send auth tokens to web content window (supports both architectures)
+export async function sendAuthTokensToWebContentWindow(tokens: AuthTokens | null): Promise<void> {
+    try {
+        // Try new WebContentsView architecture first
+        const manager = await getWebContentsViewManager();
+        if (manager && manager.updateAuthTokens) {
+            logger.debug(MODULE_NAME, 'Sending auth tokens via WebContentsView manager');
+            manager.updateAuthTokens(tokens);
+        }
+    } catch (error) {
+        logger.warn(MODULE_NAME, 'Failed to send tokens via WebContentsView manager:', error);
+    }
+
+    // Also send via legacy WindowManager for backward compatibility
+    try {
+        windowManager.sendAuthTokensToWebContentWindow(tokens);
+    } catch (error) {
+        logger.warn(MODULE_NAME, 'Failed to send tokens via legacy WindowManager:', error);
+    }
+}
+
+// Function to send auth tokens specifically to WebContentsView architecture
+export async function sendAuthTokensToWebContentsView(tokens: AuthTokens | null): Promise<void> {
+    try {
+        const manager = await getWebContentsViewManager();
+        if (manager && manager.updateAuthTokens) {
+            logger.debug(MODULE_NAME, 'Sending auth tokens to WebContentsView');
+            manager.updateAuthTokens(tokens);
+        } else {
+            logger.warn(MODULE_NAME, 'WebContentsView manager not available for token update');
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to send tokens to WebContentsView:', error);
+    }
+}
+
+// Export function to create external web window with authentication
+export function createExternalWebWindow(url: string, options?: { 
+    width?: number, 
+    height?: number, 
+    title?: string,
+    enableAuth?: boolean 
+}): Promise<BrowserWindow | null> {
+    return windowManager.createExternalWebWindow(url, options);
 }
 
 // Add this IPC Handler

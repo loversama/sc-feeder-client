@@ -1,21 +1,27 @@
 import { ipcMain, dialog, BrowserWindow, app } from 'electron'; // Import app
 import path from 'node:path';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
-// Import createWebContentWindow specifically
-// Import status getters as well
+// Import window management functions
 import {
     getMainWindow,
     createSettingsWindow,
     createEventDetailsWindow,
     getActiveEventDataForWindow,
     createWebContentWindow,
+    createWebContentBaseWindow, // Added BaseWindow function
     closeSettingsWindow,
     closeWebContentWindow,
+    closeWebContentBaseWindow, // Added BaseWindow close function
     getSettingsStatus, // Added
     getWebContentStatus, // Added
     closeLoginWindow,
-    createLoginWindow // Added
+    createLoginWindow, // Added
+    createExternalWebWindow, // Added for external website authentication
+    createAuthenticatedWebContentWindow, // Added for WebContentsView authentication
+    closeAuthenticatedWebContentWindow // Added for WebContentsView cleanup
 } from './window-manager.ts'; // Added close functions and status getters
+
+// Note: Using BaseWindow implementation from window-manager.ts instead of separate webcontents-view-manager.ts
 import { setGuestModeAndRemember } from './auth-manager';
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
@@ -329,8 +335,8 @@ try {
         return !!success; // Return true if window creation was attempted
     });
 
-    // NEW: Handler for Web Content Window
-    ipcMain.handle('open-web-content-window', (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => { // Type the initialTab
+    // Enhanced Handler for Web Content Window with new architecture support
+    ipcMain.handle('open-web-content-window', async (_event, initialTab?: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => { // Type the initialTab
       logger.info(MODULE_NAME, `Received 'open-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
       
       // Filter to only supported sections for createWebContentWindow
@@ -343,24 +349,102 @@ try {
         supportedSection = 'profile';
       }
       
-      // Pass filtered section to createWebContentWindow
-      const webWindow = createWebContentWindow(supportedSection);
+      try {
+        // Try BaseWindow + WebContentsView architecture first
+        logger.debug(MODULE_NAME, 'Attempting to create window with BaseWindow + WebContentsView architecture');
+        const webWindow = createWebContentBaseWindow(supportedSection);
 
-      if (webWindow) {
-          // Send status update regardless of whether it was created or focused
-          // Use supportedSection for the status update to match what was actually passed to createWebContentWindow
-          getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: supportedSection });
-          logger.info(MODULE_NAME, `Sent web-content-window-status { isOpen: true, activeSection: ${supportedSection || 'default'} }`);
+        if (webWindow) {
+          // Get the current status from the new manager
+          const status = getWebContentStatus();
+          
+          // Send status update to main window
+          getMainWindow()?.webContents.send('web-content-window-status', { 
+            isOpen: status.isOpen, 
+            activeSection: status.activeSection,
+            architecture: 'basewindow'
+          });
+          logger.info(MODULE_NAME, `Sent web-content-window-status with BaseWindow architecture:`, status);
 
-          // Ensure the window is focused/restored if it already existed
+          // Focus window (BaseWindow)
           if (webWindow.isMinimized()) webWindow.restore();
           webWindow.focus();
+          
+          return { success: true, architecture: 'basewindow' };
+        }
+      } catch (error) {
+        logger.warn(MODULE_NAME, 'BaseWindow architecture failed, falling back to legacy BrowserWindow:', error);
+        
+        // Fallback to legacy BrowserWindow approach
+        try {
+          const legacyWindow = createWebContentWindow(supportedSection);
+          
+          if (legacyWindow) {
+            // Send status update with legacy architecture
+            getMainWindow()?.webContents.send('web-content-window-status', { 
+              isOpen: true, 
+              activeSection: supportedSection,
+              architecture: 'browserwindow'
+            });
+            logger.info(MODULE_NAME, `Sent web-content-window-status with legacy architecture for section: ${supportedSection}`);
+
+            // Focus legacy window
+            if (legacyWindow.isMinimized()) legacyWindow.restore();
+            legacyWindow.focus();
+            
+            return { success: true, architecture: 'browserwindow' };
+          }
+        } catch (fallbackError) {
+          logger.error(MODULE_NAME, 'Both WebContentsView and BrowserWindow approaches failed:', fallbackError);
+          return { success: false, error: 'Failed to create web content window with any architecture' };
+        }
       }
-      // Removed the post-creation navigation logic as createWebContentWindow handles the initial URL hash now.
+      
+      return { success: false, error: 'No window created' };
     });
 
     ipcMain.handle('get-passed-event-data', () => {
         return getActiveEventDataForWindow();
+    });
+
+    // NEW: Handler for Authenticated WebContentsView Web Content Window
+    ipcMain.handle('open-authenticated-web-content-window', async (_event, initialTab?: 'profile' | 'leaderboard' | 'map') => {
+        logger.info(MODULE_NAME, `Received 'open-authenticated-web-content-window' request. Initial tab: ${initialTab || 'default'}`);
+        
+        try {
+            // Use the new authenticated WebContentsView architecture
+            const authWindow = createAuthenticatedWebContentWindow(initialTab);
+            
+            if (authWindow) {
+                logger.info(MODULE_NAME, `Successfully created authenticated WebContentsView window for section: ${initialTab}`);
+                
+                // Focus the window if it's minimized
+                if (authWindow.isMinimized()) {
+                    authWindow.restore();
+                }
+                authWindow.focus();
+                
+                return { 
+                    success: true, 
+                    architecture: 'webcontents-view-authenticated',
+                    section: initialTab
+                };
+            } else {
+                logger.error(MODULE_NAME, 'Failed to create authenticated WebContentsView window');
+                return { 
+                    success: false, 
+                    error: 'Failed to create authenticated WebContentsView window',
+                    architecture: 'webcontents-view-authenticated'
+                };
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error creating authenticated WebContentsView window:', error);
+            return { 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Unknown error',
+                architecture: 'webcontents-view-authenticated'
+            };
+        }
     });
 
     ipcMain.handle('close-current-window', (event) => {
@@ -381,8 +465,36 @@ try {
 
     ipcMain.handle('close-web-content-window', () => {
         logger.info(MODULE_NAME, "Received 'close-web-content-window' request.");
-        closeWebContentWindow(); // Call the function from window-manager
-        return true; // Indicate the call was made
+        
+        try {
+          // Try BaseWindow first, then fallback to legacy BrowserWindow
+          closeWebContentBaseWindow();
+          closeWebContentWindow(); // Also close legacy window if it exists
+          return { success: true, architecture: 'basewindow' };
+        } catch (error) {
+          logger.error(MODULE_NAME, 'Error closing web content window:', error);
+          return { success: false, error: 'Failed to close window' };
+        }
+    });
+
+    // NEW: Handler for closing Authenticated WebContentsView Web Content Window
+    ipcMain.handle('close-authenticated-web-content-window', () => {
+        logger.info(MODULE_NAME, "Received 'close-authenticated-web-content-window' request.");
+        
+        try {
+            closeAuthenticatedWebContentWindow();
+            return { 
+                success: true, 
+                architecture: 'webcontents-view-authenticated' 
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error closing authenticated web content window:', error);
+            return { 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Failed to close authenticated window',
+                architecture: 'webcontents-view-authenticated'
+            };
+        }
     });
 
     // NEW: Handlers for getting window status synchronously
@@ -393,7 +505,122 @@ try {
 
     ipcMain.handle('get-web-content-window-status', () => {
         logger.info(MODULE_NAME, "Received 'get-web-content-window-status' request.");
-        return getWebContentStatus(); // Call the function from window-manager
+        
+        try {
+          // Return the status from window-manager which handles both BaseWindow and BrowserWindow
+          const status = getWebContentStatus();
+          logger.debug(MODULE_NAME, 'Returning web content status:', status);
+          return { ...status, architecture: 'basewindow' };
+        } catch (error) {
+          logger.error(MODULE_NAME, 'Error getting web content window status:', error);
+          return {
+            isOpen: false,
+            activeSection: null,
+            architecture: 'unknown' as const,
+            error: 'Failed to get status'
+          };
+        }
+    });
+
+    // BaseWindow specific handlers for window controls
+    ipcMain.handle('web-content-section-change', (_event, section: 'profile' | 'leaderboard' | 'map') => {
+        logger.info(MODULE_NAME, `Received 'web-content-section-change' request for section: ${section}`);
+        try {
+            // Import the webContentView and other needed variables from window-manager
+            const windowManagerModule = require('./window-manager');
+            const webContentView = windowManagerModule.webContentView;
+            
+            if (webContentView && !webContentView.webContents.isDestroyed()) {
+                const isDevelopment = process.env.NODE_ENV === 'development';
+                const webAppBaseUrl = isDevelopment
+                    ? 'http://localhost:3001'
+                    : 'https://killfeed.sinfulshadows.com';
+                
+                let url = '';
+                if (section === 'profile') {
+                    url = `${webAppBaseUrl}/profile?source=electron`;
+                } else if (section === 'leaderboard') {
+                    url = `${webAppBaseUrl}/leaderboard?source=electron`;
+                } else if (section === 'map') {
+                    url = `${webAppBaseUrl}/map?source=electron`;
+                }
+                
+                if (url) {
+                    webContentView.webContents.loadURL(url);
+                    logger.info(MODULE_NAME, `Navigated web content to section: ${section}, URL: ${url}`);
+                }
+            }
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to change web content section:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('web-content-window-minimize', () => {
+        logger.info(MODULE_NAME, "Received 'web-content-window-minimize' request.");
+        try {
+            const windowManagerModule = require('./window-manager');
+            const webContentBaseWindow = windowManagerModule.webContentBaseWindow;
+            
+            if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
+                webContentBaseWindow.minimize();
+                return { success: true };
+            }
+            return { success: false, error: 'BaseWindow not available' };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to minimize web content window:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('web-content-window-maximize', () => {
+        logger.info(MODULE_NAME, "Received 'web-content-window-maximize' request.");
+        try {
+            const windowManagerModule = require('./window-manager');
+            const webContentBaseWindow = windowManagerModule.webContentBaseWindow;
+            
+            if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
+                if (webContentBaseWindow.isMaximized()) {
+                    webContentBaseWindow.unmaximize();
+                } else {
+                    webContentBaseWindow.maximize();
+                }
+                return { success: true };
+            }
+            return { success: false, error: 'BaseWindow not available' };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to maximize/unmaximize web content window:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    ipcMain.handle('web-content-window-close', () => {
+        logger.info(MODULE_NAME, "Received 'web-content-window-close' request.");
+        try {
+            closeWebContentBaseWindow();
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to close web content window:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // External web window handler with authentication
+    ipcMain.handle('open-external-web-window', async (_event, url: string, options?: { 
+        width?: number, 
+        height?: number, 
+        title?: string,
+        enableAuth?: boolean 
+    }) => {
+        logger.info(MODULE_NAME, `Received 'open-external-web-window' request for URL: ${url}`);
+        try {
+            const window = await createExternalWebWindow(url, options);
+            return { success: !!window, windowId: window?.id };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to create external web window:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
     });
 
     // Login popup handlers
@@ -446,6 +673,71 @@ ipcMain.handle('auth:show-login', () => {
     ipcMain.handle('app:get-guest-mode-status', () => {
       logger.info(MODULE_NAME, "Received 'app:get-guest-mode-status' request.");
       return ConfigManager.getGuestModePreference();
+    });
+
+    // --- New WebContentsView Architecture Handlers ---
+    
+    // Navigate to a specific section in the WebContentsView
+    ipcMain.handle('web-content:navigate-to-section', async (_event, section: 'profile' | 'leaderboard' | 'map') => {
+      logger.info(MODULE_NAME, `Received 'web-content:navigate-to-section' request for: ${section}`);
+      
+      try {
+        await navigateToSection(section);
+        
+        // Send status update to main window
+        const status = newGetWebContentStatus();
+        getMainWindow()?.webContents.send('web-content-window-status', status);
+        
+        return { success: true, section, architecture: status.architecture };
+      } catch (error) {
+        logger.error(MODULE_NAME, `Failed to navigate to section ${section}:`, error);
+        return { success: false, error: error instanceof Error ? error.message : 'Navigation failed' };
+      }
+    });
+
+    // Update authentication tokens in WebContentsView
+    ipcMain.handle('web-content:update-auth-tokens', (_event, tokens: any) => {
+      logger.info(MODULE_NAME, "Received 'web-content:update-auth-tokens' request.");
+      
+      try {
+        updateAuthTokens(tokens);
+        return { success: true };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to update auth tokens:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to update tokens' };
+      }
+    });
+
+    // Switch between WebContentsView and BrowserWindow architecture
+    ipcMain.handle('web-content:set-architecture', (_event, useWebContentsView: boolean) => {
+      logger.info(MODULE_NAME, `Received 'web-content:set-architecture' request. Use WebContentsView: ${useWebContentsView}`);
+      
+      try {
+        setArchitecture(useWebContentsView);
+        const currentArch = getCurrentArchitecture();
+        
+        return { 
+          success: true, 
+          architecture: currentArch,
+          useWebContentsView: useWebContentsView
+        };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to set architecture:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to set architecture' };
+      }
+    });
+
+    // Get current architecture being used
+    ipcMain.handle('web-content:get-architecture', () => {
+      logger.info(MODULE_NAME, "Received 'web-content:get-architecture' request.");
+      
+      try {
+        const architecture = getCurrentArchitecture();
+        return { success: true, architecture };
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to get architecture:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Failed to get architecture' };
+      }
     });
 
     // Window controls are now handled by custom-electron-titlebar

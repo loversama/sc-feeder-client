@@ -143,6 +143,27 @@ function broadcastAuthStatusChange(): void {
       });
     }
   });
+
+  // Also send to WebContentsView instances
+  webContents.getAllWebContents().forEach(wc => {
+    if (wc.getType() === 'webContents' && !wc.isDestroyed()) {
+      // Check if this WebContents belongs to a WebContentsView
+      try {
+        // Send auth tokens to WebContentsView content
+        logger.info(MODULE_NAME, `Sending auth-tokens-updated to WebContentsView (ID: ${wc.id}) due to auth status change.`);
+        wc.send('auth-tokens-updated', {
+          accessToken: currentAccessToken,
+          refreshToken: currentRefreshToken,
+          user: currentUser
+        });
+      } catch (error) {
+        logger.warn(MODULE_NAME, `Failed to send auth tokens to WebContentsView (ID: ${wc.id}):`, error);
+      }
+    }
+  });
+
+  // Emit internal event for WebContentsView auth manager
+  ipcMain.emit('auth-status-changed-internal');
 }
 
 
@@ -170,6 +191,17 @@ export function getAuthStatus(): { isAuthenticated: boolean; username: string | 
 
 export function getLoggedInUser(): typeof loggedInUser {
     return loggedInUser;
+}
+
+export function getCurrentAuthTokens(): { accessToken?: string; refreshToken?: string; user?: typeof loggedInUser } | null {
+    if (!accessToken) {
+        return null;
+    }
+    return {
+        accessToken: accessToken || undefined,
+        refreshToken: getRefreshToken() || undefined,
+        user: loggedInUser || undefined
+    };
 }
 
 export async function login(identifier: string, password: string): Promise<{ success: boolean; error?: string }> {

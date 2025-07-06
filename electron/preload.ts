@@ -141,9 +141,26 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   
   // Window Actions
   openSettingsWindow: (): Promise<void> => ipcRenderer.invoke('open-settings-window'),
-  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/'): Promise<void> => ipcRenderer.invoke('open-web-content-window', section),
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/'): Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow';
+    error?: string;
+  }> => ipcRenderer.invoke('open-web-content-window', section),
   closeSettingsWindow: (): Promise<boolean> => ipcRenderer.invoke('close-settings-window'),
-  closeWebContentWindow: (): Promise<boolean> => ipcRenderer.invoke('close-web-content-window'),
+  closeWebContentWindow: (): Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }> => ipcRenderer.invoke('close-web-content-window'),
+  
+  // External website window with authentication
+  openExternalWebWindow: (url: string, options?: { 
+    width?: number, 
+    height?: number, 
+    title?: string,
+    enableAuth?: boolean 
+  }): Promise<{ success: boolean, windowId?: number, error?: string }> => 
+    ipcRenderer.invoke('open-external-web-window', url, options),
   // Window controls are now handled by custom-electron-titlebar
 
   // Entity Resolution API
@@ -188,12 +205,70 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authCloseLoginWindow: (): Promise<void> => ipcRenderer.invoke('auth:closeLoginWindow'),
   authResizeLoginWindow: (newHeight: number): Promise<boolean> => ipcRenderer.invoke('auth:resize-login-window', newHeight),
 
+  // --- New WebContentsView Architecture API ---
+  
+  // Navigate to a specific section in WebContentsView
+  webContentNavigateToSection: (section: 'profile' | 'leaderboard' | 'map'): Promise<{
+    success: boolean;
+    section?: string;
+    architecture?: 'webcontentsview' | 'browserwindow';
+    error?: string;
+  }> => ipcRenderer.invoke('web-content:navigate-to-section', section),
+
+  // Update authentication tokens in WebContentsView
+  webContentUpdateAuthTokens: (tokens: {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: UserProfile;
+  } | null): Promise<{
+    success: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke('web-content:update-auth-tokens', tokens),
+
+  // Switch between WebContentsView and BrowserWindow architecture
+  webContentSetArchitecture: (useWebContentsView: boolean): Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    useWebContentsView?: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke('web-content:set-architecture', useWebContentsView),
+
+  // Get current architecture being used
+  webContentGetArchitecture: (): Promise<{
+    success: boolean;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }> => ipcRenderer.invoke('web-content:get-architecture'),
+
+  // --- Authenticated WebContentsView Methods ---
+  
+  // Open authenticated WebContentsView window
+  openAuthenticatedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map'): Promise<{
+    success: boolean;
+    architecture?: 'webcontents-view-authenticated';
+    section?: 'profile' | 'leaderboard' | 'map';
+    error?: string;
+  }> => ipcRenderer.invoke('open-authenticated-web-content-window', section),
+
+  // Close authenticated WebContentsView window
+  closeAuthenticatedWebContentWindow: (): Promise<{
+    success: boolean;
+    architecture?: 'webcontents-view-authenticated';
+    error?: string;
+  }> => ipcRenderer.invoke('close-authenticated-web-content-window'),
+
+  // Window Status Methods
+  getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => 
+    ipcRenderer.invoke('get-settings-window-status'),
+  getWebContentWindowStatus: (): Promise<{
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
+    architecture: 'webcontentsview' | 'browserwindow' | 'unknown';
+    error?: string;
+  }> => ipcRenderer.invoke('get-web-content-window-status'),
+
   // Profile Action
   getProfile: (): Promise<UserProfile | null> => ipcRenderer.invoke('get-profile'),
-
-  // Window Status Getters
-  getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => ipcRenderer.invoke('get-settings-window-status'),
-  getWebContentWindowStatus: (): Promise<{ isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }> => ipcRenderer.invoke('get-web-content-window-status'),
 
   // Resource Path
   getResourcePath: (): Promise<string> => ipcRenderer.invoke('get-resource-path'),
@@ -253,7 +328,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('settings-window-status', callback);
     return () => ipcRenderer.removeListener('settings-window-status', callback);
   },
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null }) => void): (() => void) => {
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: {
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+  }) => void): (() => void) => {
     ipcRenderer.on('web-content-window-status', callback);
     return () => ipcRenderer.removeListener('web-content-window-status', callback);
   },
