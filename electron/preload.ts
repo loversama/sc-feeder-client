@@ -280,6 +280,10 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     authenticationEnabled: boolean;
   }> => ipcRenderer.invoke('enhanced-window:get-status'),
 
+  // Execute JavaScript in WebContentsView (DOM bridge)
+  executeInWebContentsView: (jsCode: string): Promise<{ success: boolean; error?: string }> => 
+    ipcRenderer.invoke('enhanced-webcontents:execute-js', jsCode),
+
   // Window Status Methods
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => 
     ipcRenderer.invoke('get-settings-window-status'),

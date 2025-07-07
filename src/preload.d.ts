@@ -102,6 +102,9 @@ export interface LogMonitorApi {
     architecture: string;
     authenticationEnabled: boolean;
   }>;
+
+  // Execute JavaScript in WebContentsView (DOM bridge)
+  executeInWebContentsView: (jsCode: string) => Promise<{ success: boolean; error?: string }>;
   
   // Window controls are now handled by custom-electron-titlebar
 

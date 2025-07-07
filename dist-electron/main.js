@@ -174163,6 +174163,77 @@ function registerEnhancedIPCHandlers() {
       error(MODULE_NAME$3, `Failed to navigate to section ${section}:`, error$12 instanceof Error ? error$12.message : "Unknown error");
     }
   });
+  ipcMain$1.on("enhanced-window:hide-webcontentsview", async (event) => {
+    try {
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      if (!senderWindow) {
+        error(MODULE_NAME$3, "Could not find sender window for hiding WebContentsView");
+        return;
+      }
+      const windowId = senderWindow.id;
+      const webContentView2 = windowWebContentsViews.get(windowId);
+      if (webContentView2) {
+        webContentView2.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+        info(MODULE_NAME$3, "Hidden WebContentsView for search overlay");
+      }
+    } catch (error$12) {
+      error(MODULE_NAME$3, "Failed to hide WebContentsView:", error$12);
+    }
+  });
+  ipcMain$1.on("enhanced-window:show-webcontentsview", async (event) => {
+    try {
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      if (!senderWindow) {
+        error(MODULE_NAME$3, "Could not find sender window for showing WebContentsView");
+        return;
+      }
+      const windowId = senderWindow.id;
+      const webContentView2 = windowWebContentsViews.get(windowId);
+      if (webContentView2) {
+        senderWindow.webContents.executeJavaScript(`
+                    const container = document.getElementById('webcontents-container');
+                    if (container) {
+                        const rect = container.getBoundingClientRect();
+                        ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+                    } else {
+                        null;
+                    }
+                `).then((bounds) => {
+          if (bounds && bounds.width > 0 && bounds.height > 0 && webContentView2) {
+            webContentView2.setBounds({
+              x: Math.round(bounds.x),
+              y: Math.round(bounds.y),
+              width: Math.round(bounds.width),
+              height: Math.round(bounds.height)
+            });
+            info(MODULE_NAME$3, "Restored WebContentsView bounds after search overlay");
+          } else {
+            const windowBounds = senderWindow.getContentBounds();
+            webContentView2.setBounds({
+              x: 0,
+              y: 80,
+              width: windowBounds.width,
+              height: windowBounds.height - 80
+            });
+            info(MODULE_NAME$3, "Used fallback bounds for WebContentsView");
+          }
+        }).catch((error$12) => {
+          error(MODULE_NAME$3, "Failed to get container bounds for WebContentsView restore:", error$12);
+          if (!senderWindow.isDestroyed()) {
+            const windowBounds = senderWindow.getContentBounds();
+            webContentView2.setBounds({
+              x: 0,
+              y: 80,
+              width: windowBounds.width,
+              height: windowBounds.height - 80
+            });
+          }
+        });
+      }
+    } catch (error$12) {
+      error(MODULE_NAME$3, "Failed to show WebContentsView:", error$12);
+    }
+  });
   ipcMain$1.on("enhanced-window:close", async (event) => {
     try {
       const manager = getEmbeddedWebContentManager();
@@ -174327,6 +174398,31 @@ function registerEnhancedIPCHandlers() {
         authenticationEnabled: false,
         error: error$12 instanceof Error ? error$12.message : "Unknown error",
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    }
+  });
+  ipcMain$1.handle("enhanced-webcontents:execute-js", async (event, jsCode) => {
+    try {
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      if (!senderWindow) {
+        error(MODULE_NAME$3, "Could not find sender window for JavaScript execution");
+        return { success: false, error: "Sender window not found" };
+      }
+      const windowId = senderWindow.id;
+      const webContentView2 = windowWebContentsViews.get(windowId);
+      if (webContentView2 && !webContentView2.webContents.isDestroyed()) {
+        await webContentView2.webContents.executeJavaScript(jsCode);
+        debug$b(MODULE_NAME$3, "JavaScript executed in WebContentsView successfully");
+        return { success: true };
+      } else {
+        warn(MODULE_NAME$3, "No WebContentsView found for JavaScript execution");
+        return { success: false, error: "WebContentsView not found" };
+      }
+    } catch (error$12) {
+      error(MODULE_NAME$3, "Failed to execute JavaScript in WebContentsView:", error$12);
+      return {
+        success: false,
+        error: error$12 instanceof Error ? error$12.message : "Unknown error"
       };
     }
   });
@@ -174621,6 +174717,75 @@ function setupWebContentsViewEventHandlers(webContentView2, targetWindow) {
         isAuthenticated: !!currentTokens.accessToken
       });
     }
+    webContentView2.webContents.insertCSS(`
+            /* Hide the modern-navbar element */
+            .modern-navbar {
+                display: none !important;
+            }
+            
+            /* Hide the first h-16 div */
+            .h-16:first-of-type {
+                display: none !important;
+            }
+            
+            /* Remove rounded corners from scrollbars */
+            ::-webkit-scrollbar {
+                border-radius: 0 !important;
+            }
+            
+            ::-webkit-scrollbar-thumb {
+                border-radius: 0 !important;
+            }
+            
+            ::-webkit-scrollbar-track {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar-thumb {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar-track {
+                border-radius: 0 !important;
+            }
+        `).catch((error2) => {
+      warn(MODULE_NAME$3, "Failed to inject navigation-hiding CSS:", error2);
+    });
+    webContentView2.webContents.executeJavaScript(`
+            (() => {
+                console.log('[VoidLog] Starting targeted navbar and spacer fix');
+                
+                function hideNavbarAndFirstSpacer() {
+                    // Hide the modern-navbar element
+                    const modernNavbar = document.querySelector('.modern-navbar');
+                    if (modernNavbar) {
+                        modernNavbar.style.display = 'none';
+                        console.log('[VoidLog] Hidden modern-navbar element');
+                    }
+                    
+                    // Hide/remove the first .h-16 element
+                    const firstH16 = document.querySelector('.h-16');
+                    if (firstH16) {
+                        firstH16.style.display = 'none';
+                        console.log('[VoidLog] Hidden first h-16 element');
+                    }
+                }
+                
+                // Run immediately
+                hideNavbarAndFirstSpacer();
+                
+                // Run once more after a short delay to catch dynamic content
+                setTimeout(hideNavbarAndFirstSpacer, 100);
+                
+                console.log('[VoidLog] Navbar and spacer fix completed');
+            })();
+        `).catch((error2) => {
+      warn(MODULE_NAME$3, "Failed to inject navbar fix JavaScript:", error2);
+    });
     targetWindow.webContents.send("webcontents-view-ready");
   });
   webContentView2.webContents.on("did-navigate", (event, url2) => {

@@ -152,6 +152,88 @@ export function registerEnhancedIPCHandlers(): void {
 
     // --- Window Control Handlers ---
 
+    // Hide/Show WebContentsView for search overlay
+    ipcMain.on('enhanced-window:hide-webcontentsview', async (event) => {
+        try {
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for hiding WebContentsView');
+                return;
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView) {
+                // Hide the WebContentsView by setting its bounds to 0x0
+                webContentView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+                logger.info(MODULE_NAME, 'Hidden WebContentsView for search overlay');
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to hide WebContentsView:', error);
+        }
+    });
+
+    ipcMain.on('enhanced-window:show-webcontentsview', async (event) => {
+        try {
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for showing WebContentsView');
+                return;
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView) {
+                // Restore the WebContentsView bounds by getting container dimensions
+                senderWindow.webContents.executeJavaScript(`
+                    const container = document.getElementById('webcontents-container');
+                    if (container) {
+                        const rect = container.getBoundingClientRect();
+                        ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
+                    } else {
+                        null;
+                    }
+                `).then((bounds) => {
+                    if (bounds && bounds.width > 0 && bounds.height > 0 && webContentView) {
+                        webContentView.setBounds({
+                            x: Math.round(bounds.x),
+                            y: Math.round(bounds.y),
+                            width: Math.round(bounds.width),
+                            height: Math.round(bounds.height)
+                        });
+                        logger.info(MODULE_NAME, 'Restored WebContentsView bounds after search overlay');
+                    } else {
+                        // Fallback positioning
+                        const windowBounds = senderWindow.getContentBounds();
+                        webContentView.setBounds({
+                            x: 0,
+                            y: 80,
+                            width: windowBounds.width,
+                            height: windowBounds.height - 80
+                        });
+                        logger.info(MODULE_NAME, 'Used fallback bounds for WebContentsView');
+                    }
+                }).catch((error) => {
+                    logger.error(MODULE_NAME, 'Failed to get container bounds for WebContentsView restore:', error);
+                    // Fallback positioning
+                    if (!senderWindow.isDestroyed()) {
+                        const windowBounds = senderWindow.getContentBounds();
+                        webContentView.setBounds({
+                            x: 0,
+                            y: 80,
+                            width: windowBounds.width,
+                            height: windowBounds.height - 80
+                        });
+                    }
+                });
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to show WebContentsView:', error);
+        }
+    });
+
     // Window close
     ipcMain.on('enhanced-window:close', async (event) => {
         try {
@@ -352,6 +434,37 @@ export function registerEnhancedIPCHandlers(): void {
                 authenticationEnabled: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
                 timestamp: new Date().toISOString()
+            };
+        }
+    });
+
+    // --- DOM Bridge Handlers ---
+
+    // Execute JavaScript in WebContentsView
+    ipcMain.handle('enhanced-webcontents:execute-js', async (event, jsCode: string) => {
+        try {
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for JavaScript execution');
+                return { success: false, error: 'Sender window not found' };
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView && !webContentView.webContents.isDestroyed()) {
+                await webContentView.webContents.executeJavaScript(jsCode);
+                logger.debug(MODULE_NAME, 'JavaScript executed in WebContentsView successfully');
+                return { success: true };
+            } else {
+                logger.warn(MODULE_NAME, 'No WebContentsView found for JavaScript execution');
+                return { success: false, error: 'WebContentsView not found' };
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to execute JavaScript in WebContentsView:', error);
+            return { 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Unknown error' 
             };
         }
     });
@@ -721,6 +834,79 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
                 isAuthenticated: !!currentTokens.accessToken
             });
         }
+        
+        // Hide navigation bar with CSS and remove scrollbar rounded corners
+        webContentView.webContents.insertCSS(`
+            /* Hide the modern-navbar element */
+            .modern-navbar {
+                display: none !important;
+            }
+            
+            /* Hide the first h-16 div */
+            .h-16:first-of-type {
+                display: none !important;
+            }
+            
+            /* Remove rounded corners from scrollbars */
+            ::-webkit-scrollbar {
+                border-radius: 0 !important;
+            }
+            
+            ::-webkit-scrollbar-thumb {
+                border-radius: 0 !important;
+            }
+            
+            ::-webkit-scrollbar-track {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar-thumb {
+                border-radius: 0 !important;
+            }
+            
+            *::-webkit-scrollbar-track {
+                border-radius: 0 !important;
+            }
+        `).catch((error) => {
+            logger.warn(MODULE_NAME, 'Failed to inject navigation-hiding CSS:', error);
+        });
+
+        // Inject JavaScript as backup to ensure the first h-16 is hidden
+        webContentView.webContents.executeJavaScript(`
+            (() => {
+                console.log('[VoidLog] Starting targeted navbar and spacer fix');
+                
+                function hideNavbarAndFirstSpacer() {
+                    // Hide the modern-navbar element
+                    const modernNavbar = document.querySelector('.modern-navbar');
+                    if (modernNavbar) {
+                        modernNavbar.style.display = 'none';
+                        console.log('[VoidLog] Hidden modern-navbar element');
+                    }
+                    
+                    // Hide/remove the first .h-16 element
+                    const firstH16 = document.querySelector('.h-16');
+                    if (firstH16) {
+                        firstH16.style.display = 'none';
+                        console.log('[VoidLog] Hidden first h-16 element');
+                    }
+                }
+                
+                // Run immediately
+                hideNavbarAndFirstSpacer();
+                
+                // Run once more after a short delay to catch dynamic content
+                setTimeout(hideNavbarAndFirstSpacer, 100);
+                
+                console.log('[VoidLog] Navbar and spacer fix completed');
+            })();
+        `).catch((error) => {
+            logger.warn(MODULE_NAME, 'Failed to inject navbar fix JavaScript:', error);
+        });
         
         // Notify the host window that WebContentsView is ready
         targetWindow.webContents.send('webcontents-view-ready');

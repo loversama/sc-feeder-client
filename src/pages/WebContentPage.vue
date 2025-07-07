@@ -66,7 +66,7 @@
         </div>
         
         <!-- Advanced Search Bar -->
-        <div class="flex-1 ml-12 mr-6 relative">
+        <div class="flex-[0.9] ml-12 mr-6 relative">
           <div class="relative">
             <input
               ref="searchInput"
@@ -87,97 +87,115 @@
             </div>
           </div>
           
-          <!-- Search Dropdown -->
-          <div 
-            v-if="showSearchDropdown && (searchResults.events.length > 0 || searchResults.users.length > 0 || searchResults.organizations.length > 0 || isSearching)"
-            class="absolute top-full left-0 right-0 mt-1 bg-[#2c2c2c] border border-[#404040] rounded-md shadow-lg z-50 max-h-96 overflow-hidden"
-          >
-            <div class="max-h-96 overflow-y-auto">
-              <!-- Loading State -->
-              <div v-if="isSearching" class="px-4 py-3 text-center text-gray-400">
-                <div class="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-[rgb(99,99,247)] mr-2"></div>
-                Searching...
-              </div>
-              
-              <!-- Events Results -->
-              <div v-if="searchResults.events.length > 0" class="border-b border-[#404040] last:border-b-0">
-                <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-[#1f1f1f]">
-                  Events
-                </div>
-                <div 
-                  v-for="(event, index) in searchResults.events.slice(0, 3)" 
-                  :key="`event-${index}`"
-                  class="px-4 py-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150"
-                  :class="{ 'bg-[#333333]': selectedIndex === getEventIndex(index) }"
-                  @click="handleResultClick('event', event)"
-                >
-                  <div class="text-white text-sm font-medium">{{ formatEventTitle(event) }}</div>
-                  <div class="text-gray-400 text-xs mt-1">{{ formatEventSubtitle(event) }}</div>
-                </div>
-                <div v-if="searchResults.events.length > 3" class="px-4 py-2 text-xs text-[rgb(99,99,247)] hover:bg-[#333333] cursor-pointer">
-                  View all {{ searchResults.events.length }} events →
-                </div>
-              </div>
-              
-              <!-- Users Results -->
-              <div v-if="searchResults.users.length > 0" class="border-b border-[#404040] last:border-b-0">
-                <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-[#1f1f1f]">
-                  Users
-                </div>
-                <div 
-                  v-for="(user, index) in searchResults.users.slice(0, 3)" 
-                  :key="`user-${index}`"
-                  class="px-4 py-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150"
-                  :class="{ 'bg-[#333333]': selectedIndex === getUserIndex(index) }"
-                  @click="handleResultClick('user', user)"
-                >
-                  <div class="text-white text-sm font-medium">{{ user.username }}</div>
-                  <div class="text-gray-400 text-xs mt-1">{{ user.organization || 'No organization' }}</div>
-                </div>
-                <div v-if="searchResults.users.length > 3" class="px-4 py-2 text-xs text-[rgb(99,99,247)] hover:bg-[#333333] cursor-pointer">
-                  View all {{ searchResults.users.length }} users →
-                </div>
-              </div>
-              
-              <!-- Organizations Results -->
-              <div v-if="searchResults.organizations.length > 0" class="border-b border-[#404040] last:border-b-0">
-                <div class="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-[#1f1f1f]">
-                  Organizations
-                </div>
-                <div 
-                  v-for="(org, index) in searchResults.organizations.slice(0, 3)" 
-                  :key="`org-${index}`"
-                  class="px-4 py-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150"
-                  :class="{ 'bg-[#333333]': selectedIndex === getOrgIndex(index) }"
-                  @click="handleResultClick('organization', org)"
-                >
-                  <div class="text-white text-sm font-medium">{{ org.name }}</div>
-                  <div class="text-gray-400 text-xs mt-1">{{ org.memberCount || 0 }} members</div>
-                </div>
-                <div v-if="searchResults.organizations.length > 3" class="px-4 py-2 text-xs text-[rgb(99,99,247)] hover:bg-[#333333] cursor-pointer">
-                  View all {{ searchResults.organizations.length }} organizations →
-                </div>
-              </div>
-              
-              <!-- No Results -->
-              <div v-if="!isSearching && searchQuery.trim() && searchResults.events.length === 0 && searchResults.users.length === 0 && searchResults.organizations.length === 0" class="px-4 py-8 text-center text-gray-400">
-                <div class="text-sm">No results found for "{{ searchQuery }}"</div>
-                <div class="text-xs mt-1">Try searching for events, usernames, or organization names</div>
-              </div>
-            </div>
-          </div>
         </div>
       </nav>
     </header>
 
+    <!-- Search Megamenu -->
+    <div 
+      v-if="showSearchDropdown && (searchResults.events.length > 0 || searchResults.users.length > 0 || searchResults.organizations.length > 0 || isSearching)"
+      class="w-full bg-[#2c2c2c] border-b border-[#404040] shadow-lg z-[9999]"
+    >
+      <div class="container mx-auto px-6 py-6">
+        <!-- Loading State -->
+        <div v-if="isSearching" class="text-center text-gray-400 py-8">
+          <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[rgb(99,99,247)] mr-3"></div>
+          <span class="text-lg">Searching...</span>
+        </div>
+        
+        <!-- Results Grid -->
+        <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Events Column -->
+          <div v-if="searchResults.events.length > 0" class="space-y-4">
+            <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
+              Events ({{ searchResults.events.length }})
+            </h3>
+            <div class="space-y-3">
+              <div 
+                v-for="(event, index) in searchResults.events.slice(0, 5)" 
+                :key="`event-${index}`"
+                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
+                :class="{ 'bg-[#333333]': selectedIndex === getEventIndex(index) }"
+                @click="handleResultClick('event', event)"
+              >
+                <div class="text-white text-sm font-medium">{{ formatEventTitle(event) }}</div>
+                <div class="text-gray-400 text-xs mt-1">{{ formatEventSubtitle(event) }}</div>
+              </div>
+              <div v-if="searchResults.events.length > 5" class="pt-2">
+                <button class="text-[rgb(99,99,247)] text-sm hover:text-[rgb(77,77,234)] transition-colors">
+                  View all {{ searchResults.events.length }} events →
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Users Column -->
+          <div v-if="searchResults.users.length > 0" class="space-y-4">
+            <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
+              Users ({{ searchResults.users.length }})
+            </h3>
+            <div class="space-y-3">
+              <div 
+                v-for="(user, index) in searchResults.users.slice(0, 5)" 
+                :key="`user-${index}`"
+                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
+                :class="{ 'bg-[#333333]': selectedIndex === getUserIndex(index) }"
+                @click="handleResultClick('user', user)"
+              >
+                <div class="text-white text-sm font-medium">{{ user.username }}</div>
+                <div class="text-gray-400 text-xs mt-1">{{ user.organization || 'No organization' }}</div>
+              </div>
+              <div v-if="searchResults.users.length > 5" class="pt-2">
+                <button class="text-[rgb(99,99,247)] text-sm hover:text-[rgb(77,77,234)] transition-colors">
+                  View all {{ searchResults.users.length }} users →
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Organizations Column -->
+          <div v-if="searchResults.organizations.length > 0" class="space-y-4">
+            <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
+              Organizations ({{ searchResults.organizations.length }})
+            </h3>
+            <div class="space-y-3">
+              <div 
+                v-for="(org, index) in searchResults.organizations.slice(0, 5)" 
+                :key="`org-${index}`"
+                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
+                :class="{ 'bg-[#333333]': selectedIndex === getOrgIndex(index) }"
+                @click="handleResultClick('organization', org)"
+              >
+                <div class="text-white text-sm font-medium">{{ org.name }}</div>
+                <div class="text-gray-400 text-xs mt-1">{{ org.memberCount || 0 }} members</div>
+              </div>
+              <div v-if="searchResults.organizations.length > 5" class="pt-2">
+                <button class="text-[rgb(99,99,247)] text-sm hover:text-[rgb(77,77,234)] transition-colors">
+                  View all {{ searchResults.organizations.length }} organizations →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- No Results -->
+        <div v-if="!isSearching && searchQuery.trim() && searchResults.events.length === 0 && searchResults.users.length === 0 && searchResults.organizations.length === 0" class="text-center text-gray-400 py-12">
+          <div class="text-lg mb-2">No results found for "{{ searchQuery }}"</div>
+          <div class="text-sm">Try searching for events, usernames, or organization names</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Main WebContentsView Content -->
     <div class="flex-1 overflow-hidden relative">
       <!-- WebContentsView will be attached here by the main process -->
+      <!-- TEMPORARY: Hide WebContentsView while search is open to test z-index issue -->
       <div 
         id="webcontents-container"
         ref="webcontentsContainer"
         style="width: 100%; height: 100%;"
         class="bg-[#1a1a1a]"
+        :class="{ 'invisible': showSearchDropdown }"
       >
         <!-- Initial loading placeholder -->
         <div class="flex items-center justify-center h-full text-theme-text-light">
@@ -232,6 +250,38 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const selectedIndex = ref<number>(-1);
 const searchTimeout = ref<NodeJS.Timeout | null>(null);
 
+// Function to send search data to WebContentsView via DOM injection
+const sendSearchDataToWebContentsView = (query: string, loading: boolean, results: any) => {
+  console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
+  
+  // Use IPC to execute JavaScript in the WebContentsView
+  if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
+    const searchData = {
+      query: query,
+      isActive: query.length > 0,
+      isLoading: loading,
+      results: results,
+      timestamp: Date.now()
+    };
+    
+    const jsCode = `
+      // Set search data on window object
+      window.electronSearchState = ${JSON.stringify(searchData)};
+      
+      // Dispatch custom event for web app to listen
+      window.dispatchEvent(new CustomEvent('electron-search-changed', {
+        detail: window.electronSearchState
+      }));
+      
+      console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+    `;
+    
+    window.logMonitorApi.executeInWebContentsView(jsCode);
+  } else {
+    console.warn('[Search] executeInWebContentsView API not available');
+  }
+};
+
 // Search results structure
 const searchResults = ref<{
   events: any[];
@@ -258,6 +308,8 @@ const performSearch = async (query: string) => {
   if (!query.trim()) {
     searchResults.value = { events: [], users: [], organizations: [] };
     showSearchDropdown.value = false;
+    // Send empty search to WebContentsView
+    sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] });
     return;
   }
   
@@ -265,19 +317,26 @@ const performSearch = async (query: string) => {
   showSearchDropdown.value = true;
   selectedIndex.value = -1;
   
+  // Send loading state to WebContentsView
+  sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
+  
   try {
     // For now, use mock data until proper API endpoints are available
-    // This would eventually call the web app's search API through the WebContentsView
     await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
     
     // Mock search results based on query
     const mockResults = generateMockSearchResults(query);
     searchResults.value = mockResults;
     
+    // Send results to WebContentsView
+    sendSearchDataToWebContentsView(query, false, mockResults);
+    
     console.log(`[Search] Found ${mockResults.events.length} events, ${mockResults.users.length} users, ${mockResults.organizations.length} organizations`);
   } catch (error) {
     console.error('[Search] Failed:', error);
     searchResults.value = { events: [], users: [], organizations: [] };
+    // Send error state to WebContentsView
+    sendSearchDataToWebContentsView(query, false, { events: [], users: [], organizations: [] });
   } finally {
     isSearching.value = false;
   }
@@ -340,6 +399,10 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
       showSearchDropdown.value = false;
       selectedIndex.value = -1;
       searchInput.value?.blur();
+      // Show WebContentsView when search closes
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+      }
       break;
   }
 };
@@ -347,6 +410,10 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
 const handleSearchFocus = () => {
   if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
     showSearchDropdown.value = true;
+    // Hide WebContentsView when search opens
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+    }
   }
 };
 
@@ -355,6 +422,10 @@ const handleSearchBlur = () => {
   setTimeout(() => {
     showSearchDropdown.value = false;
     selectedIndex.value = -1;
+    // Show WebContentsView when search closes
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+    }
   }, 150);
 };
 
@@ -606,6 +677,43 @@ onMounted(async () => {
           }
           break;
       }
+    }
+  });
+
+  // Poll for clear search requests from the web app
+  setInterval(() => {
+    // Check if the WebContentsView has set a clear flag
+    if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
+      // Check for clear flag in the WebContentsView
+      window.logMonitorApi.executeInWebContentsView(`
+        if (window.electronSearchState && window.electronSearchState.shouldClear) {
+          console.log('[WebContentsView] Clear flag detected, notifying Electron');
+          window.electronSearchState.shouldClear = false; // Reset the flag
+          window.parent.postMessage({ type: 'electron-search-clear' }, '*');
+        }
+      `);
+    }
+  }, 100);
+
+  // Listen for clear messages from WebContentsView
+  window.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'electron-search-clear') {
+      console.log('[WebContentPage] Received search clear request from WebContentsView');
+      
+      // Clear the search input
+      searchQuery.value = '';
+      showSearchDropdown.value = false;
+      selectedIndex.value = -1;
+      
+      // Clear search results
+      searchResults.value = { events: [], users: [], organizations: [] };
+      
+      // Also blur the search input to remove focus
+      if (searchInput.value) {
+        searchInput.value.blur();
+      }
+      
+      console.log('[WebContentPage] Search box cleared');
     }
   });
 

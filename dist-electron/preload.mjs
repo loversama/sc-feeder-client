@@ -230,6 +230,8 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   closeEnhancedWebContentWindow: () => require$$0.ipcRenderer.invoke("enhanced-window:close-window"),
   // Get enhanced WebContentsView window status
   getEnhancedWebContentStatus: () => require$$0.ipcRenderer.invoke("enhanced-window:get-status"),
+  // Execute JavaScript in WebContentsView (DOM bridge)
+  executeInWebContentsView: (jsCode) => require$$0.ipcRenderer.invoke("enhanced-webcontents:execute-js", jsCode),
   // Window Status Methods
   getSettingsWindowStatus: () => require$$0.ipcRenderer.invoke("get-settings-window-status"),
   getWebContentWindowStatus: () => require$$0.ipcRenderer.invoke("get-web-content-window-status"),
