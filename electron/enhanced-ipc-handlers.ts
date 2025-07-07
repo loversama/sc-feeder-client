@@ -438,6 +438,57 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
+    // --- Search API Handlers ---
+
+    // Proxy search API calls through Electron main process (bypasses CORS)
+    ipcMain.handle('search-api:query', async (event, query: string) => {
+        try {
+            logger.info(MODULE_NAME, `Search API request for query: "${query}"`);
+            
+            // Determine API base URL
+            const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+            const apiBaseUrl = isDevelopment ? 'http://localhost:5324' : 'https://api.voidlog.gg';
+            
+            // Get authentication token
+            const currentTokens = getCurrentAuthTokens();
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json'
+            };
+            
+            if (currentTokens?.accessToken) {
+                headers['Authorization'] = `Bearer ${currentTokens.accessToken}`;
+                logger.debug(MODULE_NAME, 'Adding authentication header to search request');
+            }
+            
+            // Make the API call from main process (no CORS restrictions)
+            const url = `${apiBaseUrl}/api/search?term=${encodeURIComponent(query)}`;
+            logger.debug(MODULE_NAME, `Making search API call to: ${url}`);
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Search API failed: ${response.status} ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            logger.info(MODULE_NAME, `Search API returned ${Array.isArray(data) ? data.length : 0} results`);
+            
+            return {
+                success: true,
+                data: data
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Search API call failed:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown search error'
+            };
+        }
+    });
+
     // --- DOM Bridge Handlers ---
 
     // Execute JavaScript in WebContentsView
@@ -452,9 +503,12 @@ export function registerEnhancedIPCHandlers(): void {
             const windowId = senderWindow.id;
             const webContentView = windowWebContentsViews.get(windowId);
             
-            if (webContentView && !webContentView.webContents.isDestroyed()) {
+            if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
                 await webContentView.webContents.executeJavaScript(jsCode);
-                logger.debug(MODULE_NAME, 'JavaScript executed in WebContentsView successfully');
+                // Only log JavaScript execution if it's not search-related to reduce spam
+                if (!jsCode.includes('electronSearchState')) {
+                    logger.debug(MODULE_NAME, 'JavaScript executed in WebContentsView successfully');
+                }
                 return { success: true };
             } else {
                 logger.warn(MODULE_NAME, 'No WebContentsView found for JavaScript execution');
@@ -576,9 +630,16 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         if (windowWebContentsViews.has(windowId)) {
             const existingView = windowWebContentsViews.get(windowId);
             if (existingView) {
-                targetWindow.contentView.removeChildView(existingView);
-                (existingView.webContents as any).destroy();
+                try {
+                    targetWindow.contentView.removeChildView(existingView);
+                    if (existingView.webContents && !existingView.webContents.isDestroyed()) {
+                        (existingView.webContents as any).destroy();
+                    }
+                } catch (error) {
+                    logger.warn(MODULE_NAME, 'Error cleaning up existing WebContentsView:', error);
+                }
             }
+            windowWebContentsViews.delete(windowId);
         }
         
         // Create new WebContentsView with authentication
@@ -671,7 +732,7 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         
         // Handle window resize
         targetWindow.on('resize', () => {
-            if (!webContentView || webContentView.webContents.isDestroyed()) return;
+            if (!webContentView || !webContentView.webContents || webContentView.webContents.isDestroyed()) return;
             
             targetWindow.webContents.executeJavaScript(`
                 const container = document.getElementById('webcontents-container');
@@ -706,10 +767,15 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         
         // Clean up on window close
         targetWindow.on('closed', () => {
+            logger.info(MODULE_NAME, `Window ${windowId} closed, cleaning up WebContentsView`);
             if (windowWebContentsViews.has(windowId)) {
                 const view = windowWebContentsViews.get(windowId);
-                if (view) {
-                    (view.webContents as any).destroy();
+                if (view && view.webContents && !view.webContents.isDestroyed()) {
+                    try {
+                        (view.webContents as any).destroy();
+                    } catch (error) {
+                        logger.warn(MODULE_NAME, 'Error destroying WebContentsView:', error);
+                    }
                 }
                 windowWebContentsViews.delete(windowId);
             }

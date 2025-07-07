@@ -174401,6 +174401,42 @@ function registerEnhancedIPCHandlers() {
       };
     }
   });
+  ipcMain$1.handle("search-api:query", async (event, query) => {
+    try {
+      info(MODULE_NAME$3, `Search API request for query: "${query}"`);
+      const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+      const apiBaseUrl = isDevelopment ? "http://localhost:5324" : "https://api.voidlog.gg";
+      const currentTokens = getCurrentAuthTokens();
+      const headers2 = {
+        "Content-Type": "application/json"
+      };
+      if (currentTokens == null ? void 0 : currentTokens.accessToken) {
+        headers2["Authorization"] = `Bearer ${currentTokens.accessToken}`;
+        debug$b(MODULE_NAME$3, "Adding authentication header to search request");
+      }
+      const url2 = `${apiBaseUrl}/api/search?term=${encodeURIComponent(query)}`;
+      debug$b(MODULE_NAME$3, `Making search API call to: ${url2}`);
+      const response2 = await fetch(url2, {
+        method: "GET",
+        headers: headers2
+      });
+      if (!response2.ok) {
+        throw new Error(`Search API failed: ${response2.status} ${response2.statusText}`);
+      }
+      const data2 = await response2.json();
+      info(MODULE_NAME$3, `Search API returned ${Array.isArray(data2) ? data2.length : 0} results`);
+      return {
+        success: true,
+        data: data2
+      };
+    } catch (error$12) {
+      error(MODULE_NAME$3, "Search API call failed:", error$12);
+      return {
+        success: false,
+        error: error$12 instanceof Error ? error$12.message : "Unknown search error"
+      };
+    }
+  });
   ipcMain$1.handle("enhanced-webcontents:execute-js", async (event, jsCode) => {
     try {
       const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -174410,9 +174446,11 @@ function registerEnhancedIPCHandlers() {
       }
       const windowId = senderWindow.id;
       const webContentView2 = windowWebContentsViews.get(windowId);
-      if (webContentView2 && !webContentView2.webContents.isDestroyed()) {
+      if (webContentView2 && webContentView2.webContents && !webContentView2.webContents.isDestroyed()) {
         await webContentView2.webContents.executeJavaScript(jsCode);
-        debug$b(MODULE_NAME$3, "JavaScript executed in WebContentsView successfully");
+        if (!jsCode.includes("electronSearchState")) {
+          debug$b(MODULE_NAME$3, "JavaScript executed in WebContentsView successfully");
+        }
         return { success: true };
       } else {
         warn(MODULE_NAME$3, "No WebContentsView found for JavaScript execution");
@@ -174507,9 +174545,16 @@ async function createWebContentsViewForWindow(targetWindow, section) {
     if (windowWebContentsViews.has(windowId)) {
       const existingView = windowWebContentsViews.get(windowId);
       if (existingView) {
-        targetWindow.contentView.removeChildView(existingView);
-        existingView.webContents.destroy();
+        try {
+          targetWindow.contentView.removeChildView(existingView);
+          if (existingView.webContents && !existingView.webContents.isDestroyed()) {
+            existingView.webContents.destroy();
+          }
+        } catch (error2) {
+          warn(MODULE_NAME$3, "Error cleaning up existing WebContentsView:", error2);
+        }
       }
+      windowWebContentsViews.delete(windowId);
     }
     info(MODULE_NAME$3, "Creating WebContentsView session and view");
     const webContentSession = session.fromPartition("persist:attached-webcontent");
@@ -174583,7 +174628,7 @@ async function createWebContentsViewForWindow(targetWindow, section) {
       });
     }, 200);
     targetWindow.on("resize", () => {
-      if (!webContentView2 || webContentView2.webContents.isDestroyed()) return;
+      if (!webContentView2 || !webContentView2.webContents || webContentView2.webContents.isDestroyed()) return;
       targetWindow.webContents.executeJavaScript(`
                 const container = document.getElementById('webcontents-container');
                 if (container) {
@@ -174614,10 +174659,15 @@ async function createWebContentsViewForWindow(targetWindow, section) {
       });
     });
     targetWindow.on("closed", () => {
+      info(MODULE_NAME$3, `Window ${windowId} closed, cleaning up WebContentsView`);
       if (windowWebContentsViews.has(windowId)) {
         const view = windowWebContentsViews.get(windowId);
-        if (view) {
-          view.webContents.destroy();
+        if (view && view.webContents && !view.webContents.isDestroyed()) {
+          try {
+            view.webContents.destroy();
+          } catch (error2) {
+            warn(MODULE_NAME$3, "Error destroying WebContentsView:", error2);
+          }
         }
         windowWebContentsViews.delete(windowId);
       }

@@ -115,6 +115,11 @@ require$$0.contextBridge.exposeInMainWorld("electronAuthBridge", {
   }
 });
 require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
+  // Generic IPC invoke method for any IPC channel
+  invoke: (...args) => {
+    const [channel, ...omit] = args;
+    return require$$0.ipcRenderer.invoke(channel, ...omit);
+  },
   // Renderer to Main (Invoke/Send)
   getLogPath: () => require$$0.ipcRenderer.invoke("get-log-path"),
   setLogPath: (newPath) => require$$0.ipcRenderer.send("set-log-path", newPath),

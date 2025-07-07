@@ -138,12 +138,54 @@
               <div 
                 v-for="(user, index) in searchResults.users.slice(0, 5)" 
                 :key="`user-${index}`"
-                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
+                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md flex items-center space-x-3"
                 :class="{ 'bg-[#333333]': selectedIndex === getUserIndex(index) }"
                 @click="handleResultClick('user', user)"
               >
-                <div class="text-white text-sm font-medium">{{ user.username }}</div>
-                <div class="text-gray-400 text-xs mt-1">{{ user.organization || 'No organization' }}</div>
+                <!-- User Avatar -->
+                <div class="flex-shrink-0">
+                  <img 
+                    v-if="user.pfpUrl" 
+                    :src="user.pfpUrl" 
+                    :alt="`${user.username} avatar`"
+                    class="w-8 h-8 rounded-full object-cover"
+                    @load="(e) => console.log('[Search] Avatar loaded successfully for:', user.username, 'URL:', user.pfpUrl)"
+                    @error="(e) => handleImageError(e, user)"
+                  />
+                  <div 
+                    v-else 
+                    class="w-8 h-8 rounded-full bg-[rgb(99,99,247)] flex items-center justify-center text-white text-xs font-bold"
+                    @click="() => console.log('[Search] Fallback avatar for user:', user.username, 'pfpUrl was:', user.pfpUrl)"
+                  >
+                    {{ user.username.charAt(0).toUpperCase() }}
+                  </div>
+                </div>
+                
+                <!-- User Info -->
+                <div class="flex-1 min-w-0">
+                  <div class="text-white text-sm font-medium truncate">{{ user.username }}</div>
+                  <div class="text-gray-400 text-xs mt-1 flex items-center space-x-1">
+                    <!-- Organization Logo -->
+                    <img 
+                      v-if="user.organizationIconUrl" 
+                      :src="user.organizationIconUrl" 
+                      :alt="'Organization icon'"
+                      class="w-3 h-3 rounded object-cover flex-shrink-0"
+                      @load="(e) => console.log('[Search] User org icon loaded for:', user.username)"
+                      @error="(e) => handleOrgIconError(e, { iconUrl: user.organizationIconUrl, name: user.organization })"
+                    />
+                    <div 
+                      v-else-if="user.organization && user.organization !== 'No organization'" 
+                      class="w-3 h-3 rounded bg-[rgb(99,99,247)] flex items-center justify-center text-white flex-shrink-0"
+                      style="font-size: 6px; font-weight: bold;"
+                    >
+                      {{ getOrgInitials(user.organization) }}
+                    </div>
+                    
+                    <!-- Organization Text -->
+                    <span class="truncate">{{ user.organization || 'No organization' }}</span>
+                  </div>
+                </div>
               </div>
               <div v-if="searchResults.users.length > 5" class="pt-2">
                 <button class="text-[rgb(99,99,247)] text-sm hover:text-[rgb(77,77,234)] transition-colors">
@@ -162,12 +204,38 @@
               <div 
                 v-for="(org, index) in searchResults.organizations.slice(0, 5)" 
                 :key="`org-${index}`"
-                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
+                class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md flex items-center space-x-3"
                 :class="{ 'bg-[#333333]': selectedIndex === getOrgIndex(index) }"
                 @click="handleResultClick('organization', org)"
               >
-                <div class="text-white text-sm font-medium">{{ org.name }}</div>
-                <div class="text-gray-400 text-xs mt-1">{{ org.memberCount || 0 }} members</div>
+                <!-- Organization Icon -->
+                <div class="flex-shrink-0">
+                  <img 
+                    v-if="org.iconUrl" 
+                    :src="org.iconUrl" 
+                    :alt="`${org.name} icon`"
+                    class="w-8 h-8 rounded object-cover"
+                    @load="(e) => console.log('[Search] Org icon loaded successfully for:', org.name, 'URL:', org.iconUrl)"
+                    @error="(e) => handleOrgIconError(e, org)"
+                  />
+                  <div 
+                    v-else 
+                    class="w-8 h-8 rounded bg-[rgb(99,99,247)] flex items-center justify-center text-white text-xs font-bold"
+                  >
+                    {{ org.tag ? org.tag.substring(0, 2).toUpperCase() : org.name.charAt(0).toUpperCase() }}
+                  </div>
+                </div>
+                
+                <!-- Organization Info -->
+                <div class="flex-1 min-w-0">
+                  <div class="text-white text-sm font-medium truncate">{{ org.name }}</div>
+                  <div class="text-gray-400 text-xs mt-1">
+                    {{ org.memberCount || 0 }} members
+                    <span v-if="org.sampleMembers && org.sampleMembers.length > 0" class="text-gray-500">
+                      • {{ org.sampleMembers.slice(0, 2).join(', ') }}{{ org.sampleMembers.length > 2 ? '...' : '' }}
+                    </span>
+                  </div>
+                </div>
               </div>
               <div v-if="searchResults.organizations.length > 5" class="pt-2">
                 <button class="text-[rgb(99,99,247)] text-sm hover:text-[rgb(77,77,234)] transition-colors">
@@ -249,10 +317,34 @@ const showSearchDropdown = ref<boolean>(false);
 const searchInput = ref<HTMLInputElement | null>(null);
 const selectedIndex = ref<number>(-1);
 const searchTimeout = ref<NodeJS.Timeout | null>(null);
+const lastSentSearchData = ref<string>(''); // Track last sent data to prevent spam
+
+// Reset search state after page navigation
+const resetSearchState = () => {
+  console.log('[Search] Resetting search state after navigation');
+  lastSentSearchData.value = '';
+  // Clear any existing search if there's text in the box
+  if (searchQuery.value.trim()) {
+    sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+  }
+};
 
 // Function to send search data to WebContentsView via DOM injection
-const sendSearchDataToWebContentsView = (query: string, loading: boolean, results: any) => {
-  console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
+const sendSearchDataToWebContentsView = (query: string, loading: boolean, results: any, forceUpdate = false) => {
+  // Create a hash of the current data to avoid sending duplicate data
+  const currentDataHash = `${query}-${loading}-${JSON.stringify(results)}`;
+  
+  // Only send if data has actually changed (unless forcing update)
+  if (!forceUpdate && currentDataHash === lastSentSearchData.value) {
+    return; // Skip if data hasn't changed
+  }
+  
+  lastSentSearchData.value = currentDataHash;
+  
+  // Only log if it's a significant change (not just loading state changes)
+  if (!loading || query.length === 0) {
+    console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
+  }
   
   // Use IPC to execute JavaScript in the WebContentsView
   if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
@@ -273,7 +365,10 @@ const sendSearchDataToWebContentsView = (query: string, loading: boolean, result
         detail: window.electronSearchState
       }));
       
-      console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+      // Only log in web app if query changed (not just loading state)
+      if (!${loading} || '${query}'.length === 0) {
+        console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+      }
     `;
     
     window.logMonitorApi.executeInWebContentsView(jsCode);
@@ -299,6 +394,11 @@ const handleSearchInput = () => {
     clearTimeout(searchTimeout.value);
   }
   
+  // Reset search state if needed to ensure DOM bridge works
+  if (lastSentSearchData.value && !searchQuery.value.trim()) {
+    resetSearchState();
+  }
+  
   searchTimeout.value = setTimeout(() => {
     performSearch(searchQuery.value);
   }, 300); // 300ms debounce
@@ -321,28 +421,129 @@ const performSearch = async (query: string) => {
   sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
   
   try {
-    // For now, use mock data until proper API endpoints are available
-    await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API delay
+    console.log(`[Search] Performing real API search for: "${query}"`);
     
-    // Mock search results based on query
-    const mockResults = generateMockSearchResults(query);
-    searchResults.value = mockResults;
+    // Call the real search API
+    const apiResults = await callSearchAPI(query);
+    
+    // Transform API results to match expected format
+    const transformedResults = transformSearchResults(apiResults);
+    searchResults.value = transformedResults;
     
     // Send results to WebContentsView
-    sendSearchDataToWebContentsView(query, false, mockResults);
+    sendSearchDataToWebContentsView(query, false, transformedResults);
     
-    console.log(`[Search] Found ${mockResults.events.length} events, ${mockResults.users.length} users, ${mockResults.organizations.length} organizations`);
+    console.log(`[Search] Found ${transformedResults.events.length} events, ${transformedResults.users.length} users, ${transformedResults.organizations.length} organizations`);
   } catch (error) {
-    console.error('[Search] Failed:', error);
-    searchResults.value = { events: [], users: [], organizations: [] };
-    // Send error state to WebContentsView
-    sendSearchDataToWebContentsView(query, false, { events: [], users: [], organizations: [] });
+    console.error('[Search] API call failed:', error);
+    
+    // Fallback to mock data if API fails
+    console.log('[Search] Falling back to mock data due to API error');
+    const mockResults = generateMockSearchResults(query);
+    searchResults.value = mockResults;
+    sendSearchDataToWebContentsView(query, false, mockResults);
   } finally {
     isSearching.value = false;
   }
 };
 
-// Generate mock search results (will be replaced with real API calls)
+// Real API search function using IPC proxy to bypass CORS
+const callSearchAPI = async (query: string) => {
+  console.log(`[Search] Calling search API via IPC proxy for query: "${query}"`);
+  
+  try {
+    // Use IPC to call search API through main process (bypasses CORS)
+    const response = await window.logMonitorApi.invoke('search-api:query', query);
+    console.log('[Search] IPC API response:', response);
+    
+    if (!response.success) {
+      throw new Error(response.error || 'Search API call failed');
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('[Search] IPC API call failed:', error);
+    throw new Error(`Search API call failed: ${error.message || 'Unknown error'}`);
+  }
+};
+
+// Transform API results to match expected UI format
+const transformSearchResults = (apiResults: any[]) => {
+  const transformed = {
+    events: [],
+    users: [],
+    organizations: []
+  };
+  
+  if (!Array.isArray(apiResults)) {
+    console.warn('[Search] API results is not an array:', apiResults);
+    return transformed;
+  }
+  
+  // Group results by type
+  apiResults.forEach((item: any) => {
+    try {
+      const transformedItem = {
+        id: item.value || item.id,
+        title: item.label,
+        subtitle: '', // Will be set based on type
+        label: item.label,
+        value: item.value,
+        type: item.type
+      };
+      
+      if (item.type === 'user' || item.type === 'player') {
+        // User/Player result
+        console.log('[Search] Processing user item:', {
+          label: item.label,
+          pfpUrl: item.pfpUrl,
+          fullItem: item
+        });
+        
+        transformed.users.push({
+          ...transformedItem,
+          username: item.label,
+          organization: item.organizationName 
+            ? `${item.organizationName} [${item.organizationSid || 'No tag'}]` 
+            : 'No organization',
+          pfpUrl: item.pfpUrl,
+          organizationIconUrl: item.organizationIconUrl
+        });
+      } else if (item.type === 'event') {
+        // Event result
+        let subtitle = 'Event details';
+        if (item.participants) {
+          const attacker = item.participants.attacker || '?';
+          const victim = item.participants.victim || '?';
+          subtitle = `${attacker} vs ${victim}`;
+        }
+        
+        transformed.events.push({
+          ...transformedItem,
+          subtitle: subtitle,
+          participants: item.participants
+        });
+      } else if (item.type === 'organization') {
+        // Organization result
+        transformed.organizations.push({
+          ...transformedItem,
+          name: item.label,
+          memberCount: item.memberCount || 0,
+          iconUrl: item.iconUrl,
+          tag: item.value,
+          sampleMembers: item.sampleMembers || []
+        });
+      }
+    } catch (error) {
+      console.error('[Search] Error transforming result item:', item, error);
+    }
+  });
+  
+  console.log('[Search] Transformed results:', transformed);
+  return transformed;
+};
+
+// Generate mock search results (fallback when API fails)
 const generateMockSearchResults = (query: string) => {
   const mockEvents = [
     { id: 1, title: `Kill event involving ${query}`, subtitle: '2 minutes ago • Orison' },
@@ -460,8 +661,16 @@ const executeSelectedResult = () => {
 };
 
 const handleResultClick = (type: 'event' | 'user' | 'organization', item: any) => {
-  console.log(`[Search] Selected ${type}:`, item);
+  console.log(`[Search] *** RESULT CLICKED *** Type: ${type}, Item:`, item);
   
+  // Hide dropdown immediately and show WebContentsView
+  showSearchDropdown.value = false;
+  
+  if (window.electron && window.electron.ipcRenderer) {
+    window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+  }
+  
+  // Navigate to appropriate section - setActiveSection will handle search clearing
   switch (type) {
     case 'event':
       setActiveSection('events');
@@ -476,10 +685,6 @@ const handleResultClick = (type: 'event' | 'user' | 'organization', item: any) =
       console.log('Organization search not implemented yet');
       break;
   }
-  
-  showSearchDropdown.value = false;
-  selectedIndex.value = -1;
-  searchInput.value?.blur();
 };
 
 // Format functions for display
@@ -491,9 +696,70 @@ const formatEventSubtitle = (event: any): string => {
   return event.subtitle || 'No details available';
 };
 
+// Handle avatar image loading errors
+const handleImageError = (event: Event, user?: any) => {
+  const img = event.target as HTMLImageElement;
+  if (img) {
+    console.error('[Search] Avatar image failed to load for user:', user?.username || 'unknown');
+    console.error('[Search] Failed URL:', img.src);
+    console.error('[Search] Original pfpUrl from API:', user?.pfpUrl);
+    console.error('[Search] Error event:', event);
+    // Hide the image and show the fallback instead
+    img.style.display = 'none';
+  }
+};
+
+// Handle organization icon loading errors
+const handleOrgIconError = (event: Event, org?: any) => {
+  const img = event.target as HTMLImageElement;
+  if (img) {
+    console.error('[Search] Organization icon failed to load for org:', org?.name || 'unknown');
+    console.error('[Search] Failed URL:', img.src);
+    console.error('[Search] Original iconUrl from API:', org?.iconUrl);
+    console.error('[Search] Error event:', event);
+    // Hide the image and show the fallback instead
+    img.style.display = 'none';
+  }
+};
+
+// Get organization initials from organization string
+const getOrgInitials = (orgString: string): string => {
+  if (!orgString || orgString === 'No organization') return '';
+  
+  // Extract SID from format "Organization Name (SID)" or just use first letters
+  const sidMatch = orgString.match(/\[([A-Z0-9]+)\]|\(([A-Z0-9]+)\)/);
+  if (sidMatch) {
+    const sid = sidMatch[1] || sidMatch[2];
+    return sid.substring(0, 2).toUpperCase();
+  }
+  
+  // If no SID found, use first two letters of organization name
+  const words = orgString.split(' ');
+  if (words.length >= 2) {
+    return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
+  }
+  
+  return orgString.substring(0, 2).toUpperCase();
+};
+
 // Function to change active section with loading transitions
 const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => {
   console.log(`[WebContentPage] Setting active section to: ${section}`);
+  
+  // Clear search when changing sections
+  console.log(`[WebContentPage] Clearing search before section change`);
+  searchQuery.value = '';
+  searchResults.value = { events: [], users: [], organizations: [] };
+  showSearchDropdown.value = false;
+  selectedIndex.value = -1;
+  lastSentSearchData.value = '';
+  
+  if (searchInput.value) {
+    searchInput.value.value = '';
+  }
+  
+  // Send clear signal to WebContentsView
+  sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
   
   // Don't show loading if it's the same section or if WebContentsView isn't attached yet
   if (section === activeSection.value || !isWebContentsViewAttached.value) {
@@ -736,6 +1002,11 @@ onMounted(async () => {
           isLoading.value = false;
         }, 300);
       }
+      
+      // Reset search state to ensure DOM bridge works on new page
+      setTimeout(() => {
+        resetSearchState();
+      }, 500); // Small delay to ensure page is fully loaded
     });
     
     window.electron.ipcRenderer.on('webcontents-view-error', (event, error) => {

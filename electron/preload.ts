@@ -71,6 +71,12 @@ contextBridge.exposeInMainWorld('electronAuthBridge', {
 
 // --------- Log Monitor Specific API ---------
 contextBridge.exposeInMainWorld('logMonitorApi', {
+  // Generic IPC invoke method for any IPC channel
+  invoke: <T>(...args: Parameters<typeof ipcRenderer.invoke>): Promise<T> => {
+    const [channel, ...omit] = args
+    return ipcRenderer.invoke(channel, ...omit)
+  },
+  
   // Renderer to Main (Invoke/Send)
   getLogPath: (): Promise<string> => ipcRenderer.invoke('get-log-path'),
   setLogPath: (newPath: string): void => ipcRenderer.send('set-log-path', newPath),
