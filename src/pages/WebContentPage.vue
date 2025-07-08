@@ -590,8 +590,8 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
       if (selectedIndex.value >= 0) {
         executeSelectedResult();
       } else if (searchQuery.value.trim()) {
-        // Default to events search
-        setActiveSection('events');
+        // Navigate to dedicated search page with query parameters
+        navigateToSearchPage(searchQuery.value.trim());
         showSearchDropdown.value = false;
       }
       break;
@@ -684,6 +684,50 @@ const handleResultClick = (type: 'event' | 'user' | 'organization', item: any) =
       // TODO: Navigate to organization page
       console.log('Organization search not implemented yet');
       break;
+  }
+};
+
+// Navigate to dedicated search page with query parameters
+const navigateToSearchPage = async (query: string) => {
+  console.log(`[Search] Navigating to search page with query: "${query}"`);
+  
+  try {
+    // Clear search state and hide dropdown
+    showSearchDropdown.value = false;
+    selectedIndex.value = -1;
+    
+    // Show WebContentsView
+    if (window.electron && window.electron.ipcRenderer) {
+      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+    }
+    
+    // Use the enhanced IPC to navigate to the search page with query parameters
+    if (window.logMonitorApi && window.logMonitorApi.navigateToSearchPage) {
+      const result = await window.logMonitorApi.navigateToSearchPage(query);
+      console.log('[Search] Navigation to search page result:', result);
+      
+      if (result.success) {
+        // Clear the search box after successful navigation
+        searchQuery.value = '';
+        searchResults.value = { events: [], users: [], organizations: [] };
+        lastSentSearchData.value = '';
+        
+        if (searchInput.value) {
+          searchInput.value.value = '';
+        }
+        
+        // Don't send DOM bridge data to search page - let it handle its own state from URL parameters
+        console.log('[Search] Successfully navigated to search page, letting page handle its own state');
+      }
+    } else {
+      console.warn('[Search] navigateToSearchPage API not available, falling back to events section');
+      // Fallback to events section if API not available
+      setActiveSection('events');
+    }
+  } catch (error) {
+    console.error('[Search] Failed to navigate to search page:', error);
+    // Fallback to events section on error
+    setActiveSection('events');
   }
 };
 
@@ -1003,9 +1047,15 @@ onMounted(async () => {
         }, 300);
       }
       
-      // Reset search state to ensure DOM bridge works on new page
+      // Only reset search state if we're not navigating to the search page
+      // (which should preserve its query parameters and content)
       setTimeout(() => {
-        resetSearchState();
+        // Don't reset if there's an active search query - it might be the search page
+        if (!searchQuery.value.trim()) {
+          resetSearchState();
+        } else {
+          console.log('[WebContentPage] Skipping search state reset - active search query detected');
+        }
       }, 500); // Small delay to ensure page is fully loaded
     });
     

@@ -290,6 +290,10 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   executeInWebContentsView: (jsCode: string): Promise<{ success: boolean; error?: string }> => 
     ipcRenderer.invoke('enhanced-webcontents:execute-js', jsCode),
 
+  // Navigate to search page with query parameters
+  navigateToSearchPage: (query: string): Promise<{ success: boolean; error?: string }> => 
+    ipcRenderer.invoke('enhanced-webcontents:navigate-to-search', query),
+
   // Window Status Methods
   getSettingsWindowStatus: (): Promise<{ isOpen: boolean }> => 
     ipcRenderer.invoke('get-settings-window-status'),

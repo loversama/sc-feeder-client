@@ -148,6 +148,16 @@ async function loadHistoricData(mainWindow: BrowserWindow) {
 }
 
 function registerGlobalShortcuts(mainWindow: BrowserWindow) {
+  // Only register DevTools shortcuts in development mode
+  const isDevelopment = !app.isPackaged && !process.env.CI;
+  
+  if (!isDevelopment) {
+    logger.info(MODULE_NAME, 'Production mode detected - DevTools shortcuts disabled for security');
+    return;
+  }
+
+  logger.info(MODULE_NAME, 'Development mode detected - registering DevTools shortcuts');
+
   // DevTools Toggle (CmdOrCtrl+Shift+I)
   const devToolsRet = globalShortcut.register('CommandOrCtrl+Shift+I', () => {
       const focusedWindow = BrowserWindow.getFocusedWindow();
@@ -299,6 +309,16 @@ async function onReady() {
   const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
   process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : path.join(process.env.APP_ROOT, 'dist');
   logger.path(MODULE_NAME, 'VITE_PUBLIC', process.env.VITE_PUBLIC);
+
+  // Security: Remove application menu in production to prevent DevTools access
+  const isDevelopment = !app.isPackaged && !process.env.CI;
+  if (!isDevelopment) {
+    const { Menu } = await import('electron');
+    Menu.setApplicationMenu(null);
+    logger.info(MODULE_NAME, 'Production mode - Application menu disabled for security');
+  } else {
+    logger.info(MODULE_NAME, 'Development mode - Application menu enabled');
+  }
   
   // Register IPC handlers first
   registerIpcHandlers();

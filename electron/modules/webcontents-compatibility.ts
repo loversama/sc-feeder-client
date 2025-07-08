@@ -6,7 +6,7 @@
  * feature detection to ensure smooth operation across different Electron versions.
  */
 
-import { BrowserWindow, BaseWindow, WebContentsView } from 'electron';
+import { BrowserWindow, BaseWindow, WebContentsView, app } from 'electron';
 import * as logger from './logger';
 
 const MODULE_NAME = 'WebContentsCompatibility';
@@ -278,7 +278,8 @@ export class ArchitectureMigration {
       const testView = new WebContentsView({
         webPreferences: {
           nodeIntegration: false,
-          contextIsolation: true
+          contextIsolation: true,
+          devTools: !app.isPackaged // Disable DevTools in production
         }
       });
 

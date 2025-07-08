@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, WebContentsView, session } from 'electron';
+import { ipcMain, BrowserWindow, WebContentsView, session, app } from 'electron';
 import * as logger from './modules/logger';
 import { getCurrentAuthTokens, getAuthStatus, storeTokens, refreshToken } from './modules/auth-manager';
 import { 
@@ -523,6 +523,50 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
+    // Navigate to search page with query parameters
+    ipcMain.handle('enhanced-webcontents:navigate-to-search', async (event, query: string) => {
+        try {
+            logger.info(MODULE_NAME, `Navigating to search page with query: "${query}"`);
+            
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for search navigation');
+                return { success: false, error: 'Sender window not found' };
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+                // Navigate to the search page with query parameters
+                const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+                const baseUrl = isDevelopment ? 'http://localhost:5173' : 'https://voidlog.gg';
+                const searchUrl = `${baseUrl}/search?q=${encodeURIComponent(query)}`;
+                
+                logger.info(MODULE_NAME, `Navigating WebContentsView to search URL: ${searchUrl}`);
+                await webContentView.webContents.loadURL(searchUrl);
+                
+                // Wait for page load and re-inject CSS to hide navbar
+                webContentView.webContents.once('dom-ready', () => {
+                    logger.info(MODULE_NAME, 'Search page loaded, re-injecting navbar hiding CSS');
+                    injectNavbarHidingCSS(webContentView);
+                });
+                
+                logger.info(MODULE_NAME, 'Successfully navigated to search page');
+                return { success: true };
+            } else {
+                logger.warn(MODULE_NAME, 'No WebContentsView found for search navigation');
+                return { success: false, error: 'WebContentsView not found' };
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to navigate to search page:', error);
+            return { 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Unknown error' 
+            };
+        }
+    });
+
     // --- Diagnostic and Debug Handlers ---
 
     // Get enhanced diagnostic information
@@ -662,6 +706,7 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
                 webSecurity: true,
                 allowRunningInsecureContent: false,
                 session: webContentSession,
+                devTools: !app.isPackaged, // Disable DevTools in production
                 ...(preloadPath ? { preload: preloadPath } : {})
             }
         });
@@ -887,92 +932,98 @@ async function injectAuthenticationCookies(webContentSession: Electron.Session):
     }
 }
 
+// Helper function to inject navbar hiding CSS and JavaScript
+function injectNavbarHidingCSS(webContentView: WebContentsView): void {
+    // Send authentication data
+    const currentTokens = getCurrentAuthTokens();
+    if (currentTokens) {
+        webContentView.webContents.send('auth-data-updated', {
+            accessToken: currentTokens.accessToken,
+            refreshToken: currentTokens.refreshToken,
+            user: currentTokens.user,
+            isAuthenticated: !!currentTokens.accessToken
+        });
+    }
+    
+    // Hide navigation bar with CSS and remove scrollbar rounded corners
+    webContentView.webContents.insertCSS(`
+        /* Hide the modern-navbar element */
+        .modern-navbar {
+            display: none !important;
+        }
+        
+        /* Hide the first h-16 div */
+        .h-16:first-of-type {
+            display: none !important;
+        }
+        
+        /* Remove rounded corners from scrollbars */
+        ::-webkit-scrollbar {
+            border-radius: 0 !important;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            border-radius: 0 !important;
+        }
+        
+        ::-webkit-scrollbar-track {
+            border-radius: 0 !important;
+        }
+        
+        *::-webkit-scrollbar {
+            border-radius: 0 !important;
+        }
+        
+        *::-webkit-scrollbar-thumb {
+            border-radius: 0 !important;
+        }
+        
+        *::-webkit-scrollbar-track {
+            border-radius: 0 !important;
+        }
+    `).catch((error) => {
+        logger.warn(MODULE_NAME, 'Failed to inject navigation-hiding CSS:', error);
+    });
+
+    // Inject JavaScript as backup to ensure the first h-16 is hidden
+    webContentView.webContents.executeJavaScript(`
+        (() => {
+            console.log('[VoidLog] Starting targeted navbar and spacer fix');
+            
+            function hideNavbarAndFirstSpacer() {
+                // Hide the modern-navbar element
+                const modernNavbar = document.querySelector('.modern-navbar');
+                if (modernNavbar) {
+                    modernNavbar.style.display = 'none';
+                    console.log('[VoidLog] Hidden modern-navbar element');
+                }
+                
+                // Hide/remove the first .h-16 element
+                const firstH16 = document.querySelector('.h-16');
+                if (firstH16) {
+                    firstH16.style.display = 'none';
+                    console.log('[VoidLog] Hidden first h-16 element');
+                }
+            }
+            
+            // Run immediately
+            hideNavbarAndFirstSpacer();
+            
+            // Run once more after a short delay to catch dynamic content
+            setTimeout(hideNavbarAndFirstSpacer, 100);
+            
+            console.log('[VoidLog] Navbar and spacer fix completed');
+        })();
+    `).catch((error) => {
+        logger.warn(MODULE_NAME, 'Failed to inject navbar fix JavaScript:', error);
+    });
+}
+
 // Helper function to setup WebContentsView event handlers
 function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targetWindow: BrowserWindow): void {
     webContentView.webContents.on('dom-ready', () => {
-        // Send authentication data
-        const currentTokens = getCurrentAuthTokens();
-        if (currentTokens) {
-            webContentView.webContents.send('auth-data-updated', {
-                accessToken: currentTokens.accessToken,
-                refreshToken: currentTokens.refreshToken,
-                user: currentTokens.user,
-                isAuthenticated: !!currentTokens.accessToken
-            });
-        }
-        
-        // Hide navigation bar with CSS and remove scrollbar rounded corners
-        webContentView.webContents.insertCSS(`
-            /* Hide the modern-navbar element */
-            .modern-navbar {
-                display: none !important;
-            }
-            
-            /* Hide the first h-16 div */
-            .h-16:first-of-type {
-                display: none !important;
-            }
-            
-            /* Remove rounded corners from scrollbars */
-            ::-webkit-scrollbar {
-                border-radius: 0 !important;
-            }
-            
-            ::-webkit-scrollbar-thumb {
-                border-radius: 0 !important;
-            }
-            
-            ::-webkit-scrollbar-track {
-                border-radius: 0 !important;
-            }
-            
-            *::-webkit-scrollbar {
-                border-radius: 0 !important;
-            }
-            
-            *::-webkit-scrollbar-thumb {
-                border-radius: 0 !important;
-            }
-            
-            *::-webkit-scrollbar-track {
-                border-radius: 0 !important;
-            }
-        `).catch((error) => {
-            logger.warn(MODULE_NAME, 'Failed to inject navigation-hiding CSS:', error);
-        });
-
-        // Inject JavaScript as backup to ensure the first h-16 is hidden
-        webContentView.webContents.executeJavaScript(`
-            (() => {
-                console.log('[VoidLog] Starting targeted navbar and spacer fix');
-                
-                function hideNavbarAndFirstSpacer() {
-                    // Hide the modern-navbar element
-                    const modernNavbar = document.querySelector('.modern-navbar');
-                    if (modernNavbar) {
-                        modernNavbar.style.display = 'none';
-                        console.log('[VoidLog] Hidden modern-navbar element');
-                    }
-                    
-                    // Hide/remove the first .h-16 element
-                    const firstH16 = document.querySelector('.h-16');
-                    if (firstH16) {
-                        firstH16.style.display = 'none';
-                        console.log('[VoidLog] Hidden first h-16 element');
-                    }
-                }
-                
-                // Run immediately
-                hideNavbarAndFirstSpacer();
-                
-                // Run once more after a short delay to catch dynamic content
-                setTimeout(hideNavbarAndFirstSpacer, 100);
-                
-                console.log('[VoidLog] Navbar and spacer fix completed');
-            })();
-        `).catch((error) => {
-            logger.warn(MODULE_NAME, 'Failed to inject navbar fix JavaScript:', error);
-        });
+        // Inject navbar hiding CSS and JavaScript
+        injectNavbarHidingCSS(webContentView);
         
         // Notify the host window that WebContentsView is ready
         targetWindow.webContents.send('webcontents-view-ready');

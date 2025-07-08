@@ -48,10 +48,12 @@ let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | null = null; /
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
-// Aggressive function to force DevTools open for any window in development
-function forceDevToolsOpen(window: BrowserWindow, windowType: string): void {
-    if (!app.isPackaged && !process.env.CI) {
-        logger.info(MODULE_NAME, `[DevTools] Setting up DevTools for ${windowType}`);
+// Function to setup DevTools security - only allow in development
+function setupDevToolsSecurity(window: BrowserWindow, windowType: string): void {
+    const isDevelopment = !app.isPackaged && !process.env.CI;
+    
+    if (isDevelopment) {
+        logger.info(MODULE_NAME, `[DevTools] Development mode - enabling DevTools for ${windowType}`);
         
         // Method 1: Try opening immediately with docked mode (visible)
         try {
@@ -119,6 +121,50 @@ function forceDevToolsOpen(window: BrowserWindow, windowType: string): void {
                 logger.info(MODULE_NAME, `[DevTools] Final check for ${windowType}: ${isOpen ? 'OPEN' : 'CLOSED'}`);
             }
         }, 1000);
+    } else {
+        // Production mode - implement comprehensive DevTools security
+        logger.info(MODULE_NAME, `[DevTools] Production mode - implementing DevTools security for ${windowType}`);
+        
+        // Prevent DevTools from being opened via any method
+        window.webContents.on('devtools-opened', () => {
+            logger.warn(MODULE_NAME, `[Security] DevTools opening attempt blocked for ${windowType}`);
+            window.webContents.closeDevTools();
+        });
+        
+        // Block right-click context menu that could access DevTools
+        window.webContents.on('context-menu', (event) => {
+            logger.debug(MODULE_NAME, `[Security] Context menu blocked for ${windowType}`);
+            event.preventDefault();
+        });
+        
+        // Block specific keyboard shortcuts at the WebContents level
+        window.webContents.on('before-input-event', (event, input) => {
+            // Block common DevTools shortcuts
+            const blockedShortcuts = [
+                { ctrl: true, shift: true, key: 'I' }, // Ctrl+Shift+I
+                { ctrl: true, shift: true, key: 'J' }, // Ctrl+Shift+J  
+                { ctrl: true, alt: true, key: 'I' },   // Ctrl+Alt+I
+                { key: 'F12' },                        // F12
+                { ctrl: true, key: 'F12' },            // Ctrl+F12
+                { alt: true, key: 'F12' }              // Alt+F12
+            ];
+            
+            const isBlocked = blockedShortcuts.some(shortcut => {
+                return Object.keys(shortcut).every(modifier => {
+                    if (modifier === 'key') {
+                        return input.key.toLowerCase() === shortcut[modifier].toLowerCase();
+                    }
+                    return input[modifier] === shortcut[modifier];
+                });
+            });
+            
+            if (isBlocked) {
+                logger.warn(MODULE_NAME, `[Security] DevTools shortcut blocked: ${input.key} for ${windowType}`);
+                event.preventDefault();
+            }
+        });
+        
+        logger.info(MODULE_NAME, `[DevTools] Security measures activated for ${windowType}`);
     }
 }
 
@@ -340,7 +386,8 @@ class WindowManager {
                     preload: enableAuth ? 
                         getPreloadPath('webview-preload.mjs') : undefined,
                     webSecurity: true,
-                    allowRunningInsecureContent: false
+                    allowRunningInsecureContent: false,
+                    devTools: !app.isPackaged // Disable DevTools in production
                 },
                 show: false,
                 resizable: true,
@@ -769,7 +816,7 @@ export function createMainWindow(onFinishLoad?: () => void): BrowserWindow {
     // mainWindow.setMenu(null); // Removed: Let custom-electron-titlebar handle menu visibility
 
     // Force DevTools open for main window in development
-    forceDevToolsOpen(mainWindow, 'main window');
+    setupDevToolsSecurity(mainWindow, 'main window');
 
     mainWindow.on('ready-to-show', () => {
         mainWindow?.show();
@@ -1008,7 +1055,7 @@ export function createSettingsWindow(): BrowserWindow | null {
     settingsWindow = new BrowserWindow(settingsWindowOptions);
 
     // Force DevTools open for settings window in development
-    forceDevToolsOpen(settingsWindow, 'settings window');
+    setupDevToolsSecurity(settingsWindow, 'settings window');
 
     attachTitlebarToWindow(settingsWindow); // Attach the custom title bar
     
@@ -1162,7 +1209,7 @@ export function createEventDetailsWindow(eventData: KillEvent, currentUsername: 
     const detailsWindow = new BrowserWindow(detailsWindowOptions);
     
     // Force DevTools open for event details window in development
-    forceDevToolsOpen(detailsWindow, 'event details window');
+    setupDevToolsSecurity(detailsWindow, 'event details window');
     
     attachTitlebarToWindow(detailsWindow);
 
@@ -1663,7 +1710,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
 
     // Force DevTools open for web content view in development
     if (!app.isPackaged) {
-        forceDevToolsOpen({ webContents: webContentView.webContents } as any, 'web content view');
+        setupDevToolsSecurity({ webContents: webContentView.webContents } as any, 'web content view');
     }
 
     // Load content when ready
@@ -1788,7 +1835,7 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'ma
     webContentWindow = new BrowserWindow(webContentWindowOptions);
 
     // Force DevTools open for web content window in development
-    forceDevToolsOpen(webContentWindow, 'web content window');
+    setupDevToolsSecurity(webContentWindow, 'web content window');
 
     attachTitlebarToWindow(webContentWindow); // Attach the custom title bar
 
@@ -2130,7 +2177,7 @@ export function createLoginWindow(): BrowserWindow | null {
   }
   
   // Force DevTools open for login window in development
-  forceDevToolsOpen(loginWindow, 'login window');
+  setupDevToolsSecurity(loginWindow, 'login window');
   
   logger.debug(MODULE_NAME, 'Login window created, attaching custom titlebar...');
   

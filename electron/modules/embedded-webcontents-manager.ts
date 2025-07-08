@@ -1,4 +1,4 @@
-import { WebContentsView, session, BrowserWindow } from 'electron';
+import { WebContentsView, session, BrowserWindow, app } from 'electron';
 import path from 'node:path';
 import * as logger from './logger';
 import { getCurrentAuthTokens } from './auth-manager';
@@ -71,7 +71,8 @@ export class EmbeddedWebContentsManager {
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
-                    webSecurity: true
+                    webSecurity: true,
+                    devTools: !app.isPackaged // Disable DevTools in production
                 }
             });
 
@@ -94,7 +95,8 @@ export class EmbeddedWebContentsManager {
                     webSecurity: true,
                     allowRunningInsecureContent: false,
                     session: webContentSession,
-                    preload: getPreloadPath('webcontents-view-preload.js')
+                    preload: getPreloadPath('webcontents-view-preload.js'),
+                    devTools: !app.isPackaged // Disable DevTools in production
                 }
             });
 

@@ -1,4 +1,4 @@
-import { BaseWindow, WebContentsView, session, Rectangle } from 'electron';
+import { BaseWindow, WebContentsView, session, Rectangle, app } from 'electron';
 import path from 'node:path';
 import Store from 'electron-store';
 import * as logger from './logger';
@@ -103,7 +103,8 @@ export class WebContentsViewManager {
                     nodeIntegration: false,
                     contextIsolation: true,
                     webSecurity: true,
-                    preload: getPreloadPath('webcontents-header-preload.mjs')
+                    preload: getPreloadPath('webcontents-header-preload.mjs'),
+                    devTools: !app.isPackaged // Disable DevTools in production
                 }
             });
 
@@ -252,7 +253,8 @@ export class WebContentsViewManager {
                     webSecurity: true,
                     allowRunningInsecureContent: false,
                     session: webContentSession,
-                    preload: getPreloadPath('webcontents-view-preload.mjs')
+                    preload: getPreloadPath('webcontents-view-preload.mjs'),
+                    devTools: !app.isPackaged // Disable DevTools in production
                 }
             });
 

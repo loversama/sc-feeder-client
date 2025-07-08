@@ -1,4 +1,4 @@
-import { WebContentsView, session, BrowserWindow, ipcMain } from 'electron';
+import { WebContentsView, session, BrowserWindow, ipcMain, app } from 'electron';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -106,7 +106,8 @@ export class WebContentsViewAuth {
                 preload: enableAuth ? getPreloadPath(preloadScript) : undefined,
                 webSecurity: true,
                 allowRunningInsecureContent: false,
-                session: viewSession
+                session: viewSession,
+                devTools: !app.isPackaged // Disable DevTools in production
             }
         });
 
