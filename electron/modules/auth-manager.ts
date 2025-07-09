@@ -1,6 +1,6 @@
 import Store from 'electron-store';
 import * as logger from './logger';
-import { ipcMain, BrowserWindow, webContents } from 'electron'; // Import BrowserWindow and webContents
+import { ipcMain, BrowserWindow, webContents, safeStorage } from 'electron'; // Import BrowserWindow, webContents, and safeStorage
 import os from 'node:os'; // Import os module for hostname
 import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
@@ -17,6 +17,113 @@ import { SERVER_API_URL } from './server-config';
 
 // Secure storage for refresh token
 const store = new Store({ name: 'auth-state' }); // Use a separate store file
+logger.info(MODULE_NAME, `Auth store initialized at: ${store.path}`);
+
+// Secure token storage utilities
+function secureStoreRefreshToken(token: string): void {
+    try {
+        // Check if safeStorage is available at all
+        if (typeof safeStorage === 'undefined') {
+            logger.warn(MODULE_NAME, 'safeStorage is not available, storing refresh token in plain text');
+            store.set('refreshToken', token);
+            return;
+        }
+        
+        if (safeStorage.isEncryptionAvailable()) {
+            const encrypted = safeStorage.encryptString(token);
+            logger.info(MODULE_NAME, `Encrypting token, result type: ${typeof encrypted}, is Buffer: ${Buffer.isBuffer(encrypted)}`);
+            store.set('refreshToken', encrypted);
+            logger.info(MODULE_NAME, 'Refresh token stored with encryption');
+            
+            // Verify we can decrypt it immediately
+            try {
+                const testDecrypt = safeStorage.decryptString(encrypted);
+                logger.info(MODULE_NAME, 'Encryption verification successful');
+            } catch (verifyError) {
+                logger.error(MODULE_NAME, 'Encryption verification failed:', verifyError);
+                // Fall back to plain text storage
+                logger.warn(MODULE_NAME, 'Falling back to plain text storage');
+                store.set('refreshToken', token);
+            }
+        } else {
+            logger.warn(MODULE_NAME, 'Encryption not available, storing refresh token in plain text');
+            store.set('refreshToken', token);
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to store refresh token:', error);
+        throw error;
+    }
+}
+
+function secureGetRefreshToken(): string | null {
+    try {
+        const stored = store.get('refreshToken');
+        logger.info(MODULE_NAME, `Checking stored refresh token: ${stored ? 'present' : 'not present'}`);
+        if (!stored) return null;
+        
+        // Check if safeStorage is available at all
+        if (typeof safeStorage === 'undefined') {
+            logger.warn(MODULE_NAME, 'safeStorage is not available, returning stored value as-is');
+            return stored as string;
+        }
+        
+        const encryptionAvailable = safeStorage.isEncryptionAvailable();
+        logger.info(MODULE_NAME, `Encryption available: ${encryptionAvailable}`);
+        
+        if (encryptionAvailable) {
+            try {
+                // Handle migration from plain text to encrypted
+                if (typeof stored === 'string') {
+                    // Plain text token - encrypt it and migrate
+                    logger.info(MODULE_NAME, 'Migrating plain text refresh token to encrypted storage');
+                    const encrypted = safeStorage.encryptString(stored);
+                    store.set('refreshToken', encrypted);
+                    logger.info(MODULE_NAME, 'Migration completed successfully');
+                    return stored;
+                } else {
+                    // Encrypted token - decrypt it
+                    logger.info(MODULE_NAME, 'Decrypting stored refresh token');
+                    logger.info(MODULE_NAME, `Stored token type: ${typeof stored}, is Buffer: ${Buffer.isBuffer(stored)}`);
+                    
+                    // Ensure we have a proper Buffer
+                    let tokenBuffer: Buffer;
+                    if (Buffer.isBuffer(stored)) {
+                        tokenBuffer = stored;
+                    } else if (stored && typeof stored === 'object' && (stored as any).data) {
+                        // Handle case where Buffer is serialized as object with data array
+                        tokenBuffer = Buffer.from((stored as any).data);
+                    } else {
+                        logger.error(MODULE_NAME, 'Stored token is not a valid Buffer format');
+                        store.delete('refreshToken');
+                        return null;
+                    }
+                    
+                    const decrypted = safeStorage.decryptString(tokenBuffer);
+                    logger.info(MODULE_NAME, 'Decryption successful');
+                    return decrypted;
+                }
+            } catch (decryptError: any) {
+                logger.error(MODULE_NAME, 'Failed to decrypt refresh token, clearing stored token:', decryptError);
+                logger.error(MODULE_NAME, 'Decryption error details:', {
+                    message: decryptError?.message || 'Unknown error',
+                    stack: decryptError?.stack || 'No stack trace',
+                    storedType: typeof stored,
+                    isBuffer: Buffer.isBuffer(stored),
+                    storedValue: stored
+                });
+                store.delete('refreshToken');
+                return null;
+            }
+        } else {
+            // No encryption available, return plain text
+            logger.info(MODULE_NAME, 'No encryption available, returning plain text token');
+            return stored as string;
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to retrieve refresh token:', error);
+        return null;
+    }
+}
 
 // In-memory storage for access token (cleared on app quit)
 let accessToken: string | null = null;
@@ -53,7 +160,7 @@ async function storeTokensAndUser(
     accessToken = access;
     loggedInUser = user;
     try {
-        store.set('refreshToken', refresh);
+        secureStoreRefreshToken(refresh);
         logger.info(MODULE_NAME, 'Access and Refresh tokens stored. User profile updated.');
     } catch (error) {
         logger.error(MODULE_NAME, 'Failed to store refresh token:', error);
@@ -63,12 +170,7 @@ async function storeTokensAndUser(
 }
 
 export function getRefreshTokenFromStore(): string | null {
-    try {
-        return store.get('refreshToken') as string | null;
-    } catch (error) {
-        logger.error(MODULE_NAME, 'Failed to retrieve refresh token:', error);
-        return null;
-    }
+    return secureGetRefreshToken();
 }
 
 async function clearAllTokensAndUser(): Promise<void> {

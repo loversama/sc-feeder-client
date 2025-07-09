@@ -113,25 +113,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         const authData = await (window as any).electronAPI.getAuthData();
         
         if (authData.isAuthenticated) {
-            // Store in localStorage for web app compatibility (like external windows)
-            if (authData.accessToken) {
-                localStorage.setItem('auth.accessToken', authData.accessToken);
-                localStorage.setItem('accessToken', authData.accessToken); // Legacy support
-            }
-            if (authData.refreshToken) {
-                localStorage.setItem('auth.refreshToken', authData.refreshToken);
-                localStorage.setItem('refreshToken', authData.refreshToken); // Legacy support
-            }
+            // Store user data (non-sensitive) in localStorage for web app compatibility
             if (authData.user) {
                 localStorage.setItem('auth.user', JSON.stringify(authData.user));
                 localStorage.setItem('user', JSON.stringify(authData.user)); // Legacy support
             }
             
-            console.log(`${MODULE_NAME}: Authentication data stored in localStorage`);
+            console.log(`${MODULE_NAME}: Authentication state ready (tokens handled via secure request interception)`);
             
             // Notify web app that authentication is ready
             window.dispatchEvent(new CustomEvent('electron-auth-ready', {
-                detail: authData
+                detail: {
+                    isAuthenticated: authData.isAuthenticated,
+                    user: authData.user
+                    // NOTE: Tokens are NOT included - they're handled via secure request interception
+                }
             }));
         } else {
             console.log(`${MODULE_NAME}: User not authenticated`);
@@ -146,36 +142,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log(`${MODULE_NAME}: Received auth update:`, authData);
     
     if (authData.isAuthenticated) {
-        // Store updated tokens
-        if (authData.accessToken) {
-            localStorage.setItem('auth.accessToken', authData.accessToken);
-            localStorage.setItem('accessToken', authData.accessToken);
-        }
-        if (authData.refreshToken) {
-            localStorage.setItem('auth.refreshToken', authData.refreshToken);
-            localStorage.setItem('refreshToken', authData.refreshToken);
-        }
+        // Store user data (non-sensitive) for web app compatibility
         if (authData.user) {
             localStorage.setItem('auth.user', JSON.stringify(authData.user));
-            localStorage.setItem('user', JSON.stringify(authData.user));
+            localStorage.setItem('user', JSON.stringify(authData.user)); // Legacy support
         }
         
-        console.log(`${MODULE_NAME}: Updated authentication data in localStorage`);
+        console.log(`${MODULE_NAME}: Updated authentication state (tokens handled via secure request interception)`);
     } else {
-        // Clear tokens on logout
+        // Clear user data on logout
+        localStorage.removeItem('auth.user');
+        localStorage.removeItem('user');
+        
+        // Clear any legacy token storage if it exists
         localStorage.removeItem('auth.accessToken');
         localStorage.removeItem('auth.refreshToken');
-        localStorage.removeItem('auth.user');
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
         
         console.log(`${MODULE_NAME}: Cleared authentication data from localStorage`);
     }
     
     // Notify web app of auth change
     window.dispatchEvent(new CustomEvent('electron-auth-updated', {
-        detail: authData
+        detail: {
+            isAuthenticated: authData.isAuthenticated,
+            user: authData.user
+            // NOTE: Tokens are NOT included - they're handled via secure request interception
+        }
     }));
 });
 
@@ -210,29 +204,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return acc;
     }, {} as Record<string, string>);
 
-    // Sync cookies to localStorage
-    if (cookies.access_token && !localStorage.getItem('auth.accessToken')) {
-        localStorage.setItem('auth.accessToken', cookies.access_token);
-        localStorage.setItem('accessToken', cookies.access_token);
-        console.log(`${MODULE_NAME}: Synced access_token from cookies to localStorage`);
-    }
-
-    if (cookies.refresh_token && !localStorage.getItem('auth.refreshToken')) {
-        localStorage.setItem('auth.refreshToken', cookies.refresh_token);
-        localStorage.setItem('refreshToken', cookies.refresh_token);
-        console.log(`${MODULE_NAME}: Synced refresh_token from cookies to localStorage`);
-    }
-
+    // Sync user data (non-sensitive) from cookies to localStorage for web app compatibility
     if (cookies.user_data && !localStorage.getItem('auth.user')) {
         try {
             const userData = JSON.parse(cookies.user_data);
             localStorage.setItem('auth.user', JSON.stringify(userData));
-            localStorage.setItem('user', JSON.stringify(userData));
+            localStorage.setItem('user', JSON.stringify(userData)); // Legacy support
             console.log(`${MODULE_NAME}: Synced user_data from cookies to localStorage`);
         } catch (error) {
             console.warn(`${MODULE_NAME}: Failed to parse user_data cookie:`, error);
         }
     }
+    
+    // NOTE: Tokens are NOT synced from cookies to localStorage for security
+    // They are handled via secure request interception instead
 
     // If we found any auth data, notify the web app
     if (cookies.access_token || cookies.refresh_token) {

@@ -61,6 +61,7 @@ async function determineAuthState(): Promise<{
   
   // Check for stored refresh token (user was previously authenticated)
   const storedRefreshToken = getRefreshToken();
+  logger.info(MODULE_NAME, `Checking for stored refresh token: ${storedRefreshToken ? 'found' : 'not found'}`);
   if (storedRefreshToken) {
     logger.info(MODULE_NAME, 'Stored refresh token found, attempting to restore authenticated session');
     return { requiresLoginPopup: false, authMode: 'authenticated' };
@@ -124,8 +125,7 @@ async function connectToLogServer(mainWindow: BrowserWindow, authAlreadyInitiali
   // Initialize authentication based on final state
   if (!getOfflineMode()) {
     if (authAlreadyInitialized) {
-      logger.info(MODULE_NAME, "Auth already initialized by login popup, skipping initializeAuth()");
-      // Auth was already initialized by login popup, just connect
+      logger.info(MODULE_NAME, "Auth already initialized, connecting to server...");
       connectToServer();
     } else {
       logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
@@ -367,8 +367,20 @@ async function onReady() {
       authAlreadyInitialized = true;
     } else if (authState.authMode === 'authenticated') {
       logger.info(MODULE_NAME, 'Attempting to restore authenticated session from stored token');
-      // The initializeAuth() function will be called later and will handle token refresh
-      authAlreadyInitialized = false; // Let initializeAuth handle the token refresh
+      // Try to initialize auth immediately to see if the stored token is valid
+      try {
+        const canConnect = await initializeAuth();
+        if (canConnect) {
+          logger.info(MODULE_NAME, 'Successfully restored authenticated session');
+          authAlreadyInitialized = true;
+        } else {
+          logger.warn(MODULE_NAME, 'Failed to restore authenticated session, token may be expired');
+          authAlreadyInitialized = false;
+        }
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Error during auth restoration:', error);
+        authAlreadyInitialized = false;
+      }
     }
   }
 
