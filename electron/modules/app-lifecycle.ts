@@ -18,11 +18,12 @@ import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
-import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession } from './auth-manager'; // Import initializeAuth and getPersistedClientId
+import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession, getRefreshToken } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import { initializeEventProcessor } from './event-processor'; // Import EventProcessor initialization
 import {
   getOfflineMode,
-  getLaunchOnStartup
+  getLaunchOnStartup,
+  getGuestModePreference
 } from './config-manager';
 import { ipcMain } from 'electron'; // Import ipcMain for login popup
 
@@ -58,8 +59,22 @@ async function determineAuthState(): Promise<{
     return { requiresLoginPopup: false, authMode: 'authenticated' };
   }
   
-  // Always show login popup on startup if no active session
-  logger.info(MODULE_NAME, 'No active session - showing login popup');
+  // Check for stored refresh token (user was previously authenticated)
+  const storedRefreshToken = getRefreshToken();
+  if (storedRefreshToken) {
+    logger.info(MODULE_NAME, 'Stored refresh token found, attempting to restore authenticated session');
+    return { requiresLoginPopup: false, authMode: 'authenticated' };
+  }
+  
+  // Check if user previously chose guest mode
+  const guestModePreference = getGuestModePreference();
+  if (guestModePreference) {
+    logger.info(MODULE_NAME, 'Guest mode preference found, skipping login popup');
+    return { requiresLoginPopup: false, authMode: 'guest' };
+  }
+  
+  // No stored authentication or guest preference - show login popup
+  logger.info(MODULE_NAME, 'No stored auth state or guest preference - showing login popup');
   return { requiresLoginPopup: true, authMode: 'unknown' };
 }
 
@@ -344,6 +359,17 @@ async function onReady() {
   if (authState.requiresLoginPopup) {
     const loginResult = await showLoginPopup();
     authAlreadyInitialized = loginResult.authAlreadyInitialized;
+  } else {
+    // Handle stored authentication or guest mode
+    if (authState.authMode === 'guest') {
+      logger.info(MODULE_NAME, 'Restoring guest mode from stored preference');
+      setGuestModeAndRemember(); // Set guest mode without showing popup
+      authAlreadyInitialized = true;
+    } else if (authState.authMode === 'authenticated') {
+      logger.info(MODULE_NAME, 'Attempting to restore authenticated session from stored token');
+      // The initializeAuth() function will be called later and will handle token refresh
+      authAlreadyInitialized = false; // Let initializeAuth handle the token refresh
+    }
   }
 
   // 3. ONLY AFTER the entire auth flow is complete, create the main UI.
