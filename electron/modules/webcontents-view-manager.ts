@@ -4,6 +4,7 @@ import Store from 'electron-store';
 import * as logger from './logger';
 import { getCurrentAuthTokens } from './auth-manager';
 import { getPreloadPath, getIconPath } from './window-manager';
+import { getLastLoggedInUser } from './config-manager';
 
 const MODULE_NAME = 'WebContentsViewManager';
 
@@ -476,7 +477,13 @@ export class WebContentsViewManager {
                 if (currentTokens?.user?.username) {
                     url += `/user/${currentTokens.user.username}`;
                 } else {
-                    url += '/profile';
+                    // Use last known username when not authenticated
+                    const lastKnownUser = getLastLoggedInUser();
+                    if (lastKnownUser) {
+                        url += `/user/${lastKnownUser}`;
+                    } else {
+                        url += '/profile';
+                    }
                 }
                 break;
             case 'leaderboard':

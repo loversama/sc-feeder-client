@@ -460,6 +460,9 @@ const extractEntityIds = (events: KillEvent[]): string[] => {
     if (event.vehicleType) entityIds.add(event.vehicleType);
     if (event.vehicleModel) entityIds.add(event.vehicleModel);
     if (event.weapon) entityIds.add(event.weapon);
+    
+    // Add location for resolution using definitions.json
+    if (event.location) entityIds.add(event.location);
   });
   
   return Array.from(entityIds).filter(id => id && id.trim());
@@ -802,8 +805,10 @@ const resolveEntityInBackground = async (entityId: string, serverEnriched?: any)
     return;
   }
   
+  
   try {
     const resolved = await resolveEntity(entityId, serverEnriched);
+    
     
     // Update both caches
     const newResolutionCache = new Map(entityResolutionCache.value);
@@ -833,6 +838,7 @@ const getEntityDisplayName = (entityId: string | undefined): string => {
   if (entityDisplayCache.value.has(cacheKey)) {
     return entityDisplayCache.value.get(cacheKey)!;
   }
+  
   
   return cleanEntityNameFallback(entityId);
 };
@@ -968,26 +974,6 @@ const checkNpcStatusInBackground = async (entityId: string) => {
   }
 };
 
-// Process new events to trigger background resolution for all entities
-const processEventEntities = (event: KillEvent) => {
-  // Resolve killers/victims
-  event.killers?.forEach(killer => {
-    resolveEntityInBackground(killer);
-    checkNpcStatusInBackground(killer);
-  });
-  event.victims?.forEach(victim => {
-    resolveEntityInBackground(victim);
-    checkNpcStatusInBackground(victim);
-  });
-  
-  // Resolve vehicle and weapon
-  if (event.vehicleType) {
-    resolveEntityInBackground(event.vehicleType);
-    checkNpcStatusInBackground(event.vehicleType);
-  }
-  if (event.vehicleModel) resolveEntityInBackground(event.vehicleModel);
-  if (event.weapon) resolveEntityInBackground(event.weapon);
-};
 
 
 // Function to check authentication status
@@ -1836,7 +1822,12 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             </span>
           </span>
           <!-- Game Mode Pill -->
-          <span v-if="event.gameMode && event.gameMode !== 'Unknown'" class="event-mode-pill">{{ event.gameMode }}</span>
+          <span v-if="event.gameMode && event.gameMode !== 'Unknown'" 
+                class="event-mode-pill" 
+                :class="{
+                  'mode-pu': event.gameMode === 'PU',
+                  'mode-ac': event.gameMode === 'AC'
+                }">{{ event.gameMode }}</span>
           <span class="event-location" v-if="event.location">{{ getEntityDisplayName(event.location) }}</span>
           <div class="event-time-container">
             <span class="event-time">{{ formatTime(event.timestamp) }}</span>
@@ -2445,14 +2436,47 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .event-mode-pill {
-  background-color: #555;
-  color: #eee;
   padding: 1px 6px;
-  border-radius: 10px;
+  border-radius: 3px;
   font-size: 0.75em;
   font-weight: bold;
   text-transform: uppercase;
   white-space: nowrap;
+  border: 1px solid;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+}
+
+/* PU Mode - Green */
+.event-mode-pill.mode-pu {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.event-mode-pill.mode-pu:hover {
+  background-color: rgba(34, 197, 94, 0.25);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* AC Mode - Orange */
+.event-mode-pill.mode-ac {
+  background-color: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+.event-mode-pill.mode-ac:hover {
+  background-color: rgba(249, 115, 22, 0.25);
+  border-color: rgba(249, 115, 22, 0.5);
+}
+
+/* Fallback for unknown modes */
+.event-mode-pill:not(.mode-pu):not(.mode-ac) {
+  background-color: #555;
+  color: #eee;
+  border-color: #777;
 }
 
 .event-location {

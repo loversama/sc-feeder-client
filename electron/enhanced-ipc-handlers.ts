@@ -7,6 +7,7 @@ import {
     closeEmbeddedWebContentManager 
 } from './modules/embedded-webcontents-manager';
 import { getMainWindow, getPreloadPath } from './modules/window-manager';
+import { getLastLoggedInUser } from './modules/config-manager';
 
 const MODULE_NAME = 'EnhancedIPCHandlers';
 
@@ -957,6 +958,11 @@ function injectNavbarHidingCSS(webContentView: WebContentsView): void {
             display: none !important;
         }
         
+        /* Fix sticky header container position */
+        .sticky-header-container {
+            top: -1px !important;
+        }
+        
         /* Remove rounded corners from scrollbars */
         ::-webkit-scrollbar {
             border-radius: 0 !important;
@@ -1065,7 +1071,13 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
                 if (currentTokens?.user?.username) {
                     url += `/user/${currentTokens.user.username}`;
                 } else {
-                    url += '/profile';
+                    // Use last known username when not authenticated
+                    const lastKnownUser = getLastLoggedInUser();
+                    if (lastKnownUser) {
+                        url += `/user/${lastKnownUser}`;
+                    } else {
+                        url += '/profile';
+                    }
                 }
                 break;
             case 'leaderboard':
