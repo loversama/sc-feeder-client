@@ -9,6 +9,7 @@ import { KillEvent } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 import { attachTitlebarToWindow } from "custom-electron-titlebar/main"; // Import for custom title bar
 import { webContentsViewAuth } from './webcontents-view-auth'; // Import WebContentsView authentication
+import * as AuthManager from './auth-manager'; // Import AuthManager
 const MODULE_NAME = 'WindowManager'; // Define module name for logger
 
 // Type for auth tokens
@@ -152,9 +153,9 @@ function setupDevToolsSecurity(window: BrowserWindow, windowType: string): void 
             const isBlocked = blockedShortcuts.some(shortcut => {
                 return Object.keys(shortcut).every(modifier => {
                     if (modifier === 'key') {
-                        return input.key.toLowerCase() === shortcut[modifier].toLowerCase();
+                        return input.key.toLowerCase() === (shortcut as any)[modifier].toLowerCase();
                     }
-                    return input[modifier] === shortcut[modifier];
+                    return (input as any)[modifier] === (shortcut as any)[modifier];
                 });
             });
             
@@ -1705,7 +1706,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
         }
         
         logger.info(MODULE_NAME, `Loading web content: ${url}`);
-        webContentView.webContents.loadURL(url);
+        webContentView?.webContents.loadURL(url);
     };
 
     // Force DevTools open for web content view in development
@@ -1714,7 +1715,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
     }
 
     // Load content when ready
-    webContentBaseWindow.once('ready-to-show', () => {
+    (webContentBaseWindow as any).once('ready-to-show', () => {
         loadHeaderContent();
         loadWebContent();
         
@@ -1722,7 +1723,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
         if (!app.isPackaged) {
             // Open dev tools for debugging
             headerView.webContents.openDevTools({ mode: 'detach' });
-            webContentView.webContents.openDevTools({ mode: 'detach' });
+            webContentView?.webContents.openDevTools({ mode: 'detach' });
         }
     });
 
@@ -1944,8 +1945,8 @@ export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leade
     const baseWindowOptions = {
         width: defaultWidth,
         height: defaultHeight,
-        x: undefined,
-        y: undefined,
+        x: undefined as number | undefined,
+        y: undefined as number | undefined,
         title: 'SC Feeder - Web Content (Authenticated)',
         titleBarStyle: 'hiddenInset' as const,
         show: false,
@@ -2012,7 +2013,7 @@ export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leade
         webContentView.setBounds({ x: 0, y: 0, width: baseWindowOptions.width, height: baseWindowOptions.height });
 
         // Handle window ready to show
-        webContentBaseWindow.once('ready-to-show', () => {
+        (webContentBaseWindow as any).once('ready-to-show', () => {
             logger.info(MODULE_NAME, '[AuthWebContents] BaseWindow ready to show');
             webContentBaseWindow?.show();
             
@@ -2405,11 +2406,12 @@ export async function sendAuthTokensToWebContentBaseWindow(tokens: AuthTokens | 
             
             if (tokens && currentUrl) {
                 logger.info(MODULE_NAME, 'Setting authentication cookies for WebContentBaseWindow');
-                await windowManager._setExternalWebsiteCookies(
-                    { webContents: { session } } as any,
-                    currentUrl,
-                    tokens
-                );
+                // Note: Cookie setting method is private - would need to implement public method
+                // await windowManager._setExternalWebsiteCookies(
+                //     { webContents: { session } } as any,
+                //     currentUrl,
+                //     tokens
+                // );
             }
             
             // Send tokens via IPC

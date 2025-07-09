@@ -46,7 +46,7 @@ export function detectWebContentsViewSupport(): boolean {
       'setBounds',
       'getBounds'
     ].every(method => {
-      return WebContentsView.prototype && typeof WebContentsView.prototype[method] === 'function';
+      return WebContentsView.prototype && typeof (WebContentsView.prototype as any)[method] === 'function';
     });
 
     if (!hasRequiredMethods) {
@@ -85,7 +85,7 @@ export function detectBaseWindowSupport(): boolean {
       'show',
       'hide'
     ].every(method => {
-      return BaseWindow.prototype && typeof BaseWindow.prototype[method] === 'function';
+      return BaseWindow.prototype && typeof (BaseWindow.prototype as any)[method] === 'function';
     });
 
     if (!hasRequiredMethods) {
@@ -236,9 +236,9 @@ export function createUnifiedWindow(window: BrowserWindow | BaseWindow): Unified
     isMinimized: () => (window as any).isMinimized?.(),
     restore: () => (window as any).restore?.(),
     close: () => window.close(),
-    on: (event: string, listener: (...args: any[]) => void) => window.on(event, listener),
-    once: (event: string, listener: (...args: any[]) => void) => window.once(event, listener),
-    removeListener: (event: string, listener: (...args: any[]) => void) => window.removeListener(event, listener),
+    on: (event: string, listener: (...args: any[]) => void) => (window as any).on(event, listener),
+    once: (event: string, listener: (...args: any[]) => void) => (window as any).once(event, listener),
+    removeListener: (event: string, listener: (...args: any[]) => void) => (window as any).removeListener(event, listener),
     webContents: (window as any).webContents,
     contentView: (window as any).contentView
   };

@@ -181,12 +181,12 @@ const closeAuthenticatedWindow = async () => {
     if (window.logMonitorApi?.closeAuthenticatedWebContentWindow) {
       const result = await window.logMonitorApi.closeAuthenticatedWebContentWindow();
       
-      if (result.success) {
+      if (result) {
         console.log('Successfully closed authenticated WebContentsView');
         await updateWindowStatus();
       } else {
-        error.value = result.error || 'Failed to close authenticated window';
-        console.error('Failed to close authenticated window:', result.error);
+        error.value = 'Failed to close authenticated window';
+        console.error('Failed to close authenticated window');
       }
     } else {
       error.value = 'Authenticated WebContentsView close API not available';

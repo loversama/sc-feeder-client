@@ -463,13 +463,17 @@ const callSearchAPI = async (query: string) => {
     return response.data;
   } catch (error) {
     console.error('[Search] IPC API call failed:', error);
-    throw new Error(`Search API call failed: ${error.message || 'Unknown error'}`);
+    throw new Error(`Search API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
 // Transform API results to match expected UI format
 const transformSearchResults = (apiResults: any[]) => {
-  const transformed = {
+  const transformed: {
+    events: any[];
+    users: any[];
+    organizations: any[];
+  } = {
     events: [],
     users: [],
     organizations: []
@@ -931,6 +935,9 @@ onMounted(async () => {
         if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map' || status.activeSection === 'events' || status.activeSection === 'stats') {
           activeSection.value = status.activeSection;
           console.log(`[WebContentPage] Initial section set to: ${activeSection.value}`);
+        } else if (status.activeSection === '/') {
+          activeSection.value = 'profile'; // Default to profile for root path
+          console.log(`[WebContentPage] Initial section set to profile for root path`);
         }
       }
     } catch (error) {

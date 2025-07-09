@@ -102,7 +102,7 @@ XMLHttpRequest.prototype.open = function(method: string, url: string | URL, ...a
         }
     });
 
-    return originalXHROpen.call(this, method, url, ...args);
+    return (originalXHROpen as any).call(this, method, url, ...args);
 };
 
 // Automatic authentication setup on DOM ready

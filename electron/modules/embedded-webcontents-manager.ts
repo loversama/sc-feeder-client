@@ -16,7 +16,7 @@ interface AuthTokens {
 export class EmbeddedWebContentsManager {
     private separateWindow: BrowserWindow | null = null;
     private webContentView: WebContentsView | null = null;
-    private currentSection: 'profile' | 'leaderboard' | 'map' = 'profile';
+    private currentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' = 'profile';
     private isVisible: boolean = false;
     private authenticationEnabled: boolean = true;
     private sessionPartition: string = 'persist:embedded-webcontent';
@@ -337,7 +337,7 @@ export class EmbeddedWebContentsManager {
         logger.info(MODULE_NAME, 'Separate WebContentsView window hidden');
     }
 
-    public async navigateToSection(section: 'profile' | 'leaderboard' | 'map'): Promise<void> {
+    public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<void> {
         this.currentSection = section;
         
         // Build URL with same pattern as current WebContentPage.vue
@@ -358,6 +358,12 @@ export class EmbeddedWebContentsManager {
             case 'map':
                 url += '/map';
                 break;
+            case 'events':
+                url += '/events';
+                break;
+            case 'stats':
+                url += '/stats';
+                break;
         }
         
         url += '?source=electron&embedded=true';
@@ -372,7 +378,7 @@ export class EmbeddedWebContentsManager {
         }
     }
 
-    public getCurrentSection(): 'profile' | 'leaderboard' | 'map' {
+    public getCurrentSection(): 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' {
         return this.currentSection;
     }
 

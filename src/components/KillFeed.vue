@@ -1418,7 +1418,7 @@ onMounted(async () => { // Make onMounted async
     // Add listener for Web Content window status
     (() => {
       if (window.logMonitorApi?.onWebContentWindowStatus) {
-        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | 'map' | '/' | null }) => {
+        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | 'events' | 'map' | '/' | null }) => {
           console.log('[KillFeed] Received web content window status update:', status);
           isProfileActive.value = status.isOpen && status.activeSection === 'profile';
           isLeaderboardActive.value = status.isOpen && status.activeSection === 'leaderboard';

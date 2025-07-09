@@ -67,7 +67,7 @@ export interface LogMonitorApi {
 
   // Window Actions
   openSettingsWindow: () => Promise<void>;
-  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'map' | '/') => Promise<{
+  openWebContentWindow: (section: 'profile' | 'leaderboard' | 'stats' | 'events' | 'map' | '/') => Promise<{
     success: boolean;
     architecture?: 'webcontentsview' | 'browserwindow';
     error?: string;
@@ -88,7 +88,7 @@ export interface LogMonitorApi {
   }) => Promise<{ success: boolean; windowId?: number; error?: string }>;
 
   // Enhanced WebContentsView window operations
-  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map') => Promise<{
+  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => Promise<{
     success: boolean;
     architecture?: string;
     section?: string;
@@ -98,10 +98,19 @@ export interface LogMonitorApi {
   closeEnhancedWebContentWindow: () => Promise<boolean>;
   getEnhancedWebContentStatus: () => Promise<{
     isOpen: boolean;
-    activeSection: 'profile' | 'leaderboard' | 'map' | null;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | null;
     architecture: string;
     authenticationEnabled: boolean;
   }>;
+
+  // Additional methods that were missing
+  openAuthenticatedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  closeAuthenticatedWebContentWindow: () => Promise<boolean>;
+  invoke: (channel: string, ...args: any[]) => Promise<any>;
+  navigateToSearchPage: (query: string) => Promise<{ success: boolean; error?: string }>;
 
   // Execute JavaScript in WebContentsView (DOM bridge)
   executeInWebContentsView: (jsCode: string) => Promise<{ success: boolean; error?: string }>;
@@ -142,7 +151,7 @@ export interface LogMonitorApi {
   getSettingsWindowStatus: () => Promise<{ isOpen: boolean }>;
   getWebContentWindowStatus: () => Promise<{
     isOpen: boolean;
-    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/' | null;
     architecture: 'webcontentsview' | 'browserwindow' | 'unknown';
     error?: string;
   }>; // Enhanced with architecture info
@@ -217,15 +226,20 @@ export interface LogMonitorApi {
   onKillFeedEvent: (callback: (event: IpcRendererEvent, data: { event: KillEvent, source: 'server' | 'local' } | null) => void) => () => void;
   onIpcMessage: (channel: string, callback: (...args: any[]) => void) => () => void;
   onAuthStatusChanged: (callback: (event: IpcRendererEvent, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => void) => () => void;
+  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: {
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/' | null;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+  }) => void) => () => void;
+  onWebContentWindowStatusChanged: (callback: (event: IpcRendererEvent, status: {
+    isOpen: boolean;
+    activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/' | null;
+    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
+  }) => void) => () => void;
   // For webview, it will listen to 'auth-tokens-updated' directly via window.ipcRenderer.on
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
   onSettingsWindowStatus: (callback: (event: IpcRendererEvent, status: { isOpen: boolean }) => void) => () => void;
-  onWebContentWindowStatus: (callback: (event: IpcRendererEvent, status: {
-    isOpen: boolean;
-    activeSection: 'profile' | 'leaderboard' | 'map' | 'stats' | '/' | null;
-    architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
-  }) => void) => () => void; // Enhanced with architecture info
   onMainAuthUpdate: (callback: (event: IpcRendererEvent, authData: AuthData) => void) => () => void; // Added
 
   // Update Events
@@ -261,6 +275,14 @@ declare global {
       removeListener: (channel: string, listener: (...args: any[]) => void) => Electron.IpcRenderer;
       removeAllListeners: (channel: string) => Electron.IpcRenderer;
       sendToHost: (channel: string, ...args: any[]) => void; // For webview preload
+    };
+    electron: {
+      ipcRenderer: {
+        on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
+        send: (channel: string, ...args: any[]) => void;
+        invoke: <T>(channel: string, ...args: any[]) => Promise<T>;
+        removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+      };
     };
     logMonitorApi: LogMonitorApi;
     // For webview preload to communicate back to Electron host (WebContentPage.vue)

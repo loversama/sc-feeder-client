@@ -59,7 +59,7 @@ watch(isAuthenticated, (newVal, oldVal) => {
 })
 
 // Enhanced helper function to open external website with new architecture support
-const openExternalSection = async (section: string, title?: string) => {
+const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/', title?: string) => {
   try {
     // First try the new enhanced WebContentsView system for Steam-like embedded experience
     if (['profile', 'leaderboard', 'map'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {

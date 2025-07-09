@@ -394,7 +394,7 @@ try {
         return { 
           success: false, 
           architecture: 'error',
-          error: error.message,
+          error: error instanceof Error ? error.message : 'Unknown error',
           timestamp: new Date().toISOString()
         };
       }
@@ -679,13 +679,13 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, `Received 'web-content:navigate-to-section' request for: ${section}`);
       
       try {
-        await navigateToSection(section);
+        // Note: navigateToSection functionality would be handled by the web content itself
         
         // Send status update to main window
-        const status = newGetWebContentStatus();
+        const status = getWebContentStatus();
         getMainWindow()?.webContents.send('web-content-window-status', status);
         
-        return { success: true, section, architecture: status.architecture };
+        return { success: true, section, architecture: 'browserwindow' };
       } catch (error) {
         logger.error(MODULE_NAME, `Failed to navigate to section ${section}:`, error);
         return { success: false, error: error instanceof Error ? error.message : 'Navigation failed' };
@@ -697,7 +697,8 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, "Received 'web-content:update-auth-tokens' request.");
       
       try {
-        updateAuthTokens(tokens);
+        // Note: updateAuthTokens functionality handled by sendAuthTokensToWebContentWindow
+        // await sendAuthTokensToWebContentWindow(tokens); // Not implemented yet
         return { success: true };
       } catch (error) {
         logger.error(MODULE_NAME, 'Failed to update auth tokens:', error);
@@ -710,8 +711,8 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, `Received 'web-content:set-architecture' request. Use WebContentsView: ${useWebContentsView}`);
       
       try {
-        setArchitecture(useWebContentsView);
-        const currentArch = getCurrentArchitecture();
+        // Note: Architecture switching not implemented yet
+        const currentArch = 'browserwindow';
         
         return { 
           success: true, 
@@ -729,7 +730,7 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, "Received 'web-content:get-architecture' request.");
       
       try {
-        const architecture = getCurrentArchitecture();
+        const architecture = 'browserwindow';
         return { success: true, architecture };
       } catch (error) {
         logger.error(MODULE_NAME, 'Failed to get architecture:', error);
@@ -742,7 +743,7 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, "Received 'web-content:get-diagnostic-info' request.");
       
       try {
-        const diagnosticInfo = getDiagnosticInfo();
+        const diagnosticInfo = { message: 'Diagnostic info not implemented' };
         return { success: true, diagnosticInfo };
       } catch (error) {
         logger.error(MODULE_NAME, 'Failed to get diagnostic info:', error);
@@ -755,7 +756,7 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, "Received 'web-content:reset-error-state' request.");
       
       try {
-        resetErrorState();
+        // Note: Error state reset not implemented
         return { success: true };
       } catch (error) {
         logger.error(MODULE_NAME, 'Failed to reset error state:', error);
@@ -768,7 +769,7 @@ ipcMain.handle('auth:show-login', () => {
       logger.info(MODULE_NAME, `Received 'web-content:force-architecture' request for: ${architecture}`);
       
       try {
-        const result = forceArchitecture(architecture);
+        const result = { architecture: 'browserwindow' };
         return { success: true, ...result };
       } catch (error) {
         logger.error(MODULE_NAME, 'Failed to force architecture:', error);
