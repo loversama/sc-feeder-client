@@ -1,6 +1,6 @@
 import Store from 'electron-store';
 import * as logger from './logger';
-import { ipcMain, BrowserWindow, webContents, safeStorage } from 'electron'; // Import BrowserWindow, webContents, and safeStorage
+import { ipcMain, BrowserWindow, webContents, safeStorage, session } from 'electron'; // Import BrowserWindow, webContents, safeStorage, and session
 import os from 'node:os'; // Import os module for hostname
 import { v4 as uuidv4 } from 'uuid';
 import { connectToServer, disconnectFromServer } from './server-connection'; // Import connection functions
@@ -11,6 +11,7 @@ import {
   clearGuestModePreference,
   setHasShownInitialLogin
 } from './config-manager';
+import { updateTrayMenu } from './tray-manager';
 
 const MODULE_NAME = 'AuthManager';
 import { SERVER_API_URL } from './server-config';
@@ -185,6 +186,117 @@ async function clearAllTokensAndUser(): Promise<void> {
     }
 }
 
+// Comprehensive auth clearing function that clears all sessions and storage
+export async function clearAllAuthDataComprehensive(): Promise<void> {
+    logger.info(MODULE_NAME, 'Starting comprehensive auth data clearing...');
+    
+    // 1. Clear in-memory tokens and user data
+    await clearAllTokensAndUser();
+    
+    // 2. Clear main session storage and cookies
+    try {
+        const defaultSession = session.defaultSession;
+        await defaultSession.clearStorageData({
+            storages: ['cookies', 'localstorage']
+        });
+        logger.info(MODULE_NAME, 'Cleared default session storage and cookies');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to clear default session data:', error);
+    }
+    
+    // 3. Clear all WebContentsView session partitions
+    const sessionPartitions = [
+        'persist:webcontents-auth',
+        'persist:enhanced-webcontent', 
+        'persist:embedded-webcontent'
+    ];
+    
+    for (const partition of sessionPartitions) {
+        try {
+            const partitionSession = session.fromPartition(partition);
+            await partitionSession.clearStorageData({
+                storages: ['cookies', 'localstorage']
+            });
+            logger.info(MODULE_NAME, `Cleared ${partition} session data`);
+            
+            // Clear specific cookies for trusted domains
+            const cookies = await partitionSession.cookies.get({});
+            for (const cookie of cookies) {
+                if (cookie.domain?.includes('voidlog.gg') || 
+                    cookie.domain?.includes('.voidlog.gg') ||
+                    cookie.domain?.includes('killfeed.sinfulshadows.com') ||
+                    cookie.domain?.includes('localhost')) {
+                    await partitionSession.cookies.remove(
+                        `${cookie.secure ? 'https' : 'http'}://${cookie.domain}${cookie.path}`,
+                        cookie.name
+                    );
+                }
+            }
+            
+            // Also specifically clear the injected auth cookies by name
+            const authCookieNames = ['access_token', 'refresh_token', 'user_data'];
+            const trustedDomains = ['voidlog.gg', '.voidlog.gg', 'killfeed.sinfulshadows.com', 'localhost'];
+            
+            for (const domain of trustedDomains) {
+                for (const cookieName of authCookieNames) {
+                    try {
+                        await partitionSession.cookies.remove(`https://${domain}/`, cookieName);
+                        await partitionSession.cookies.remove(`http://${domain}/`, cookieName);
+                    } catch (error) {
+                        // Ignore errors for cookies that don't exist
+                    }
+                }
+            }
+            logger.info(MODULE_NAME, `Cleared ${partition} cookies for trusted domains`);
+        } catch (error) {
+            logger.error(MODULE_NAME, `Failed to clear ${partition} session data:`, error);
+        }
+    }
+    
+    // 4. Clear all webContents instances' session storage
+    try {
+        webContents.getAllWebContents().forEach(wc => {
+            if (!wc.isDestroyed()) {
+                // Execute JavaScript to clear sessionStorage and localStorage
+                wc.executeJavaScript(`
+                    try {
+                        sessionStorage.clear();
+                        localStorage.clear();
+                        console.log('[AuthManager] Cleared web storage');
+                    } catch (e) {
+                        console.error('[AuthManager] Failed to clear web storage:', e);
+                    }
+                `).catch(err => {
+                    logger.warn(MODULE_NAME, `Failed to clear storage for webContents ${wc.id}:`, err);
+                });
+            }
+        });
+        logger.info(MODULE_NAME, 'Cleared storage for all active webContents');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to clear webContents storage:', error);
+    }
+    
+    // 5. Notify all windows about logout
+    try {
+        BrowserWindow.getAllWindows().forEach(window => {
+            if (!window.isDestroyed()) {
+                window.webContents.send('auth-logout');
+                window.webContents.send('auth-data-updated', {
+                    accessToken: null,
+                    refreshToken: null,
+                    user: null,
+                    isAuthenticated: false
+                });
+            }
+        });
+        logger.info(MODULE_NAME, 'Notified all windows about logout');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to notify windows about logout:', error);
+    }
+    
+    logger.info(MODULE_NAME, 'Comprehensive auth data clearing completed');
+}
+
 // Function to get/generate the persistent client ID (Exported)
 export function getPersistedClientId(): string {
   if (clientId) {
@@ -266,6 +378,13 @@ function broadcastAuthStatusChange(): void {
 
   // Emit internal event for WebContentsView auth manager
   ipcMain.emit('auth-status-changed-internal');
+  
+  // Update tray menu based on new authentication state
+  try {
+    updateTrayMenu();
+  } catch (error) {
+    logger.warn(MODULE_NAME, 'Failed to update tray menu:', error);
+  }
 }
 
 
@@ -384,7 +503,10 @@ export async function login(identifier: string, password: string): Promise<{ suc
 export async function logout(): Promise<boolean> {
     logger.info(MODULE_NAME, 'Attempting logout.');
     const currentRefreshToken = getRefreshTokenFromStore();
-    await clearAllTokensAndUser();
+    
+    // Use comprehensive auth clearing instead of just clearAllTokensAndUser
+    await clearAllAuthDataComprehensive();
+    
     disconnectFromServer();
     hasActiveSession = false; // Clear active session flag
     
@@ -410,6 +532,10 @@ export async function logout(): Promise<boolean> {
             logger.warn(MODULE_NAME, 'Error calling server logout endpoint:', error.message);
         }
     }
+    
+    // Add a small delay to ensure all clearing operations complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     await requestAndStoreGuestToken();
     connectToServer();
     broadcastAuthStatusChange();
@@ -528,11 +654,20 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
     }
 }
 
-export function setGuestModeAndRemember(): void {
+export async function setGuestModeAndRemember(): Promise<void> {
+  logger.info(MODULE_NAME, 'Setting guest mode preference...');
+  
+  // Clear all auth data to ensure clean guest mode state
+  await clearAllAuthDataComprehensive();
+  
   setGuestModePreference(true);
   setHasShownInitialLogin(true);
   hasActiveSession = true; // Set active session flag for guest mode
-  logger.info(MODULE_NAME, 'Guest mode preference set and remembered');
+  
+  // Request guest token
+  await requestAndStoreGuestToken();
+  
+  logger.info(MODULE_NAME, 'Guest mode preference set and remembered, auth data cleared');
 }
 
 

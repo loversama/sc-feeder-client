@@ -261,6 +261,9 @@ export interface LogMonitorApi {
   debugSimulateUpdateChecking: () => void;
   debugResetUpdateSimulation: () => void;
 
+  // External URL handling
+  openExternal: (url: string) => Promise<void>;
+
   // Cleanup
   removeAllListeners: () => void;
 }

@@ -2462,14 +2462,14 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 
 /* AC Mode - Orange */
 .event-mode-pill.mode-ac {
-  background-color: rgba(249, 115, 22, 0.15);
-  color: #f97316;
-  border-color: rgba(249, 115, 22, 0.3);
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .event-mode-pill.mode-ac:hover {
-  background-color: rgba(249, 115, 22, 0.25);
-  border-color: rgba(249, 115, 22, 0.5);
+  background-color: rgba(245, 158, 11, 0.25);
+  border-color: rgba(245, 158, 11, 0.5);
 }
 
 /* Fallback for unknown modes */

@@ -44,7 +44,9 @@ export function connectToFrontend(): void {
   const guestToken = getGuestToken();
   const tokenType = accessToken ? 'User Access Token' : guestToken ? 'Guest Token' : 'No Token';
 
+  const socketPath = process.env.NODE_ENV === 'production' ? '/production/socket.io/' : '/socket.io/';
   logger.info(MODULE_NAME, `Connecting to frontend namespace at ${SERVER_URL}/frontend using ${tokenType}`);
+  logger.info(MODULE_NAME, `Using Socket.IO path: ${socketPath}`);
   sendFrontendConnectionStatus('connecting');
 
   // Disconnect previous socket if exists
@@ -64,6 +66,8 @@ export function connectToFrontend(): void {
   }
 
   frontendSocket = io(`${SERVER_URL}/frontend`, {
+    // Add production path prefix if server is in production mode
+    path: socketPath,
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,

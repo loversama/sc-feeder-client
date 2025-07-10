@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, app } from 'electron'; // Import app
+import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'; // Import app and shell
 import path from 'node:path';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
 // Import window management functions
@@ -623,7 +623,7 @@ try {
     // Login popup handlers
     ipcMain.handle('auth:continueAsGuest', async () => {
       try {
-        setGuestModeAndRemember();
+        await setGuestModeAndRemember();
         ipcMain.emit('guest-mode-selected');
         return { success: true };
       } catch (error) {
@@ -670,6 +670,18 @@ ipcMain.handle('auth:show-login', () => {
     ipcMain.handle('app:get-guest-mode-status', () => {
       logger.info(MODULE_NAME, "Received 'app:get-guest-mode-status' request.");
       return ConfigManager.getGuestModePreference();
+    });
+
+    // Open URL in default browser
+    ipcMain.handle('open-external', async (_event, url: string) => {
+      logger.info(MODULE_NAME, `Received 'open-external' request for URL: ${url}`);
+      try {
+        await shell.openExternal(url);
+        logger.info(MODULE_NAME, `Successfully opened external URL: ${url}`);
+      } catch (error) {
+        logger.error(MODULE_NAME, `Failed to open external URL: ${url}`, error);
+        throw error;
+      }
     });
 
     // --- New WebContentsView Architecture Handlers ---

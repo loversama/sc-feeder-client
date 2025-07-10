@@ -111,9 +111,9 @@ async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
     ipcMain.once('guest-mode-selected', handleGuestModeSelected);
     
     // Handle window close (treat as guest mode)
-    loginWindow.on('closed', () => {
+    loginWindow.on('closed', async () => {
       logger.info(MODULE_NAME, 'Login window closed, defaulting to guest mode');
-      setGuestModeAndRemember();
+      await setGuestModeAndRemember();
       ipcMain.removeListener('login-completed', handleLoginComplete);
       ipcMain.removeListener('guest-mode-selected', handleGuestModeSelected);
       resolve({ authAlreadyInitialized: true }); // Guest mode was set
@@ -363,7 +363,7 @@ async function onReady() {
     // Handle stored authentication or guest mode
     if (authState.authMode === 'guest') {
       logger.info(MODULE_NAME, 'Restoring guest mode from stored preference');
-      setGuestModeAndRemember(); // Set guest mode without showing popup
+      await setGuestModeAndRemember(); // Set guest mode without showing popup
       authAlreadyInitialized = true;
     } else if (authState.authMode === 'authenticated') {
       logger.info(MODULE_NAME, 'Attempting to restore authenticated session from stored token');

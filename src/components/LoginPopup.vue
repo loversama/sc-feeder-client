@@ -21,6 +21,9 @@
           <label for="password">Password</label>
           <input type="password" id="password" v-model="loginForm.password" :disabled="isLoading" />
         </div>
+        <p class="register-info">
+          Don't have an account? <a href="#" @click.prevent="openRegisterPage" class="register-link">Register</a>
+        </p>
         <p v-if="error" class="error-message">{{ error }}</p>
         <button type="submit" :disabled="isLoading" class="btn-primary">
           {{ isLoading ? 'Logging in...' : 'Login' }}
@@ -110,6 +113,16 @@ const goBack = () => {
   error.value = ''
   loginForm.identifier = ''
   loginForm.password = ''
+}
+
+const openRegisterPage = () => {
+  // Use the exposed API to open the registration page in the default browser
+  if (window.logMonitorApi && window.logMonitorApi.openExternal) {
+    window.logMonitorApi.openExternal('https://voidlog.gg/register')
+  } else {
+    // Fallback: try to open in current window (not recommended but better than nothing)
+    window.open('https://voidlog.gg/register', '_blank')
+  }
 }
 
 // Watch for login form visibility and resize window accordingly
@@ -300,6 +313,26 @@ h2 {
   color: #aaa;
   text-align: center;
   margin-top: 10px;
+}
+
+.register-info {
+  font-size: 0.9em;
+  color: #ccc;
+  text-align: center;
+  margin-top: 10px;
+  margin-bottom: 15px;
+}
+
+.register-link {
+  color: rgba(99, 102, 241, 0.8);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.register-link:hover {
+  color: rgba(99, 102, 241, 1);
+  text-decoration: underline;
 }
 
 /* Adjustments when login form is visible */

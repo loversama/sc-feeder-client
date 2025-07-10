@@ -136,10 +136,12 @@ export function connectToServer(): void {
     return;
   }
 
+  const socketPath = process.env.NODE_ENV === 'production' ? '/production/socket.io/' : '/socket.io/';
   logger.info(
     MODULE_NAME,
     `Attempting to connect to server at ${SERVER_URL}/client (Env: ${process.env.NODE_ENV}) using ${tokenType}`,
   );
+  logger.info(MODULE_NAME, `Using Socket.IO path: ${socketPath}`);
   sendConnectionStatus('connecting'); // Update status: Connecting
 
   // Disconnect previous socket if exists (e.g., if token changed)
@@ -172,7 +174,8 @@ export function connectToServer(): void {
   }
 
   socket = io(`${SERVER_URL}/client`, {
-    // path: '/api/socket.io/', // REMOVED: Use default path for default adapter
+    // Add production path prefix if server is in production mode
+    path: socketPath,
     reconnection: false, // Disable automatic reconnection
     // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
     transports: ['websocket'],

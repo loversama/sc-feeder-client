@@ -435,6 +435,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     return ipcRenderer.invoke('send-log-to-main', message);
   },
 
+  // Open URL in default browser
+  openExternal: (url: string): Promise<void> => {
+    return ipcRenderer.invoke('open-external', url);
+  },
+
   removeAllListeners: () => {
     const channels = [
       'log-update', 'log-reset', 'log-status', 'log-path-updated',

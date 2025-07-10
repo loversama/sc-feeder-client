@@ -1,5 +1,5 @@
 const DEV_SERVER_URL = 'ws://localhost:5324';
-const PROD_SERVER_URL = 'wss://server-killfeed.sinfulshadows.com';
+const PROD_SERVER_URL = 'wss://api.voidlog.gg';
 
 export const SERVER_URL = process.env.NODE_ENV === 'development' ? DEV_SERVER_URL : PROD_SERVER_URL;
 
