@@ -136,7 +136,8 @@ export function connectToServer(): void {
     return;
   }
 
-  const socketPath = process.env.NODE_ENV === 'production' ? '/production/socket.io/' : '/socket.io/';
+  // Assume production by default, only use development path if explicitly set  
+  const socketPath = process.env.NODE_ENV === 'development' ? '/socket.io/' : '/production/socket.io/';
   logger.info(
     MODULE_NAME,
     `Attempting to connect to server at ${SERVER_URL}/client (Env: ${process.env.NODE_ENV}) using ${tokenType}`,

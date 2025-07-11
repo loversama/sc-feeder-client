@@ -320,17 +320,17 @@ const searchTimeout = ref<NodeJS.Timeout | null>(null);
 const lastSentSearchData = ref<string>(''); // Track last sent data to prevent spam
 
 // Reset search state after page navigation
-const resetSearchState = () => {
+const resetSearchState = async () => {
   console.log('[Search] Resetting search state after navigation');
   lastSentSearchData.value = '';
   // Clear any existing search if there's text in the box
   if (searchQuery.value.trim()) {
-    sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
   }
 };
 
 // Function to send search data to WebContentsView via DOM injection
-const sendSearchDataToWebContentsView = (query: string, loading: boolean, results: any, forceUpdate = false) => {
+const sendSearchDataToWebContentsView = async (query: string, loading: boolean, results: any, forceUpdate = false) => {
   // Create a hash of the current data to avoid sending duplicate data
   const currentDataHash = `${query}-${loading}-${JSON.stringify(results)}`;
   
@@ -346,7 +346,7 @@ const sendSearchDataToWebContentsView = (query: string, loading: boolean, result
     console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
   }
   
-  // Use IPC to execute JavaScript in the WebContentsView
+  // Use IPC to execute JavaScript in the WebContentsView with retry logic
   if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
     const searchData = {
       query: query,
@@ -357,21 +357,56 @@ const sendSearchDataToWebContentsView = (query: string, loading: boolean, result
     };
     
     const jsCode = `
-      // Set search data on window object
-      window.electronSearchState = ${JSON.stringify(searchData)};
+      // Wait for DOM to be ready if needed
+      const injectSearchData = () => {
+        try {
+          // Set search data on window object
+          window.electronSearchState = ${JSON.stringify(searchData)};
+          
+          // Dispatch custom event for web app to listen
+          window.dispatchEvent(new CustomEvent('electron-search-changed', {
+            detail: window.electronSearchState
+          }));
+          
+          // Only log in web app if query changed (not just loading state)
+          if (!${loading} || '${query}'.length === 0) {
+            console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+          }
+          
+          return { success: true };
+        } catch (error) {
+          console.error('[ElectronSearch] Failed to inject search data:', error);
+          return { success: false, error: error.message };
+        }
+      };
       
-      // Dispatch custom event for web app to listen
-      window.dispatchEvent(new CustomEvent('electron-search-changed', {
-        detail: window.electronSearchState
-      }));
-      
-      // Only log in web app if query changed (not just loading state)
-      if (!${loading} || '${query}'.length === 0) {
-        console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+      // If DOM is loading, wait for it to be ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectSearchData);
+      } else {
+        injectSearchData();
       }
     `;
     
-    window.logMonitorApi.executeInWebContentsView(jsCode);
+    // Retry logic for critical search re-injection (like after page navigation)
+    const maxRetries = forceUpdate ? 3 : 1;
+    const retryDelay = 100;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        await window.logMonitorApi.executeInWebContentsView(jsCode);
+        break; // Success, exit retry loop
+      } catch (error) {
+        console.warn(`[Search] Injection attempt ${attempt + 1} failed:`, error);
+        
+        if (attempt < maxRetries - 1) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+          console.error('[Search] All injection attempts failed');
+        }
+      }
+    }
   } else {
     console.warn('[Search] executeInWebContentsView API not available');
   }
@@ -409,7 +444,7 @@ const performSearch = async (query: string) => {
     searchResults.value = { events: [], users: [], organizations: [] };
     showSearchDropdown.value = false;
     // Send empty search to WebContentsView
-    sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] });
+    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] });
     return;
   }
   
@@ -418,7 +453,7 @@ const performSearch = async (query: string) => {
   selectedIndex.value = -1;
   
   // Send loading state to WebContentsView
-  sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
+  await sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
   
   try {
     console.log(`[Search] Performing real API search for: "${query}"`);
@@ -431,7 +466,7 @@ const performSearch = async (query: string) => {
     searchResults.value = transformedResults;
     
     // Send results to WebContentsView
-    sendSearchDataToWebContentsView(query, false, transformedResults);
+    await sendSearchDataToWebContentsView(query, false, transformedResults);
     
     console.log(`[Search] Found ${transformedResults.events.length} events, ${transformedResults.users.length} users, ${transformedResults.organizations.length} organizations`);
   } catch (error) {
@@ -441,7 +476,7 @@ const performSearch = async (query: string) => {
     console.log('[Search] Falling back to mock data due to API error');
     const mockResults = generateMockSearchResults(query);
     searchResults.value = mockResults;
-    sendSearchDataToWebContentsView(query, false, mockResults);
+    await sendSearchDataToWebContentsView(query, false, mockResults);
   } finally {
     isSearching.value = false;
   }
@@ -807,7 +842,7 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
   }
   
   // Send clear signal to WebContentsView
-  sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+  await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
   
   // Don't show loading if it's the same section or if WebContentsView isn't attached yet
   if (section === activeSection.value || !isWebContentsViewAttached.value) {
@@ -1077,14 +1112,19 @@ onMounted(async () => {
         }, 300);
       }
       
-      // Only reset search state if we're not navigating to the search page
-      // (which should preserve its query parameters and content)
-      setTimeout(() => {
-        // Don't reset if there's an active search query - it might be the search page
-        if (!searchQuery.value.trim()) {
-          resetSearchState();
+      // Re-inject search state if there's an active search, otherwise reset
+      setTimeout(async () => {
+        if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
+            searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
+          console.log('[WebContentPage] Re-injecting search state after page navigation');
+          // Re-inject current search state to maintain search functionality
+          await sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
+        } else if (searchQuery.value.trim()) {
+          console.log('[WebContentPage] Active search query detected but no results - clearing search state');
+          await resetSearchState();
         } else {
-          console.log('[WebContentPage] Skipping search state reset - active search query detected');
+          console.log('[WebContentPage] No active search - resetting search state');
+          await resetSearchState();
         }
       }, 500); // Small delay to ensure page is fully loaded
     });

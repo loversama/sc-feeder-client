@@ -1076,6 +1076,12 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
         targetWindow.webContents.send('webcontents-view-loaded');
     });
 
+    webContentView.webContents.on('did-navigate-in-page', (event, url) => {
+        logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
+        // For SPA navigation, also notify that the page changed (search state may need re-injection)
+        targetWindow.webContents.send('webcontents-view-loaded');
+    });
+
     webContentView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
         logger.error(MODULE_NAME, `WebContentsView load failed: ${errorCode} - ${errorDescription}`);
         // Notify the host window about the error
