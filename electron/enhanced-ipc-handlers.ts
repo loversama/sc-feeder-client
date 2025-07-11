@@ -604,6 +604,37 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
+    // --- WebContentsView Navigation Handlers ---
+    
+    // Handle section navigation for WebContentsView windows
+    ipcMain.on('web-content-navigate-to-section', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => {
+        try {
+            logger.info(MODULE_NAME, `Received WebContentsView navigation request for section: ${section}`);
+            
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for WebContentsView navigation');
+                return;
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+                logger.info(MODULE_NAME, `Navigating existing WebContentsView to section: ${section}`);
+                await navigateWebContentsViewToSection(webContentView, section);
+                logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${section}`);
+            } else {
+                logger.warn(MODULE_NAME, `No WebContentsView found for window ${windowId}, creating new one`);
+                // Create new WebContentsView if one doesn't exist
+                await createWebContentsViewForWindow(senderWindow, section);
+                logger.info(MODULE_NAME, `Created new WebContentsView and navigated to ${section}`);
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, `Failed to navigate WebContentsView to section ${section}:`, error);
+        }
+    });
+
     logger.info(MODULE_NAME, 'Enhanced IPC handlers registered successfully');
 }
 
@@ -637,6 +668,29 @@ async function broadcastAuthUpdate(authData: {
 
 // Store WebContentsView instances for each window
 const windowWebContentsViews = new Map<number, WebContentsView>();
+
+// Export function to navigate WebContentsView for a specific window
+export async function navigateWebContentsViewForWindow(
+    windowId: number, 
+    section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'
+): Promise<boolean> {
+    try {
+        const webContentView = windowWebContentsViews.get(windowId);
+        
+        if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+            logger.info(MODULE_NAME, `Navigating WebContentsView for window ${windowId} to section: ${section}`);
+            await navigateWebContentsViewToSection(webContentView, section);
+            logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${section}`);
+            return true;
+        } else {
+            logger.warn(MODULE_NAME, `No WebContentsView found for window ${windowId}`);
+            return false;
+        }
+    } catch (error) {
+        logger.error(MODULE_NAME, `Failed to navigate WebContentsView for window ${windowId} to section ${section}:`, error);
+        return false;
+    }
+}
 
 // Helper function to create WebContentsView for an existing window
 async function createWebContentsViewForWindow(targetWindow: BrowserWindow, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<WebContentsView> {

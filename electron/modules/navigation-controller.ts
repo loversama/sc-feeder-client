@@ -224,8 +224,28 @@ async function handleSwitchRequest(
           // Instead of navigating the main window, trigger the WebContentsView navigation
           logger.info(MODULE_NAME, `🔄 Delegating WebContentsView switch to enhanced system`);
           
-          // Send IPC to trigger WebContentsView navigation (this will navigate the embedded frame)
-          webContentWindow.webContents.send('web-content-navigate-to-section', section);
+          // First try the embedded manager
+          const { getEmbeddedWebContentManager } = await import('./embedded-webcontents-manager');
+          const manager = getEmbeddedWebContentManager();
+          
+          if (manager && manager.isOverlayVisible()) {
+            // Use the embedded manager if available and visible
+            logger.info(MODULE_NAME, `🔄 Using embedded WebContentsView manager for section: ${section}`);
+            await manager.navigateToSection(section);
+          } else {
+            // Fallback: Use the WebContentsView attached to the window
+            logger.info(MODULE_NAME, `🔄 Using attached WebContentsView for section: ${section}`);
+            
+            // Import the navigation function from enhanced handlers
+            const { navigateWebContentsViewForWindow } = await import('../enhanced-ipc-handlers');
+            
+            // Navigate the WebContentsView attached to this window
+            const success = await navigateWebContentsViewForWindow(webContentWindow.id, section);
+            
+            if (!success) {
+              logger.warn(MODULE_NAME, `Failed to navigate WebContentsView for window ${webContentWindow.id}, section may not be attached properly`);
+            }
+          }
           
           // Update state to reflect the new section
           updateWebContentWindow({
