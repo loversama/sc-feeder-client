@@ -32,8 +32,8 @@ export class EmbeddedWebContentsManager {
 
     constructor() {
         
-        // Determine base URL based on environment
-        const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+        // Determine base URL based on environment - default to production
+        const isDevelopment = process.env.NODE_ENV === 'development';
         this.webAppBaseUrl = isDevelopment
             ? 'http://localhost:3001'
             : 'https://voidlog.gg';

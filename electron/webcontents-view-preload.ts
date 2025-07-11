@@ -32,10 +32,56 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return ipcRenderer.invoke('enhanced-auth:refresh');
     },
 
-    // Navigation within the same window
+    // Navigation within the same window - INTERNAL ONLY, should not close window
     navigateToSection: (section: string): void => {
-        console.log(`${MODULE_NAME}: Requesting navigation to: ${section}`);
-        ipcRenderer.send('enhanced-navigation:change-section', section);
+        console.log(`${MODULE_NAME}: Internal navigation to: ${section} (will NOT trigger window operations)`);
+        
+        // Navigate within the WebContentsView only - do not trigger external navigation
+        if (typeof window !== 'undefined') {
+            const sectionPaths = {
+                'profile': '/profile',
+                'leaderboard': '/leaderboard', 
+                'map': '/map',
+                'events': '/events',
+                'stats': '/stats'
+            };
+            
+            const path = sectionPaths[section as keyof typeof sectionPaths] || '/';
+            console.log(`${MODULE_NAME}: Navigating WebContentsView internally to: ${path}`);
+            
+            // Use window.location to navigate within the WebContentsView frame only
+            const currentUrl = new URL(window.location.href);
+            const newUrl = `${currentUrl.origin}${path}${currentUrl.search}`;
+            
+            // Navigate to the new URL within this WebContentsView frame
+            window.location.href = newUrl;
+        }
+    },
+
+    // DISABLED: External navigation should not be available in WebContentsView
+    // This prevents the WebContentsView from accidentally navigating the main window
+    navigation: {
+        request: (section: string) => {
+            console.error(`${MODULE_NAME}: ❌ BLOCKED external navigation request for section: ${section} - WebContentsView should use navigateToSection() instead!`);
+            console.error(`${MODULE_NAME}: Use window.electronAPI.navigateToSection('${section}') for internal navigation`);
+            return Promise.resolve({ success: false, error: 'External navigation blocked in WebContentsView' });
+        },
+        close: (section?: string) => {
+            console.error(`${MODULE_NAME}: ❌ BLOCKED external navigation close request - WebContentsView should not close windows!`);
+            return Promise.resolve({ success: false, error: 'External navigation blocked in WebContentsView' });
+        },
+        getState: () => {
+            console.log(`${MODULE_NAME}: Getting navigation state`);
+            return ipcRenderer.invoke('navigation:get-state');
+        },
+        onStateChange: (callback: (state: any) => void) => {
+            console.log(`${MODULE_NAME}: Setting up navigation state change listener`);
+            const listener = (_: any, state: any) => callback(state);
+            ipcRenderer.on('navigation-state-changed', listener);
+            return () => {
+                ipcRenderer.removeListener('navigation-state-changed', listener);
+            };
+        }
     },
 
     // Listen for auth updates from main process
@@ -230,6 +276,39 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }));
     }
+});
+
+// Intercept navigation clicks to use internal navigation instead of external
+document.addEventListener('DOMContentLoaded', () => {
+    console.log(`${MODULE_NAME}: Setting up navigation click interception`);
+    
+    // Intercept clicks on navigation links
+    document.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement;
+        
+        // Check if clicked element or its parent is a navigation link
+        const link = target.closest('a[href]') as HTMLAnchorElement;
+        if (!link) return;
+        
+        const href = link.getAttribute('href');
+        if (!href) return;
+        
+        // Check if it's an internal navigation link (starts with / and matches our sections)
+        const internalSections = ['/profile', '/leaderboard', '/map', '/events', '/stats'];
+        const isInternalNavigation = internalSections.some(section => href.startsWith(section));
+        
+        if (isInternalNavigation) {
+            console.log(`${MODULE_NAME}: Intercepting internal navigation click to: ${href}`);
+            event.preventDefault();
+            event.stopPropagation();
+            
+            // Extract section from href
+            const section = href.split('/')[1]; // e.g., '/map' -> 'map'
+            if (section && (window as any).electronAPI?.navigateToSection) {
+                (window as any).electronAPI.navigateToSection(section);
+            }
+        }
+    }, true); // Use capture phase to intercept before other handlers
 });
 
 console.log(`${MODULE_NAME}: Enhanced preload script setup completed`);

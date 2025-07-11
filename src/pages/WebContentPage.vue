@@ -822,11 +822,34 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
   activeSection.value = section;
   
   try {
-    // Notify main process to navigate the WebContentsView to the new section
-    if (window.logMonitorApi && window.logMonitorApi.openEnhancedWebContentWindow) {
-      console.log(`[WebContentPage] Navigating WebContentsView to section: ${section}`);
+    // Use the new centralized navigation system if available
+    if (window.electronAPI?.navigation?.request) {
+      console.log(`[WebContentPage] Using centralized navigation to section: ${section}`);
+      const result = await window.electronAPI.navigation.request(section);
+      console.log(`[WebContentPage] Centralized navigation result:`, result);
+      
+      if (!result.success) {
+        console.error('[WebContentPage] Centralized navigation failed:', result.error);
+        // Fallback to legacy system
+        throw new Error(`Navigation failed: ${result.error}`);
+      }
+      
+      // Loading overlay will be hidden by the navigation state change event or timeout
+      setTimeout(() => {
+        if (isLoading.value) {
+          console.log('[WebContentPage] Timeout fallback: hiding loading overlay');
+          showLoadingOverlay.value = false;
+          setTimeout(() => {
+            isLoading.value = false;
+          }, 300);
+        }
+      }, 5000); // 5 second timeout
+      
+    } else if (window.logMonitorApi && window.logMonitorApi.openEnhancedWebContentWindow) {
+      // Fallback to legacy system
+      console.log(`[WebContentPage] Fallback: Navigating WebContentsView to section: ${section}`);
       const result = await window.logMonitorApi.openEnhancedWebContentWindow(section);
-      console.log(`[WebContentPage] Navigation result:`, result);
+      console.log(`[WebContentPage] Legacy navigation result:`, result);
       
       // Loading overlay will be hidden by the 'webcontents-view-loaded' event
       // Add a timeout fallback in case the event doesn't fire
@@ -840,7 +863,7 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
         }
       }, 5000); // 5 second timeout
     } else {
-      console.warn('[WebContentPage] Enhanced API not available for navigation');
+      console.warn('[WebContentPage] No navigation API available');
       // Hide loading immediately if API not available
       showLoadingOverlay.value = false;
       setTimeout(() => {
@@ -1076,6 +1099,37 @@ onMounted(async () => {
         }, 300);
       }
     });
+  }
+
+  // Listen for centralized navigation state changes
+  if (window.electronAPI?.navigation?.onStateChange) {
+    const navigationCleanup = window.electronAPI.navigation.onStateChange((state: any) => {
+      console.log('[WebContentPage] Received navigation state update:', state);
+      
+      // Update active section based on navigation state
+      if (state.webContentWindow.isOpen && state.webContentWindow.currentSection) {
+        const section = state.webContentWindow.currentSection;
+        if (section === 'profile' || section === 'leaderboard' || section === 'map' || section === 'events' || section === 'stats') {
+          if (activeSection.value !== section) {
+            console.log(`[WebContentPage] Updating active section from navigation state: ${section}`);
+            activeSection.value = section;
+          }
+          
+          // Hide loading overlay if it's showing
+          if (isLoading.value) {
+            showLoadingOverlay.value = false;
+            setTimeout(() => {
+              isLoading.value = false;
+            }, 300);
+          }
+        }
+      }
+    });
+    
+    // Store cleanup function for onUnmounted
+    // Add this to cleanup array if you have one, or add to onUnmounted
+  } else {
+    console.warn('[WebContentPage] Centralized navigation state listener not available');
   }
 
   // Notify main process that WebContentPage is ready for WebContentsView attachment

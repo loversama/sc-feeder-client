@@ -399,6 +399,28 @@ require$$0.contextBridge.exposeInMainWorld("electronAPI", {
   closeWindow: () => {
     console.log("Close button clicked, sending window-close");
     require$$0.ipcRenderer.send("window-close");
+  },
+  navigation: {
+    request: (section) => {
+      console.log(`Navigation request for section: ${section}`);
+      return require$$0.ipcRenderer.invoke("navigation:request", section);
+    },
+    close: (section) => {
+      console.log(`Navigation close request for section: ${section || "current"}`);
+      return require$$0.ipcRenderer.invoke("navigation:close", section);
+    },
+    getState: () => {
+      console.log("Getting navigation state");
+      return require$$0.ipcRenderer.invoke("navigation:get-state");
+    },
+    onStateChange: (callback) => {
+      console.log("Setting up navigation state change listener");
+      const listener = (_, state) => callback(state);
+      require$$0.ipcRenderer.on("navigation-state-changed", listener);
+      return () => {
+        require$$0.ipcRenderer.removeListener("navigation-state-changed", listener);
+      };
+    }
   }
 });
 window.addEventListener("DOMContentLoaded", async () => {

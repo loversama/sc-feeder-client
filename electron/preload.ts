@@ -465,6 +465,28 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => {
     console.log('Close button clicked, sending window-close');
     ipcRenderer.send('window-close');
+  },
+  navigation: {
+    request: (section: string) => {
+      console.log(`Navigation request for section: ${section}`);
+      return ipcRenderer.invoke('navigation:request', section);
+    },
+    close: (section?: string) => {
+      console.log(`Navigation close request for section: ${section || 'current'}`);
+      return ipcRenderer.invoke('navigation:close', section);
+    },
+    getState: () => {
+      console.log('Getting navigation state');
+      return ipcRenderer.invoke('navigation:get-state');
+    },
+    onStateChange: (callback: (state: any) => void) => {
+      console.log('Setting up navigation state change listener');
+      const listener = (_: any, state: any) => callback(state);
+      ipcRenderer.on('navigation-state-changed', listener);
+      return () => {
+        ipcRenderer.removeListener('navigation-state-changed', listener);
+      };
+    }
   }
 })
 

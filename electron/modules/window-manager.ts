@@ -45,7 +45,7 @@ let webContentWindow: BrowserWindow | null = null; // Added for Web Content Wind
 let webContentBaseWindow: BaseWindow | null = null; // New BaseWindow for web content
 let webContentView: WebContentsView | null = null; // Web content view for BaseWindow
 let loginWindow: BrowserWindow | null = null;
-let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | null = null; // Track active section
+let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | null = null; // Track active section
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
@@ -1749,7 +1749,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
     return webContentBaseWindow;
 }
 
-export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map'): BrowserWindow | null {
+export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): BrowserWindow | null {
     if (webContentWindow) {
         if (webContentWindow.isMinimized()) {
             webContentWindow.restore(); // Restore if minimized
@@ -1890,7 +1890,7 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'ma
 }
 
 // New authenticated WebContentsView-based web content window
-export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leaderboard' | 'map'): BaseWindow | null {
+export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): BaseWindow | null {
     // Check if we should reuse existing window
     if (webContentBaseWindow && webContentView) {
         if (webContentBaseWindow.isMinimized()) {
@@ -1917,6 +1917,10 @@ export function createAuthenticatedWebContentWindow(section?: 'profile' | 'leade
                 newUrl = `${webAppBaseUrl}/leaderboard?source=electron&auth=webcontents`;
             } else if (newSection === 'map') {
                 newUrl = `${webAppBaseUrl}/map?source=electron&auth=webcontents`;
+            } else if (newSection === 'events') {
+                newUrl = `${webAppBaseUrl}/events?source=electron&auth=webcontents`;
+            } else if (newSection === 'stats') {
+                newUrl = `${webAppBaseUrl}/stats?source=electron&auth=webcontents`;
             } else {
                 newUrl = `${webAppBaseUrl}?source=electron&auth=webcontents`;
             }
@@ -2348,11 +2352,19 @@ export function getMainWindow(): BrowserWindow | null {
     return mainWindow;
 }
 
+export function getWebContentWindow(): BrowserWindow | null {
+    return webContentWindow;
+}
+
+export function getSettingsWindow(): BrowserWindow | null {
+    return settingsWindow;
+}
+
 export function getSettingsStatus(): { isOpen: boolean } {
     return { isOpen: settingsWindow !== null };
 }
 
-export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | null } {
+export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | null } {
     return { isOpen: webContentWindow !== null || webContentBaseWindow !== null, activeSection: currentWebContentSection };
 }
 

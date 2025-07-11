@@ -34,6 +34,10 @@ export default defineConfig({
           preload: path.join(__dirname, 'electron/preload.ts'),
           // Preload specifically for the webview
           'webview-preload': path.join(__dirname, 'electron/webview-preload.ts'),
+          // Preload for WebContentsView header
+          'webcontents-header-preload': path.join(__dirname, 'electron/webcontents-header-preload.ts'),
+          // Preload for WebContentsView content
+          'webcontents-view-preload': path.join(__dirname, 'electron/webcontents-view-preload.ts'),
         },
         vite: {
           build: {

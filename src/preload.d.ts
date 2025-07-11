@@ -293,6 +293,27 @@ declare global {
       getStoredAuthData: () => Promise<AuthData>; // Added
       notifyElectronOfNewTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }) => void; // Updated user to optional
       onTokensUpdated: (callback: (event: IpcRendererEvent, tokens: AuthData) => void) => () => void; // Added
-    }
+    };
+    electronAPI: {
+      minimizeWindow: () => void;
+      maximizeWindow: () => void;
+      closeWindow: () => void;
+      navigation: {
+        request: (section: string) => Promise<{
+          success: boolean;
+          section?: string;
+          error?: string;
+          state?: any;
+        }>;
+        close: (section?: string) => Promise<{
+          success: boolean;
+          section?: string | null;
+          error?: string;
+          state?: any;
+        }>;
+        getState: () => Promise<any>;
+        onStateChange: (callback: (state: any) => void) => () => void;
+      };
+    };
   }
 }

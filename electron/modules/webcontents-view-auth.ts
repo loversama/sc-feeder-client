@@ -29,7 +29,7 @@ function getPreloadPath(filename: string): string {
     const mainDist = path.join(appRoot, 'dist-electron');
     let resolvedPath: string | undefined;
 
-    if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'development') { // Production
+    if (process.env.NODE_ENV !== 'development') { // Production (default)
         resolvedPath = path.join(mainDist, filename);
         logger.info(MODULE_NAME, `[Prod Mode] Resolving preload path for: ${filename}. Checking: ${resolvedPath}`);
         if (!fsSync.existsSync(resolvedPath)) {

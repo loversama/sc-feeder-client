@@ -12,6 +12,7 @@ import {
   setHasShownInitialLogin
 } from './config-manager';
 import { updateTrayMenu } from './tray-manager';
+import { getSecureClientId } from './secure-client-id-manager';
 
 const MODULE_NAME = 'AuthManager';
 import { SERVER_API_URL } from './server-config';
@@ -298,15 +299,19 @@ export async function clearAllAuthDataComprehensive(): Promise<void> {
 }
 
 // Function to get/generate the persistent client ID (Exported)
+// Maintains synchronous interface for backward compatibility
 export function getPersistedClientId(): string {
   if (clientId) {
     return clientId;
   }
+  
+  // Fallback to legacy electron-store implementation for immediate availability
+  // The secure initialization will happen asynchronously and update this cache
   let storedId: string | undefined;
   try {
     storedId = store.get('clientId') as string | undefined;
     if (storedId) {
-      logger.info(MODULE_NAME, `Retrieved stored clientId: ${storedId}`);
+      logger.debug(MODULE_NAME, `Retrieved stored clientId from electron-store (fallback)`);
     }
   } catch (error) {
     logger.error(MODULE_NAME, 'Error reading clientId from store:', error);
@@ -327,6 +332,71 @@ export function getPersistedClientId(): string {
   }
   clientId = storedId ?? uuidv4();
   return clientId;
+}
+
+// Initialize secure client ID storage asynchronously
+// This will run in the background and update the cache when ready
+export async function initializeSecureClientId(): Promise<void> {
+  try {
+    logger.info(MODULE_NAME, 'Initializing secure client ID storage...');
+    const secureClientId = await getSecureClientId();
+    
+    // Update the memory cache with the secure client ID
+    if (secureClientId !== clientId) {
+      logger.info(MODULE_NAME, 'Updating client ID cache with secure storage value');
+      clientId = secureClientId;
+      
+      // Ensure electron-store is synchronized
+      try {
+        store.set('clientId', secureClientId);
+      } catch (error) {
+        logger.warn(MODULE_NAME, 'Failed to sync client ID to electron-store:', error);
+      }
+    }
+    
+    logger.info(MODULE_NAME, 'Secure client ID initialization completed');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialize secure client ID:', error);
+    // Fallback: ensure we have a valid client ID from legacy storage
+    if (!clientId) {
+      getPersistedClientId();
+    }
+  }
+}
+
+// Async version for contexts that can use secure storage directly
+export async function getPersistedClientIdSecure(): Promise<string> {
+  try {
+    const secureClientId = await getSecureClientId();
+    
+    // Update memory cache
+    clientId = secureClientId;
+    
+    return secureClientId;
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to get secure client ID, falling back to legacy storage:', error);
+    return getPersistedClientId();
+  }
+}
+
+// Diagnostic function to check client ID storage status
+export async function getClientIdStorageStatus(): Promise<{
+  currentClientId: string;
+  storageStatus: {
+    hasSecureStorage: boolean;
+    hasElectronStore: boolean;
+    hasValidation: boolean;
+    isEncryptionAvailable: boolean;
+    lastValidationTime: number | null;
+  };
+}> {
+  const { SecureClientIdManager } = await import('./secure-client-id-manager');
+  const manager = SecureClientIdManager.getInstance();
+  
+  return {
+    currentClientId: getPersistedClientId(),
+    storageStatus: await manager.getStorageStatus()
+  };
 }
 
 // Helper function to broadcast auth status changes to all renderer windows
@@ -427,7 +497,7 @@ export function getCurrentAuthTokens(): { accessToken?: string; refreshToken?: s
 
 export async function login(identifier: string, password: string): Promise<{ success: boolean; error?: string }> {
     const hostname = os.hostname();
-    const currentClientId = getPersistedClientId();
+    const currentClientId = await getPersistedClientIdSecure();
     logger.info(MODULE_NAME, `Attempting login for identifier: ${identifier} from hostname: ${hostname}, clientId: ${currentClientId}`);
     
     // Add small delay to ensure all modules are properly initialized
@@ -616,7 +686,7 @@ export async function refreshToken(): Promise<{ userId: string; username: string
 }
 
 export async function requestAndStoreGuestToken(): Promise<boolean> {
-    const currentClientId = getPersistedClientId();
+    const currentClientId = await getPersistedClientIdSecure();
     const currentHostname = os.hostname();
     logger.info(MODULE_NAME, `Requesting guest token for clientId: ${currentClientId}, hostname: ${currentHostname}`);
 
@@ -793,6 +863,10 @@ export async function storeTokens(tokens: {
 
 export async function initializeAuth(): Promise<boolean> {
     logger.info(MODULE_NAME, 'Initializing authentication state...');
+    
+    // Initialize secure client ID storage first
+    await initializeSecureClientId();
+    
     let connectionReady = false;
     const existingRefreshToken = getRefreshTokenFromStore();
 

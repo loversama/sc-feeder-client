@@ -121,35 +121,7 @@ export function registerEnhancedIPCHandlers(): void {
 
     // --- Navigation Handlers ---
 
-    // Section navigation within WebContentsView
-    ipcMain.on('enhanced-navigation:change-section', async (event, section: string) => {
-        try {
-            logger.info(MODULE_NAME, `Navigation requested to section: ${section}`);
-            
-            // Get the sender window (should be the web content window)
-            const senderWindow = BrowserWindow.fromWebContents(event.sender);
-            if (!senderWindow) {
-                logger.error(MODULE_NAME, 'Could not find sender window for navigation');
-                return;
-            }
-            
-            // Get the WebContentsView for this window
-            const windowId = senderWindow.id;
-            const webContentView = windowWebContentsViews.get(windowId);
-            
-            if (webContentView) {
-                // Navigate the WebContentsView to the new section
-                await navigateWebContentsViewToSection(webContentView, section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats');
-                logger.info(MODULE_NAME, `Successfully navigated WebContentsView to section: ${section}`);
-            } else {
-                // If no WebContentsView exists yet, create one
-                logger.info(MODULE_NAME, 'No WebContentsView found, creating new one for navigation');
-                await createWebContentsViewForWindow(senderWindow, section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats');
-            }
-        } catch (error) {
-            logger.error(MODULE_NAME, `Failed to navigate to section ${section}:`, error instanceof Error ? error.message : 'Unknown error');
-        }
-    });
+    // NOTE: Enhanced navigation handler removed to avoid conflict with navigation controller
 
     // --- Window Control Handlers ---
 
@@ -446,8 +418,8 @@ export function registerEnhancedIPCHandlers(): void {
         try {
             logger.info(MODULE_NAME, `Search API request for query: "${query}"`);
             
-            // Determine API base URL
-            const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+            // Determine API base URL - default to production
+            const isDevelopment = process.env.NODE_ENV === 'development';
             const apiBaseUrl = isDevelopment ? 'http://localhost:5324' : 'https://api.voidlog.gg';
             
             // Get authentication token
@@ -539,8 +511,8 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
-                // Navigate to the search page with query parameters
-                const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+                // Navigate to the search page with query parameters - default to production
+                const isDevelopment = process.env.NODE_ENV === 'development';
                 const baseUrl = isDevelopment ? 'http://localhost:5173' : 'https://voidlog.gg';
                 const searchUrl = `${baseUrl}/search?q=${encodeURIComponent(query)}`;
                 
@@ -889,7 +861,7 @@ async function injectAuthenticationCookies(webContentSession: Electron.Session):
     if (!currentTokens?.accessToken) return;
 
     try {
-        const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+        const isDevelopment = process.env.NODE_ENV === 'development';
         const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
         const urlObj = new URL(webAppBaseUrl);
 
@@ -1060,7 +1032,7 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
 // Helper function to navigate WebContentsView to a section
 async function navigateWebContentsViewToSection(webContentView: WebContentsView, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<void> {
     try {
-        const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+        const isDevelopment = process.env.NODE_ENV === 'development';
         const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
         
         const currentTokens = getCurrentAuthTokens();
