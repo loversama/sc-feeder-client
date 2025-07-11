@@ -149,8 +149,8 @@
                     :src="user.pfpUrl" 
                     :alt="`${user.username} avatar`"
                     class="w-8 h-8 rounded-full object-cover"
-                    @load="(e) => console.log('[Search] Avatar loaded successfully for:', user.username, 'URL:', user.pfpUrl)"
-                    @error="(e) => handleImageError(e, user)"
+                    @load="(e: Event) => console.log('[Search] Avatar loaded successfully for:', user.username, 'URL:', user.pfpUrl)"
+                    @error="(e: Event) => handleImageError(e, user)"
                   />
                   <div 
                     v-else 
@@ -171,8 +171,8 @@
                       :src="user.organizationIconUrl" 
                       :alt="'Organization icon'"
                       class="w-3 h-3 rounded object-cover flex-shrink-0"
-                      @load="(e) => console.log('[Search] User org icon loaded for:', user.username)"
-                      @error="(e) => handleOrgIconError(e, { iconUrl: user.organizationIconUrl, name: user.organization })"
+                      @load="(e: Event) => console.log('[Search] User org icon loaded for:', user.username)"
+                      @error="(e: Event) => handleOrgIconError(e, { iconUrl: user.organizationIconUrl, name: user.organization })"
                     />
                     <div 
                       v-else-if="user.organization && user.organization !== 'No organization'" 
@@ -215,8 +215,8 @@
                     :src="org.iconUrl" 
                     :alt="`${org.name} icon`"
                     class="w-8 h-8 rounded object-cover"
-                    @load="(e) => console.log('[Search] Org icon loaded successfully for:', org.name, 'URL:', org.iconUrl)"
-                    @error="(e) => handleOrgIconError(e, org)"
+                    @load="(e: Event) => console.log('[Search] Org icon loaded successfully for:', org.name, 'URL:', org.iconUrl)"
+                    @error="(e: Event) => handleOrgIconError(e, org)"
                   />
                   <div 
                     v-else 

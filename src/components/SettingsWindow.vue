@@ -613,7 +613,7 @@ const toggleLaunchOnStartup = async () => {
                             :src="userState.avatar" 
                             alt="Avatar" 
                             class="w-12 h-12 rounded border-2 border-theme-border"
-                            @error="(e) => { 
+                            @error="(e: Event) => { 
                               console.error('Settings avatar preview FAILED to load:', userState.avatar); 
                               console.error('Error event:', e);
                               console.error('Image element:', e.target);

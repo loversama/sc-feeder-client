@@ -1,5 +1,6 @@
 import { app, globalShortcut, BrowserWindow, session } from 'electron'; // Keep base electron imports, add session
 import * as os from 'os'; // Import os for hostname
+import fs from 'node:fs';
 import { autoUpdater, UpdateCheckResult } from 'electron-updater'; // Import autoUpdater and types from electron-updater
 import {
   createMainWindow,
@@ -345,7 +346,6 @@ async function onReady() {
     for (const file of requiredFiles) {
       const filePath = path.join(appDir, file);
       try {
-        const fs = require('fs');
         if (!fs.existsSync(filePath)) {
           missingFiles.push(file);
           logger.error(MODULE_NAME, `CRITICAL: Missing required DLL: ${file} at ${filePath}`);

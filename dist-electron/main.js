@@ -24,7 +24,7 @@ import hs from "url";
 import nD from "string_decoder";
 import ha from "zlib";
 import kf from "http";
-import it from "node:fs";
+import rt from "node:fs";
 import _r from "node:process";
 import fs, { promisify as Qn, isDeepStrictEqual as tx } from "node:util";
 import c1 from "node:crypto";
@@ -6034,7 +6034,7 @@ um.exports;
   function yt() {
     this.__data__ = pe ? pe(null) : {}, this.size = 0;
   }
-  function rt(ee) {
+  function nt(ee) {
     var ue = this.has(ee) && delete this.__data__[ee];
     return this.size -= ue ? 1 : 0, ue;
   }
@@ -6054,7 +6054,7 @@ um.exports;
     var Be = this.__data__;
     return this.size += this.has(ee) ? 0 : 1, Be[ee] = pe && ue === void 0 ? n : ue, this;
   }
-  Ke.prototype.clear = yt, Ke.prototype.delete = rt, Ke.prototype.get = Qt, Ke.prototype.has = ze, Ke.prototype.set = ir;
+  Ke.prototype.clear = yt, Ke.prototype.delete = nt, Ke.prototype.get = Qt, Ke.prototype.has = ze, Ke.prototype.set = ir;
   function Ot(ee) {
     var ue = -1, Be = ee == null ? 0 : ee.length;
     for (this.clear(); ++ue < Be; ) {
@@ -8977,44 +8977,44 @@ const Kz = new Xz(), zo = (e, t) => function(n) {
 }, Rn = {
   attempt: {
     /* ASYNC */
-    chmod: Jo(Qn(it.chmod), Ar.onChangeError),
-    chown: Jo(Qn(it.chown), Ar.onChangeError),
-    close: Jo(Qn(it.close), Qi),
-    fsync: Jo(Qn(it.fsync), Qi),
-    mkdir: Jo(Qn(it.mkdir), Qi),
-    realpath: Jo(Qn(it.realpath), Qi),
-    stat: Jo(Qn(it.stat), Qi),
-    unlink: Jo(Qn(it.unlink), Qi),
+    chmod: Jo(Qn(rt.chmod), Ar.onChangeError),
+    chown: Jo(Qn(rt.chown), Ar.onChangeError),
+    close: Jo(Qn(rt.close), Qi),
+    fsync: Jo(Qn(rt.fsync), Qi),
+    mkdir: Jo(Qn(rt.mkdir), Qi),
+    realpath: Jo(Qn(rt.realpath), Qi),
+    stat: Jo(Qn(rt.stat), Qi),
+    unlink: Jo(Qn(rt.unlink), Qi),
     /* SYNC */
-    chmodSync: za(it.chmodSync, Ar.onChangeError),
-    chownSync: za(it.chownSync, Ar.onChangeError),
-    closeSync: za(it.closeSync, Qi),
-    existsSync: za(it.existsSync, Qi),
-    fsyncSync: za(it.fsync, Qi),
-    mkdirSync: za(it.mkdirSync, Qi),
-    realpathSync: za(it.realpathSync, Qi),
-    statSync: za(it.statSync, Qi),
-    unlinkSync: za(it.unlinkSync, Qi)
+    chmodSync: za(rt.chmodSync, Ar.onChangeError),
+    chownSync: za(rt.chownSync, Ar.onChangeError),
+    closeSync: za(rt.closeSync, Qi),
+    existsSync: za(rt.existsSync, Qi),
+    fsyncSync: za(rt.fsync, Qi),
+    mkdirSync: za(rt.mkdirSync, Qi),
+    realpathSync: za(rt.realpathSync, Qi),
+    statSync: za(rt.statSync, Qi),
+    unlinkSync: za(rt.unlinkSync, Qi)
   },
   retry: {
     /* ASYNC */
-    close: zo(Qn(it.close), Ar.isRetriableError),
-    fsync: zo(Qn(it.fsync), Ar.isRetriableError),
-    open: zo(Qn(it.open), Ar.isRetriableError),
-    readFile: zo(Qn(it.readFile), Ar.isRetriableError),
-    rename: zo(Qn(it.rename), Ar.isRetriableError),
-    stat: zo(Qn(it.stat), Ar.isRetriableError),
-    write: zo(Qn(it.write), Ar.isRetriableError),
-    writeFile: zo(Qn(it.writeFile), Ar.isRetriableError),
+    close: zo(Qn(rt.close), Ar.isRetriableError),
+    fsync: zo(Qn(rt.fsync), Ar.isRetriableError),
+    open: zo(Qn(rt.open), Ar.isRetriableError),
+    readFile: zo(Qn(rt.readFile), Ar.isRetriableError),
+    rename: zo(Qn(rt.rename), Ar.isRetriableError),
+    stat: zo(Qn(rt.stat), Ar.isRetriableError),
+    write: zo(Qn(rt.write), Ar.isRetriableError),
+    writeFile: zo(Qn(rt.writeFile), Ar.isRetriableError),
     /* SYNC */
-    closeSync: Xo(it.closeSync, Ar.isRetriableError),
-    fsyncSync: Xo(it.fsyncSync, Ar.isRetriableError),
-    openSync: Xo(it.openSync, Ar.isRetriableError),
-    readFileSync: Xo(it.readFileSync, Ar.isRetriableError),
-    renameSync: Xo(it.renameSync, Ar.isRetriableError),
-    statSync: Xo(it.statSync, Ar.isRetriableError),
-    writeSync: Xo(it.writeSync, Ar.isRetriableError),
-    writeFileSync: Xo(it.writeFileSync, Ar.isRetriableError)
+    closeSync: Xo(rt.closeSync, Ar.isRetriableError),
+    fsyncSync: Xo(rt.fsyncSync, Ar.isRetriableError),
+    openSync: Xo(rt.openSync, Ar.isRetriableError),
+    readFileSync: Xo(rt.readFileSync, Ar.isRetriableError),
+    renameSync: Xo(rt.renameSync, Ar.isRetriableError),
+    statSync: Xo(rt.statSync, Ar.isRetriableError),
+    writeSync: Xo(rt.writeSync, Ar.isRetriableError),
+    writeFileSync: Xo(rt.writeFileSync, Ar.isRetriableError)
   }
 }, Zz = "utf8", _B = 438, eX = 511, tX = {}, rX = ec.userInfo().uid, nX = ec.userInfo().gid, iX = 1e3, sX = !!_r.getuid;
 _r.getuid && _r.getuid();
@@ -19345,7 +19345,7 @@ class _de {
       */
   get store() {
     try {
-      const t = it.readFileSync(this.path, b(this, Eo) ? null : "utf8"), r = this._encryptData(t), n = this._deserialize(r);
+      const t = rt.readFileSync(this.path, b(this, Eo) ? null : "utf8"), r = this._encryptData(t), n = this._deserialize(r);
       return this._validate(n), Object.assign(Gl(), n);
     } catch (t) {
       if ((t == null ? void 0 : t.code) === "ENOENT")
@@ -19389,7 +19389,7 @@ class _de {
     throw new Error("Config schema violation: " + n.join("; "));
   }
   _ensureDirectory() {
-    it.mkdirSync(Pe.dirname(this.path), { recursive: !0 });
+    rt.mkdirSync(Pe.dirname(this.path), { recursive: !0 });
   }
   _write(t) {
     let r = this._serialize(t);
@@ -19398,22 +19398,22 @@ class _de {
       r = J7([n, F6(":"), s.update(F6(r)), s.final()]);
     }
     if (_r.env.SNAP)
-      it.writeFileSync(this.path, r, { mode: b(this, Ri).configFileMode });
+      rt.writeFileSync(this.path, r, { mode: b(this, Ri).configFileMode });
     else
       try {
         gR(this.path, r, { mode: b(this, Ri).configFileMode });
       } catch (n) {
         if ((n == null ? void 0 : n.code) === "EXDEV") {
-          it.writeFileSync(this.path, r, { mode: b(this, Ri).configFileMode });
+          rt.writeFileSync(this.path, r, { mode: b(this, Ri).configFileMode });
           return;
         }
         throw n;
       }
   }
   _watch() {
-    this._ensureDirectory(), it.existsSync(this.path) || this._write(Gl()), _r.platform === "win32" ? it.watch(this.path, { persistent: !1 }, T7(() => {
+    this._ensureDirectory(), rt.existsSync(this.path) || this._write(Gl()), _r.platform === "win32" ? rt.watch(this.path, { persistent: !1 }, T7(() => {
       this.events.dispatchEvent(new Event("change"));
-    }, { wait: 100 })) : it.watchFile(this.path, { persistent: !1 }, T7(() => {
+    }, { wait: 100 })) : rt.watchFile(this.path, { persistent: !1 }, T7(() => {
       this.events.dispatchEvent(new Event("change"));
     }, { wait: 5e3 }));
   }
@@ -27449,7 +27449,7 @@ function v1(e) {
 function x0e() {
   const e = ic();
   try {
-    e && it.existsSync(e) ? (T(Er, `Attempting to create tray directly with path: ${e}`), hi = new UE(e), T(Er, "Successfully created tray with path.")) : (Ce(Er, `Icon path "${e}" is invalid or file does not exist. Creating empty tray.`), hi = new UE(K3.createEmpty()), T(Er, "Successfully created empty tray as fallback."));
+    e && rt.existsSync(e) ? (T(Er, `Attempting to create tray directly with path: ${e}`), hi = new UE(e), T(Er, "Successfully created tray with path.")) : (Ce(Er, `Icon path "${e}" is invalid or file does not exist. Creating empty tray.`), hi = new UE(K3.createEmpty()), T(Er, "Successfully created empty tray as fallback."));
   } catch (r) {
     Z(Er, `Error creating tray (even with path/fallback): ${r.message}. Final attempt with empty.`);
     try {
@@ -28317,15 +28317,15 @@ function oL(e) {
   const r = Pe.join(t, "dist-electron");
   let n;
   if (process.env.NODE_ENV !== "development")
-    n = Pe.join(r, e), T(ut, `[Prod Mode] Resolving preload path for: ${e}. Checking: ${n}`), it.existsSync(n) ? T(ut, `[Prod Mode] Preload path FOUND: ${n}`) : Z(ut, `[Prod Mode] Preload path NOT FOUND: ${n}. Preload script will fail to load.`);
+    n = Pe.join(r, e), T(ut, `[Prod Mode] Resolving preload path for: ${e}. Checking: ${n}`), rt.existsSync(n) ? T(ut, `[Prod Mode] Preload path FOUND: ${n}`) : Z(ut, `[Prod Mode] Preload path NOT FOUND: ${n}. Preload script will fail to load.`);
   else {
     const i = Pe.join(t, "electron", e);
-    if (he(ut, `[Dev Mode] Resolving preload path for: ${e}. Checking: ${i}`), it.existsSync(i))
+    if (he(ut, `[Dev Mode] Resolving preload path for: ${e}. Checking: ${i}`), rt.existsSync(i))
       n = i, T(ut, `[Dev Mode] Preload path FOUND: ${n}`);
     else {
       Ce(ut, `[Dev Mode] Preload path NOT FOUND: ${i}. Attempting fallback.`);
       const s = Pe.join(r, e);
-      he(ut, `[Dev Mode] Checking fallback preload path: ${s}`), it.existsSync(s) ? (n = s, T(ut, `[Dev Mode] Fallback preload path FOUND: ${n}`)) : Z(ut, `[Dev Mode] Fallback preload path NOT FOUND: ${s}. Preload script will likely fail to load.`);
+      he(ut, `[Dev Mode] Checking fallback preload path: ${s}`), rt.existsSync(s) ? (n = s, T(ut, `[Dev Mode] Fallback preload path FOUND: ${n}`)) : Z(ut, `[Dev Mode] Fallback preload path NOT FOUND: ${s}. Preload script will likely fail to load.`);
     }
   }
   if (!n) {
@@ -28527,7 +28527,7 @@ new Zf({
   }
 });
 const de = "WindowManager", z0e = NA(import.meta.url), rp = Pe.dirname(z0e);
-let nt = null, Dt = null, Nt = null, uL = null, Xe = null, io = null, o9 = null;
+let it = null, Dt = null, Nt = null, uL = null, Xe = null, io = null, o9 = null;
 function np(e, t) {
   if (!Ye.isPackaged && !process.env.CI) {
     T(de, `[DevTools] Development mode - enabling DevTools for ${t}`);
@@ -28831,11 +28831,11 @@ function ic() {
     const u = Pe.join(a, s);
     he(de, `Checking production icon path inside app/dist: ${u}`);
     try {
-      if (it.existsSync(u))
+      if (rt.existsSync(u))
         n = u, he(de, `Found icon at: ${n}`);
       else if (Z(de, `Preferred icon (${s}) not found at ${u}.`), i) {
         const o = Pe.join(a, "voidlog-icon.png");
-        Ce(de, `Windows ICO not found, checking for PNG fallback: ${o}`), it.existsSync(o) ? (n = o, T(de, `Found fallback PNG icon at: ${n}`)) : Z(de, `Fallback PNG icon also not found at ${o}.`);
+        Ce(de, `Windows ICO not found, checking for PNG fallback: ${o}`), rt.existsSync(o) ? (n = o, T(de, `Found fallback PNG icon at: ${n}`)) : Z(de, `Fallback PNG icon also not found at ${o}.`);
       }
     } catch (o) {
       Z(de, `Error checking icon path ${u}: ${o.message}`);
@@ -28852,15 +28852,15 @@ function qa(e) {
   he(de, `Calculated mainDist for preload: ${r}`);
   let n;
   if (Ye.isPackaged)
-    n = Pe.join(r, e), T(de, `[Prod Mode] Resolving preload path for: ${e}. Checking: ${n}`), it.existsSync(n) ? T(de, `[Prod Mode] Preload path FOUND: ${n}`) : Z(de, `[Prod Mode] Preload path NOT FOUND: ${n}. Preload script will fail to load.`);
+    n = Pe.join(r, e), T(de, `[Prod Mode] Resolving preload path for: ${e}. Checking: ${n}`), rt.existsSync(n) ? T(de, `[Prod Mode] Preload path FOUND: ${n}`) : Z(de, `[Prod Mode] Preload path NOT FOUND: ${n}. Preload script will fail to load.`);
   else {
     const i = Pe.join(t, "electron", e);
-    if (he(de, `[Dev Mode] Resolving preload path for: ${e}. Checking: ${i}`), it.existsSync(i))
+    if (he(de, `[Dev Mode] Resolving preload path for: ${e}. Checking: ${i}`), rt.existsSync(i))
       n = i, T(de, `[Dev Mode] Preload path FOUND: ${n}`);
     else {
       Ce(de, `[Dev Mode] Preload path NOT FOUND: ${i}. Attempting fallback.`);
       const s = Pe.join(r, e);
-      he(de, `[Dev Mode] Checking fallback preload path: ${s}`), it.existsSync(s) ? (n = s, T(de, `[Dev Mode] Fallback preload path FOUND: ${n}`)) : Z(de, `[Dev Mode] Fallback preload path NOT FOUND: ${s}. Preload script will likely fail to load.`);
+      he(de, `[Dev Mode] Checking fallback preload path: ${s}`), rt.existsSync(s) ? (n = s, T(de, `[Dev Mode] Fallback preload path FOUND: ${n}`)) : Z(de, `[Dev Mode] Fallback preload path NOT FOUND: ${s}. Preload script will likely fail to load.`);
     }
   }
   if (!n) {
@@ -28870,8 +28870,8 @@ function qa(e) {
   return T(de, `Resolved preload path for ${e}: ${n}`), n;
 }
 function ip(e) {
-  if (nt)
-    return nt.focus(), nt;
+  if (it)
+    return it.focus(), it;
   const t = 600, r = cs.getPrimaryDisplay(), { height: n } = r.workAreaSize, i = Math.floor(n * 0.9), s = Uo.get("windowBounds"), u = {
     icon: ic() || void 0,
     // Use found path or let Electron default
@@ -28908,45 +28908,45 @@ function ip(e) {
   s ? cs.getAllDisplays().some((A) => {
     const f = A.workArea;
     return s.x < f.x + f.width && s.x + s.width > f.x && s.y < f.y + f.height && s.y + s.height > f.y;
-  }) ? (T(de, "Applying saved window bounds:", s), u.x = s.x, u.y = s.y, u.width = s.width, u.height = s.height) : (Ce(de, "Saved window bounds are outside visible screen area. Using defaults."), Uo.delete("windowBounds")) : T(de, `No saved bounds found. Using default size: ${t}x${i}`), nt = new qt(u), qA.attachTitlebarToWindow(nt), nt.setTitle("SC Kill Feed"), np(nt, "main window"), nt.on("ready-to-show", () => {
-    nt == null || nt.show(), nt && bA(nt);
-  }), nt.webContents.on("did-finish-load", () => {
-    nt == null || nt.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`), !Ye.isPackaged && !process.env.CI && (setTimeout(() => {
-      if (nt && !nt.isDestroyed()) {
+  }) ? (T(de, "Applying saved window bounds:", s), u.x = s.x, u.y = s.y, u.width = s.width, u.height = s.height) : (Ce(de, "Saved window bounds are outside visible screen area. Using defaults."), Uo.delete("windowBounds")) : T(de, `No saved bounds found. Using default size: ${t}x${i}`), it = new qt(u), qA.attachTitlebarToWindow(it), it.setTitle("SC Kill Feed"), np(it, "main window"), it.on("ready-to-show", () => {
+    it == null || it.show(), it && bA(it);
+  }), it.webContents.on("did-finish-load", () => {
+    it == null || it.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`), !Ye.isPackaged && !process.env.CI && (setTimeout(() => {
+      if (it && !it.isDestroyed()) {
         T(de, "[DevTools] FORCING DevTools open after did-finish-load (attempt 1)");
         try {
-          nt.webContents.openDevTools({ mode: "right" });
+          it.webContents.openDevTools({ mode: "right" });
         } catch (c) {
           Z(de, "[DevTools] Immediate force failed:", c);
         }
       }
     }, 500), setTimeout(() => {
-      if (nt && !nt.isDestroyed()) {
+      if (it && !it.isDestroyed()) {
         T(de, "[DevTools] FORCING DevTools open (attempt 2 - 3 seconds)");
         try {
-          nt.webContents.openDevTools({ mode: "bottom" });
+          it.webContents.openDevTools({ mode: "bottom" });
         } catch (c) {
           Z(de, "[DevTools] 3-second force failed:", c);
         }
       }
     }, 3e3), setTimeout(() => {
-      if (nt && !nt.isDestroyed()) {
+      if (it && !it.isDestroyed()) {
         T(de, "[DevTools] FORCING DevTools open (attempt 3 - 5 seconds)");
         try {
-          nt.webContents.openDevTools({ mode: "detach" }), T(de, "[DevTools] Final force attempt completed");
+          it.webContents.openDevTools({ mode: "detach" }), T(de, "[DevTools] Final force attempt completed");
         } catch (c) {
           Z(de, "[DevTools] 5-second force failed:", c);
         }
       }
     }, 5e3), setTimeout(() => {
-      if (nt && !nt.isDestroyed())
-        if (nt.webContents.isDevToolsOpened())
+      if (it && !it.isDestroyed())
+        if (it.webContents.isDevToolsOpened())
           T(de, "[DevTools] Finally confirmed open after delays");
         else {
           Ce(de, "[DevTools] STILL NOT OPEN after 10 seconds - NUCLEAR OPTION");
           try {
-            nt.webContents.closeDevTools(), setTimeout(() => {
-              nt && !nt.isDestroyed() && nt.webContents.openDevTools({ mode: "right" });
+            it.webContents.closeDevTools(), setTimeout(() => {
+              it && !it.isDestroyed() && it.webContents.openDevTools({ mode: "right" });
             }, 200);
           } catch (d) {
             Z(de, "[DevTools] Nuclear option failed:", d);
@@ -28956,7 +28956,7 @@ function ip(e) {
   });
   const o = process.env.VITE_DEV_SERVER_URL;
   if (o)
-    T(de, `Loading main window from dev server: ${o}`), nt.loadURL(o).catch((c) => Z(de, "Failed to load main window from dev server:", c));
+    T(de, `Loading main window from dev server: ${o}`), it.loadURL(o).catch((c) => Z(de, "Failed to load main window from dev server:", c));
   else {
     const c = DA.format({
       pathname: Pe.join(rp, "..", "dist", "index.html"),
@@ -28964,11 +28964,11 @@ function ip(e) {
       protocol: "file:",
       slashes: !0
     });
-    T(de, `Loading main window from URL: ${c}`), nt.loadURL(c).catch((d) => {
-      Z(de, `Failed to load index.html from ${c}:`, d), nt && nt.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${c}. Please check application integrity and logs.</p><p>${d}</p>`)}`);
+    T(de, `Loading main window from URL: ${c}`), it.loadURL(c).catch((d) => {
+      Z(de, `Failed to load index.html from ${c}:`, d), it && it.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<h1>Error</h1><p>Could not load application content from ${c}. Please check application integrity and logs.</p><p>${d}</p>`)}`);
     });
   }
-  nt.webContents.setWindowOpenHandler(({ url: c }) => {
+  it.webContents.setWindowOpenHandler(({ url: c }) => {
     const A = process.env.NODE_ENV === "development" ? "http://localhost:3001" : "https://killfeed.sinfulshadows.com";
     try {
       const p = new URL(c).pathname;
@@ -28980,13 +28980,13 @@ function ip(e) {
       Z(de, `Failed to parse or handle URL: ${c}`, f);
     }
     return c.startsWith("http:") || c.startsWith("https:") ? (T(de, `Opening external link from main window: ${c}`), k0.openExternal(c), { action: "deny" }) : { action: "deny" };
-  }), nt.on("close", (c) => {
-    lw ? T(de, "Main window close allowed during quit sequence.") : (T(de, "Main window close intercepted: Hiding window."), c.preventDefault(), nt == null || nt.hide());
-  }), nt.on("closed", () => {
-    nt = null;
+  }), it.on("close", (c) => {
+    lw ? T(de, "Main window close allowed during quit sequence.") : (T(de, "Main window close intercepted: Hiding window."), c.preventDefault(), it == null || it.hide());
+  }), it.on("closed", () => {
+    it = null;
   });
-  const l = eE(nt, "windowBounds");
-  return nt.on("resize", l), nt.on("move", l), nt;
+  const l = eE(it, "windowBounds");
+  return it.on("resize", l), it.on("move", l), it;
 }
 function dy() {
   if (Dt)
@@ -29056,7 +29056,7 @@ function dy() {
   return Dt.on("resize", a), Dt.on("move", a), Dt.webContents.setWindowOpenHandler(({ url: u }) => u.startsWith("http:") || u.startsWith("https:") ? (k0.openExternal(u), { action: "deny" }) : { action: "deny" }), Dt;
 }
 function cL(e, t) {
-  if (!nt)
+  if (!it)
     return Z(de, "Cannot create event details window: Main window does not exist."), null;
   o9 = e;
   const r = Uo.get("eventDetailsWindowBounds"), i = cs.getPrimaryDisplay().workAreaSize.width, a = {
@@ -29290,7 +29290,7 @@ function _m() {
   Xe && !Xe.isDestroyed() && Xe.close();
 }
 function ft() {
-  return nt;
+  return it;
 }
 function py() {
   return Nt;
@@ -133000,8 +133000,8 @@ function bi() {
     const le = Ee(ce), De = we(ce, le);
     for (const $e of De) {
       const Ke = $e.algo, yt = $e.hash;
-      let rt = E.createHash(Ke).update(G).digest("base64");
-      if (rt[rt.length - 1] === "=" && (rt[rt.length - 2] === "=" ? rt = rt.slice(0, -2) : rt = rt.slice(0, -1)), Se(rt, yt))
+      let nt = E.createHash(Ke).update(G).digest("base64");
+      if (nt[nt.length - 1] === "=" && (nt[nt.length - 2] === "=" ? nt = nt.slice(0, -2) : nt = nt.slice(0, -1)), Se(nt, yt))
         return !0;
     }
     return !1;
@@ -133139,8 +133139,8 @@ function bi() {
         value: `${G} Iterator`
       },
       next: { writable: !0, enumerable: !0, configurable: !0 }
-    }), function(rt, Qt) {
-      return new De(rt, Qt);
+    }), function(nt, Qt) {
+      return new De(nt, Qt);
     };
   }
   function en(G, se, ce, le = 0, De = 1) {
@@ -133173,13 +133173,13 @@ function bi() {
         writable: !0,
         enumerable: !0,
         configurable: !0,
-        value: function(rt, Qt = globalThis) {
-          if (m.brandCheck(this, se), m.argumentLengthCheck(arguments, 1, `${G}.forEach`), typeof rt != "function")
+        value: function(nt, Qt = globalThis) {
+          if (m.brandCheck(this, se), m.argumentLengthCheck(arguments, 1, `${G}.forEach`), typeof nt != "function")
             throw new TypeError(
               `Failed to execute 'forEach' on '${G}': parameter 1 is not of type 'Function'.`
             );
           for (const { 0: ze, 1: ir } of $e(this, "key+value"))
-            rt.call(Qt, ir, ze, this);
+            nt.call(Qt, ir, ze, this);
         }
       }
     };
@@ -133256,38 +133256,38 @@ function bi() {
       return "failure";
     const le = { position: 5 };
     if (se && a(
-      (rt) => rt === "	" || rt === " ",
+      (nt) => nt === "	" || nt === " ",
       ce,
       le
     ), ce.charCodeAt(le.position) !== 61)
       return "failure";
     le.position++, se && a(
-      (rt) => rt === "	" || rt === " ",
+      (nt) => nt === "	" || nt === " ",
       ce,
       le
     );
     const De = a(
-      (rt) => {
-        const Qt = rt.charCodeAt(0);
+      (nt) => {
+        const Qt = nt.charCodeAt(0);
         return Qt >= 48 && Qt <= 57;
       },
       ce,
       le
     ), $e = De.length ? Number(De) : null;
     if (se && a(
-      (rt) => rt === "	" || rt === " ",
+      (nt) => nt === "	" || nt === " ",
       ce,
       le
     ), ce.charCodeAt(le.position) !== 45)
       return "failure";
     le.position++, se && a(
-      (rt) => rt === "	" || rt === " ",
+      (nt) => nt === "	" || nt === " ",
       ce,
       le
     );
     const Ke = a(
-      (rt) => {
-        const Qt = rt.charCodeAt(0);
+      (nt) => {
+        const Qt = nt.charCodeAt(0);
         return Qt >= 48 && Qt <= 57;
       },
       ce,
@@ -140522,7 +140522,7 @@ function DE() {
     Es(pe, "fetch");
   }
   function ai(pe, Oe = void 0) {
-    var rt;
+    var nt;
     en.argumentLengthCheck(arguments, 1, "globalThis.fetch");
     let G = M(), se;
     try {
@@ -140534,7 +140534,7 @@ function DE() {
     if (se.signal.aborted)
       return ra(G, ce, null, se.signal.reason), G.promise;
     const le = ce.client.globalObject;
-    ((rt = le == null ? void 0 : le.constructor) == null ? void 0 : rt.name) === "ServiceWorkerGlobalScope" && (ce.serviceWorkers = "none");
+    ((nt = le == null ? void 0 : le.constructor) == null ? void 0 : nt.name) === "ServiceWorkerGlobalScope" && (ce.serviceWorkers = "none");
     let De = null, $e = !1, Ke = null;
     return Fe(
       se.signal,
@@ -140611,8 +140611,8 @@ function DE() {
     S($e);
     let Ke = null, yt = !1;
     pe.client != null && (Ke = pe.client.globalObject, yt = pe.client.crossOriginIsolatedCapability);
-    const rt = O(yt), Qt = R({
-      startTime: rt
+    const nt = O(yt), Qt = R({
+      startTime: nt
     }), ze = {
       controller: new si($e),
       request: pe,
@@ -140683,10 +140683,10 @@ function DE() {
         const le = n(), De = ce.size, $e = q(`${De}`), Ke = ce.type;
         if (Oe.headersList.contains("range", !0)) {
           le.rangeRequested = !0;
-          const yt = Oe.headersList.get("range", !0), rt = y(yt, !0);
-          if (rt === "failure")
+          const yt = Oe.headersList.get("range", !0), nt = y(yt, !0);
+          if (nt === "failure")
             return Promise.resolve(e("failed to fetch the data URL"));
-          let { rangeStartValue: Qt, rangeEndValue: ze } = rt;
+          let { rangeStartValue: Qt, rangeEndValue: ze } = nt;
           if (Qt === null)
             Qt = De - ze, ze = Qt + ze - 1;
           else {
@@ -140743,8 +140743,8 @@ function DE() {
         let yt = 0;
         if (pe.request.mode !== "navigator" || !Oe.hasCrossOriginRedirects) {
           yt = Oe.status;
-          const rt = L(Oe.headersList);
-          rt !== "failure" && (Ke.contentType = Pr(rt));
+          const nt = L(Oe.headersList);
+          nt !== "failure" && (Ke.contentType = Pr(nt));
         }
         pe.request.initiatorType != null && ta(G, pe.request.url.href, pe.request.initiatorType, globalThis, $e, Ke, yt);
       };
@@ -140819,12 +140819,12 @@ function DE() {
     if (le.body == null && ["POST", "PUT"].includes(le.method) && (yt = "0"), Ke != null && (yt = q(`${Ke}`)), yt != null && le.headersList.append("content-length", yt, !0), Ke != null && le.keepalive, en.is.URL(le.referrer) && le.headersList.append("referer", q(le.referrer.href), !0), g(le), Q(le), le.headersList.contains("user-agent", !0) || le.headersList.append("user-agent", vi, !0), le.cache === "default" && (le.headersList.contains("if-modified-since", !0) || le.headersList.contains("if-none-match", !0) || le.headersList.contains("if-unmodified-since", !0) || le.headersList.contains("if-match", !0) || le.headersList.contains("if-range", !0)) && (le.cache = "no-store"), le.cache === "no-cache" && !le.preventNoCacheCacheControlHeaderModification && !le.headersList.contains("cache-control", !0) && le.headersList.append("cache-control", "max-age=0", !0), (le.cache === "no-store" || le.cache === "reload") && (le.headersList.contains("pragma", !0) || le.headersList.append("pragma", "no-cache", !0), le.headersList.contains("cache-control", !0) || le.headersList.append("cache-control", "no-cache", !0)), le.headersList.contains("range", !0) && le.headersList.append("accept-encoding", "identity", !0), le.headersList.contains("accept-encoding", !0) || (H(w(le)) ? le.headersList.append("accept-encoding", "br, gzip, deflate", !0) : le.headersList.append("accept-encoding", "gzip, deflate", !0)), le.headersList.delete("host", !0), le.cache = "no-store", le.cache !== "no-store" && le.cache, De == null) {
       if (le.cache === "only-if-cached")
         return e("only if cached");
-      const rt = await Ac(
+      const nt = await Ac(
         ce,
         $e,
         G
       );
-      !Y.has(le.method) && rt.status >= 200 && rt.status <= 399, De == null && (De = rt);
+      !Y.has(le.method) && nt.status >= 200 && nt.status <= 399, De == null && (De = nt);
     }
     if (De.urlList = [...le.urlList], le.headersList.contains("range", !0) && (De.rangeRequested = !0), De.requestIncludesCredentials = $e, De.status === 407)
       return se.window === "no-window" ? e() : D(pe) ? t(pe) : e("proxy authentication required");
@@ -140906,7 +140906,7 @@ function DE() {
         type: "bytes"
       }
     );
-    ce.body = { stream: yt, source: null, length: null }, pe.controller.resume || pe.controller.on("terminated", rt), pe.controller.resume = async () => {
+    ce.body = { stream: yt, source: null, length: null }, pe.controller.resume || pe.controller.on("terminated", nt), pe.controller.resume = async () => {
       for (; ; ) {
         let ze, ir;
         try {
@@ -140934,7 +140934,7 @@ function DE() {
           return;
       }
     };
-    function rt(ze) {
+    function nt(ze) {
       x(pe) ? (ce.aborted = !0, Me(yt) && pe.controller.controller.error(
         pe.controller.serializedAbortReason
       )) : Me(yt) && pe.controller.controller.error(new TypeError("terminated", {
@@ -146930,7 +146930,7 @@ function rve() {
       const { autoUpdater: e } = require("electron-updater"), t = Pe.dirname(process.execPath), r = ["ffmpeg.dll", "libEGL.dll", "libGLESv2.dll"], n = [];
       for (const a of r) {
         const u = Pe.join(t, a);
-        require("fs").existsSync(u) || (n.push(a), Ce(Te, `Critical file missing before update: ${a} at ${u}`));
+        rt.existsSync(u) || (n.push(a), Ce(Te, `Critical file missing before update: ${a} at ${u}`));
       }
       n.length > 0 && Ce(Te, `Missing DLLs detected: ${n.join(", ")}. Proceeding with update anyway.`), T(Te, "Preparing to quit and install update..."), await new Promise((a) => setTimeout(a, 500));
       const i = qt.getAllWindows();
@@ -147224,7 +147224,7 @@ async function lve() {
     for (const l of u) {
       const c = Pe.join(a, l);
       try {
-        require("fs").existsSync(c) ? he(Le, `DLL verification passed: ${l}`) : (o.push(l), Z(Le, `CRITICAL: Missing required DLL: ${l} at ${c}`));
+        rt.existsSync(c) ? he(Le, `DLL verification passed: ${l}`) : (o.push(l), Z(Le, `CRITICAL: Missing required DLL: ${l} at ${c}`));
       } catch (d) {
         Z(Le, `Error checking for ${l}:`, d), o.push(l);
       }

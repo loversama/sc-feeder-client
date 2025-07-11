@@ -1,5 +1,6 @@
 import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'; // Import app and shell
 import path from 'node:path';
+import fs from 'node:fs';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
 // Import window management functions
 import {
@@ -602,7 +603,7 @@ ipcMain.handle('auth:show-login', () => {
             
             for (const file of requiredFiles) {
                 const filePath = path.join(appDir, file);
-                if (!require('fs').existsSync(filePath)) {
+                if (!fs.existsSync(filePath)) {
                     missingFiles.push(file);
                     logger.warn(MODULE_NAME, `Critical file missing before update: ${file} at ${filePath}`);
                 }
