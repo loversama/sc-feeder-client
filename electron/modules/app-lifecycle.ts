@@ -18,7 +18,7 @@ import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
-import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestModeAndRemember, hasActiveAuthSession, getRefreshToken } from './auth-manager'; // Import initializeAuth and getPersistedClientId
+import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestMode, setGuestModeAndRemember, hasActiveAuthSession, getRefreshToken } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import { initializeEventProcessor } from './event-processor'; // Import EventProcessor initialization
 import {
   getOfflineMode,
@@ -110,13 +110,14 @@ async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
     ipcMain.once('login-completed', handleLoginComplete);
     ipcMain.once('guest-mode-selected', handleGuestModeSelected);
     
-    // Handle window close (treat as guest mode)
+    // Handle window close (temporary guest mode, don't save preference)
     loginWindow.on('closed', async () => {
-      logger.info(MODULE_NAME, 'Login window closed, defaulting to guest mode');
-      await setGuestModeAndRemember();
+      logger.info(MODULE_NAME, 'Login window closed, using temporary guest mode without saving preference');
+      // Set guest mode for this session only, without saving the preference
+      await setGuestMode(); // This sets guest mode temporarily without remembering the choice
       ipcMain.removeListener('login-completed', handleLoginComplete);
       ipcMain.removeListener('guest-mode-selected', handleGuestModeSelected);
-      resolve({ authAlreadyInitialized: true }); // Guest mode was set
+      resolve({ authAlreadyInitialized: true }); // Guest mode was set temporarily
     });
   });
 }

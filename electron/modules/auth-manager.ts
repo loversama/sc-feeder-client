@@ -724,20 +724,32 @@ export async function requestAndStoreGuestToken(): Promise<boolean> {
     }
 }
 
-export async function setGuestModeAndRemember(): Promise<void> {
-  logger.info(MODULE_NAME, 'Setting guest mode preference...');
+export async function setGuestMode(): Promise<void> {
+  logger.info(MODULE_NAME, 'Setting temporary guest mode (without saving preference)...');
   
   // Clear all auth data to ensure clean guest mode state
   await clearAllAuthDataComprehensive();
   
-  setGuestModePreference(true);
+  // NOTE: Do NOT set guestModePreference(true) - this is temporary guest mode
   setHasShownInitialLogin(true);
   hasActiveSession = true; // Set active session flag for guest mode
   
   // Request guest token
   await requestAndStoreGuestToken();
   
-  logger.info(MODULE_NAME, 'Guest mode preference set and remembered, auth data cleared');
+  logger.info(MODULE_NAME, 'Temporary guest mode set, auth data cleared (preference not saved)');
+}
+
+export async function setGuestModeAndRemember(): Promise<void> {
+  logger.info(MODULE_NAME, 'Setting guest mode preference...');
+  
+  // Use the temporary guest mode function first
+  await setGuestMode();
+  
+  // Then save the preference to remember this choice
+  setGuestModePreference(true);
+  
+  logger.info(MODULE_NAME, 'Guest mode preference set and remembered');
 }
 
 
