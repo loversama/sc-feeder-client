@@ -204,7 +204,7 @@ autoUpdater.on('update-downloaded', (info) => {
 let lastNotificationTime = 0;
 const NOTIFICATION_COOLDOWN = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
-// Check for updates every 5 minutes (300000 milliseconds)
+// Check for updates every 1 hour (3600000 milliseconds) to reduce update conflicts
 setInterval(() => {
   logger.info(MODULE_NAME, 'Checking for updates...');
   const mainWindow = getMainWindow();
@@ -227,4 +227,4 @@ setInterval(() => {
   
   // Always check for updates in background
   autoUpdater.checkForUpdates();
-}, 300000);
+}, 3600000); // 1 hour = 3600000 milliseconds

@@ -6,7 +6,7 @@ var PM = (e, t, r) => t in e ? xM(e, t, { enumerable: !0, configurable: !0, writ
 var ke = (e, t, r) => PM(e, typeof t != "symbol" ? t + "" : t, r), OE = (e, t, r) => t.has(e) || $E("Cannot " + r), bw = (e, t) => Object(t) !== t ? $E('Cannot use the "in" operator on this value') : e.has(t), b = (e, t, r) => (OE(e, t, "read from private field"), r ? r.call(e) : t.get(e)), me = (e, t, r) => t.has(e) ? $E("Cannot add the same private member more than once") : t instanceof WeakSet ? t.add(e) : t.set(e, r), oe = (e, t, r, n) => (OE(e, t, "write to private field"), n ? n.call(e, r) : t.set(e, r), r), ot = (e, t, r) => (OE(e, t, "access private method"), r);
 import DA, { fileURLToPath as NA, URL as HM } from "node:url";
 import He, { resolve as Bw, join as VM, relative as GM, sep as YM } from "node:path";
-import Va, { app as je, Tray as UE, nativeImage as K3, Menu as eD, safeStorage as xi, BrowserWindow as qt, webContents as Z3, ipcMain as Ie, session as R0, WebContentsView as dC, screen as cs, shell as k0, Notification as vw, dialog as WM, globalShortcut as e8 } from "electron";
+import Va, { app as Ye, Tray as UE, nativeImage as K3, Menu as eD, safeStorage as xi, BrowserWindow as qt, webContents as Z3, ipcMain as Ie, session as R0, WebContentsView as dC, screen as cs, shell as k0, Notification as vw, dialog as WM, globalShortcut as e8 } from "electron";
 import Ws, { unwatchFile as _w, watchFile as qM, watch as jM, stat as JM } from "fs";
 import zM from "constants";
 import Ur from "stream";
@@ -3379,11 +3379,11 @@ Actual: ` + L.attribValue
           });
         });
         for (var ae = 0, Y = L.attribList.length; ae < Y; ae++) {
-          var K = L.attribList[ae], fe = K[0], Ee = K[1], we = q(fe, !0), Se = we.prefix, Ye = we.local, Ne = Se === "" ? "" : ne.ns[Se] || "", Ue = {
+          var K = L.attribList[ae], fe = K[0], Ee = K[1], we = q(fe, !0), Se = we.prefix, We = we.local, Ne = Se === "" ? "" : ne.ns[Se] || "", Ue = {
             name: fe,
             value: Ee,
             prefix: Se,
-            local: Ye,
+            local: We,
             uri: Ne
           };
           Se && Se !== "xmlns" && !Ne && (U(L, "Unbound namespace prefix: " + JSON.stringify(Se)), Ue.uri = Se), L.tag.attributes[fe] = Ue, M(L, "onattribute", Ue);
@@ -5990,7 +5990,7 @@ um.exports;
       Ve[Be] = ue(Be);
     return Ve;
   }
-  function Ye(Z) {
+  function We(Z) {
     return function(ue) {
       return Z(ue);
     };
@@ -6422,7 +6422,7 @@ um.exports;
   function u1(Z) {
     return Z != null && typeof Z == "object";
   }
-  var yw = K ? Ye(K) : bM;
+  var yw = K ? We(K) : bM;
   function OM(Z) {
     return LM(Z) ? CM(Z) : BM(Z);
   }
@@ -10844,7 +10844,7 @@ function BK(e, t) {
 wn.getSchemaRefs = BK;
 Object.defineProperty(Vs, "__esModule", { value: !0 });
 Vs.getData = Vs.KeywordCxt = Vs.validateFunctionCode = void 0;
-const UR = fA, kB = Jr, n5 = Qo, cm = Jr, vK = Bg, a0 = La, E6 = Hu, We = ht, dt = Gi, _K = wn, To = xe, h1 = Wf;
+const UR = fA, kB = Jr, n5 = Qo, cm = Jr, vK = Bg, a0 = La, E6 = Hu, qe = ht, dt = Gi, _K = wn, To = xe, h1 = Wf;
 function SK(e) {
   if (PR(e) && (HR(e), xR(e))) {
     DK(e);
@@ -10854,18 +10854,18 @@ function SK(e) {
 }
 Vs.validateFunctionCode = SK;
 function MR({ gen: e, validateName: t, schema: r, schemaEnv: n, opts: i }, s) {
-  i.code.es5 ? e.func(t, (0, We._)`${dt.default.data}, ${dt.default.valCxt}`, n.$async, () => {
-    e.code((0, We._)`"use strict"; ${FB(r, i)}`), TK(e, i), e.code(s);
-  }) : e.func(t, (0, We._)`${dt.default.data}, ${QK(i)}`, n.$async, () => e.code(FB(r, i)).code(s));
+  i.code.es5 ? e.func(t, (0, qe._)`${dt.default.data}, ${dt.default.valCxt}`, n.$async, () => {
+    e.code((0, qe._)`"use strict"; ${FB(r, i)}`), TK(e, i), e.code(s);
+  }) : e.func(t, (0, qe._)`${dt.default.data}, ${QK(i)}`, n.$async, () => e.code(FB(r, i)).code(s));
 }
 function QK(e) {
-  return (0, We._)`{${dt.default.instancePath}="", ${dt.default.parentData}, ${dt.default.parentDataProperty}, ${dt.default.rootData}=${dt.default.data}${e.dynamicRef ? (0, We._)`, ${dt.default.dynamicAnchors}={}` : We.nil}}={}`;
+  return (0, qe._)`{${dt.default.instancePath}="", ${dt.default.parentData}, ${dt.default.parentDataProperty}, ${dt.default.rootData}=${dt.default.data}${e.dynamicRef ? (0, qe._)`, ${dt.default.dynamicAnchors}={}` : qe.nil}}={}`;
 }
 function TK(e, t) {
   e.if(dt.default.valCxt, () => {
-    e.var(dt.default.instancePath, (0, We._)`${dt.default.valCxt}.${dt.default.instancePath}`), e.var(dt.default.parentData, (0, We._)`${dt.default.valCxt}.${dt.default.parentData}`), e.var(dt.default.parentDataProperty, (0, We._)`${dt.default.valCxt}.${dt.default.parentDataProperty}`), e.var(dt.default.rootData, (0, We._)`${dt.default.valCxt}.${dt.default.rootData}`), t.dynamicRef && e.var(dt.default.dynamicAnchors, (0, We._)`${dt.default.valCxt}.${dt.default.dynamicAnchors}`);
+    e.var(dt.default.instancePath, (0, qe._)`${dt.default.valCxt}.${dt.default.instancePath}`), e.var(dt.default.parentData, (0, qe._)`${dt.default.valCxt}.${dt.default.parentData}`), e.var(dt.default.parentDataProperty, (0, qe._)`${dt.default.valCxt}.${dt.default.parentDataProperty}`), e.var(dt.default.rootData, (0, qe._)`${dt.default.valCxt}.${dt.default.rootData}`), t.dynamicRef && e.var(dt.default.dynamicAnchors, (0, qe._)`${dt.default.valCxt}.${dt.default.dynamicAnchors}`);
   }, () => {
-    e.var(dt.default.instancePath, (0, We._)`""`), e.var(dt.default.parentData, (0, We._)`undefined`), e.var(dt.default.parentDataProperty, (0, We._)`undefined`), e.var(dt.default.rootData, dt.default.data), t.dynamicRef && e.var(dt.default.dynamicAnchors, (0, We._)`{}`);
+    e.var(dt.default.instancePath, (0, qe._)`""`), e.var(dt.default.parentData, (0, qe._)`undefined`), e.var(dt.default.parentDataProperty, (0, qe._)`undefined`), e.var(dt.default.rootData, dt.default.data), t.dynamicRef && e.var(dt.default.dynamicAnchors, (0, qe._)`{}`);
   });
 }
 function DK(e) {
@@ -10876,11 +10876,11 @@ function DK(e) {
 }
 function NK(e) {
   const { gen: t, validateName: r } = e;
-  e.evaluated = t.const("evaluated", (0, We._)`${r}.evaluated`), t.if((0, We._)`${e.evaluated}.dynamicProps`, () => t.assign((0, We._)`${e.evaluated}.props`, (0, We._)`undefined`)), t.if((0, We._)`${e.evaluated}.dynamicItems`, () => t.assign((0, We._)`${e.evaluated}.items`, (0, We._)`undefined`));
+  e.evaluated = t.const("evaluated", (0, qe._)`${r}.evaluated`), t.if((0, qe._)`${e.evaluated}.dynamicProps`, () => t.assign((0, qe._)`${e.evaluated}.props`, (0, qe._)`undefined`)), t.if((0, qe._)`${e.evaluated}.dynamicItems`, () => t.assign((0, qe._)`${e.evaluated}.items`, (0, qe._)`undefined`));
 }
 function FB(e, t) {
   const r = typeof e == "object" && e[t.schemaId];
-  return r && (t.code.source || t.code.process) ? (0, We._)`/*# sourceURL=${r} */` : We.nil;
+  return r && (t.code.source || t.code.process) ? (0, qe._)`/*# sourceURL=${r} */` : qe.nil;
 }
 function RK(e, t) {
   if (PR(e) && (HR(e), xR(e))) {
@@ -10904,7 +10904,7 @@ function kK(e, t) {
   const { schema: r, gen: n, opts: i } = e;
   i.$comment && r.$comment && GR(e), $K(e), OK(e);
   const s = n.const("_errs", dt.default.errors);
-  VR(e, s), n.var(t, (0, We._)`${s} === ${dt.default.errors}`);
+  VR(e, s), n.var(t, (0, qe._)`${s} === ${dt.default.errors}`);
 }
 function HR(e) {
   (0, To.checkUnknownRules)(e), FK(e);
@@ -10934,18 +10934,18 @@ function OK(e) {
 function GR({ gen: e, schemaEnv: t, schema: r, errSchemaPath: n, opts: i }) {
   const s = r.$comment;
   if (i.$comment === !0)
-    e.code((0, We._)`${dt.default.self}.logger.log(${s})`);
+    e.code((0, qe._)`${dt.default.self}.logger.log(${s})`);
   else if (typeof i.$comment == "function") {
-    const a = (0, We.str)`${n}/$comment`, u = e.scopeValue("root", { ref: t.root });
-    e.code((0, We._)`${dt.default.self}.opts.$comment(${s}, ${a}, ${u}.schema)`);
+    const a = (0, qe.str)`${n}/$comment`, u = e.scopeValue("root", { ref: t.root });
+    e.code((0, qe._)`${dt.default.self}.opts.$comment(${s}, ${a}, ${u}.schema)`);
   }
 }
 function UK(e) {
   const { gen: t, schemaEnv: r, validateName: n, ValidationError: i, opts: s } = e;
-  r.$async ? t.if((0, We._)`${dt.default.errors} === 0`, () => t.return(dt.default.data), () => t.throw((0, We._)`new ${i}(${dt.default.vErrors})`)) : (t.assign((0, We._)`${n}.errors`, dt.default.vErrors), s.unevaluated && MK(e), t.return((0, We._)`${dt.default.errors} === 0`));
+  r.$async ? t.if((0, qe._)`${dt.default.errors} === 0`, () => t.return(dt.default.data), () => t.throw((0, qe._)`new ${i}(${dt.default.vErrors})`)) : (t.assign((0, qe._)`${n}.errors`, dt.default.vErrors), s.unevaluated && MK(e), t.return((0, qe._)`${dt.default.errors} === 0`));
 }
 function MK({ gen: e, evaluated: t, props: r, items: n }) {
-  r instanceof We.Name && e.assign((0, We._)`${t}.props`, r), n instanceof We.Name && e.assign((0, We._)`${t}.items`, n);
+  r instanceof qe.Name && e.assign((0, qe._)`${t}.props`, r), n instanceof qe.Name && e.assign((0, qe._)`${t}.items`, n);
 }
 function LB(e, t, r, n) {
   const { gen: i, schema: s, data: a, allErrors: u, opts: o, self: l } = e, { RULES: c } = l;
@@ -10959,7 +10959,7 @@ function LB(e, t, r, n) {
     d(c.post);
   });
   function d(A) {
-    (0, n5.shouldUseGroup)(s, A) && (A.type ? (i.if((0, cm.checkDataType)(A.type, a, o.strictNumbers)), $B(e, A), t.length === 1 && t[0] === A.type && r && (i.else(), (0, cm.reportTypeError)(e)), i.endIf()) : $B(e, A), u || i.if((0, We._)`${dt.default.errors} === ${n || 0}`));
+    (0, n5.shouldUseGroup)(s, A) && (A.type ? (i.if((0, cm.checkDataType)(A.type, a, o.strictNumbers)), $B(e, A), t.length === 1 && t[0] === A.type && r && (i.else(), (0, cm.reportTypeError)(e)), i.endIf()) : $B(e, A), u || i.if((0, qe._)`${dt.default.errors} === ${n || 0}`));
   }
 }
 function $B(e, t) {
@@ -11021,13 +11021,13 @@ let WR = class {
     ("code" in r ? r.trackErrors : r.errors !== !1) && (this.errsCount = t.gen.const("_errs", dt.default.errors));
   }
   result(t, r, n) {
-    this.failResult((0, We.not)(t), r, n);
+    this.failResult((0, qe.not)(t), r, n);
   }
   failResult(t, r, n) {
     this.gen.if(t), n ? n() : this.error(), r ? (this.gen.else(), r(), this.allErrors && this.gen.endIf()) : this.allErrors ? this.gen.endIf() : this.gen.else();
   }
   pass(t, r) {
-    this.failResult((0, We.not)(t), void 0, r);
+    this.failResult((0, qe.not)(t), void 0, r);
   }
   fail(t) {
     if (t === void 0) {
@@ -11040,7 +11040,7 @@ let WR = class {
     if (!this.$data)
       return this.fail(t);
     const { schemaCode: r } = this;
-    this.fail((0, We._)`${r} !== undefined && (${(0, We.or)(this.invalid$data(), t)})`);
+    this.fail((0, qe._)`${r} !== undefined && (${(0, qe.or)(this.invalid$data(), t)})`);
   }
   error(t, r, n) {
     if (r) {
@@ -11066,35 +11066,35 @@ let WR = class {
   setParams(t, r) {
     r ? Object.assign(this.params, t) : this.params = t;
   }
-  block$data(t, r, n = We.nil) {
+  block$data(t, r, n = qe.nil) {
     this.gen.block(() => {
       this.check$data(t, n), r();
     });
   }
-  check$data(t = We.nil, r = We.nil) {
+  check$data(t = qe.nil, r = qe.nil) {
     if (!this.$data)
       return;
     const { gen: n, schemaCode: i, schemaType: s, def: a } = this;
-    n.if((0, We.or)((0, We._)`${i} === undefined`, r)), t !== We.nil && n.assign(t, !0), (s.length || a.validateSchema) && (n.elseIf(this.invalid$data()), this.$dataError(), t !== We.nil && n.assign(t, !1)), n.else();
+    n.if((0, qe.or)((0, qe._)`${i} === undefined`, r)), t !== qe.nil && n.assign(t, !0), (s.length || a.validateSchema) && (n.elseIf(this.invalid$data()), this.$dataError(), t !== qe.nil && n.assign(t, !1)), n.else();
   }
   invalid$data() {
     const { gen: t, schemaCode: r, schemaType: n, def: i, it: s } = this;
-    return (0, We.or)(a(), u());
+    return (0, qe.or)(a(), u());
     function a() {
       if (n.length) {
-        if (!(r instanceof We.Name))
+        if (!(r instanceof qe.Name))
           throw new Error("ajv implementation error");
         const o = Array.isArray(n) ? n : [n];
-        return (0, We._)`${(0, cm.checkDataTypes)(o, r, s.opts.strictNumbers, cm.DataType.Wrong)}`;
+        return (0, qe._)`${(0, cm.checkDataTypes)(o, r, s.opts.strictNumbers, cm.DataType.Wrong)}`;
       }
-      return We.nil;
+      return qe.nil;
     }
     function u() {
       if (i.validateSchema) {
         const o = t.scopeValue("validate$data", { ref: i.validateSchema });
-        return (0, We._)`!${o}(${r})`;
+        return (0, qe._)`!${o}(${r})`;
       }
-      return We.nil;
+      return qe.nil;
     }
   }
   subschema(t, r) {
@@ -11110,7 +11110,7 @@ let WR = class {
   mergeValidEvaluated(t, r) {
     const { it: n, gen: i } = this;
     if (n.opts.unevaluated && (n.props !== !0 || n.items !== !0))
-      return i.if(r, () => this.mergeEvaluated(t, We.Name)), !0;
+      return i.if(r, () => this.mergeEvaluated(t, qe.Name)), !0;
   }
 };
 Vs.KeywordCxt = WR;
@@ -11145,7 +11145,7 @@ function jR(e, { dataLevel: t, dataNames: r, dataPathArr: n }) {
   let a = s;
   const u = i.split("/");
   for (const l of u)
-    l && (s = (0, We._)`${s}${(0, We.getProperty)((0, To.unescapeJsonPointer)(l))}`, a = (0, We._)`${a} && ${s}`);
+    l && (s = (0, qe._)`${s}${(0, qe.getProperty)((0, To.unescapeJsonPointer)(l))}`, a = (0, qe._)`${a} && ${s}`);
   return a;
   function o(l, c) {
     return `Cannot access ${l} ${c} levels up, current level is ${t}`;
@@ -11749,7 +11749,7 @@ a5.default = sk;
     unicode: '"minLength"/"maxLength" account for unicode characters by default.'
   }, E = 200;
   function w(V) {
-    var k, H, $, y, v, j, L, S, ne, J, te, ae, Y, K, fe, Ee, we, Se, Ye, Ne, Ue, Fe, $t, Re, hr;
+    var k, H, $, y, v, j, L, S, ne, J, te, ae, Y, K, fe, Ee, we, Se, We, Ne, Ue, Fe, $t, Re, hr;
     const Pr = V.strict, jt = (k = V.code) === null || k === void 0 ? void 0 : k.optimize, en = jt === !0 || jt === void 0 ? 1 : jt || 0, pn = ($ = (H = V.code) === null || H === void 0 ? void 0 : H.regExp) !== null && $ !== void 0 ? $ : f, Qr = (y = V.uriResolver) !== null && y !== void 0 ? y : A.default;
     return {
       strictSchema: (j = (v = V.strictSchema) !== null && v !== void 0 ? v : Pr) !== null && j !== void 0 ? j : !0,
@@ -11762,7 +11762,7 @@ a5.default = sk;
       loopEnum: (Ee = V.loopEnum) !== null && Ee !== void 0 ? Ee : E,
       meta: (we = V.meta) !== null && we !== void 0 ? we : !0,
       messages: (Se = V.messages) !== null && Se !== void 0 ? Se : !0,
-      inlineRefs: (Ye = V.inlineRefs) !== null && Ye !== void 0 ? Ye : !0,
+      inlineRefs: (We = V.inlineRefs) !== null && We !== void 0 ? We : !0,
       schemaId: (Ne = V.schemaId) !== null && Ne !== void 0 ? Ne : "$id",
       addUsedSchema: (Ue = V.addUsedSchema) !== null && Ue !== void 0 ? Ue : !0,
       validateSchema: (Fe = V.validateSchema) !== null && Fe !== void 0 ? Fe : !0,
@@ -15842,7 +15842,7 @@ function pse(e, t) {
 bn.getSchemaRefs = pse;
 Object.defineProperty(Gs, "__esModule", { value: !0 });
 Gs.getData = Gs.KeywordCxt = Gs.validateFunctionCode = void 0;
-const Ok = hA, d7 = zr, sI = Do, pm = zr, hse = Rg, d0 = Oa, B6 = Vu, qe = Bt, At = Wa, mse = bn, No = Pe, g1 = Jf;
+const Ok = hA, d7 = zr, sI = Do, pm = zr, hse = Rg, d0 = Oa, B6 = Vu, je = Bt, At = Wa, mse = bn, No = Pe, g1 = Jf;
 function gse(e) {
   if (xk(e) && (Pk(e), Mk(e))) {
     Ise(e);
@@ -15852,18 +15852,18 @@ function gse(e) {
 }
 Gs.validateFunctionCode = gse;
 function Uk({ gen: e, validateName: t, schema: r, schemaEnv: n, opts: i }, s) {
-  i.code.es5 ? e.func(t, (0, qe._)`${At.default.data}, ${At.default.valCxt}`, n.$async, () => {
-    e.code((0, qe._)`"use strict"; ${A7(r, i)}`), Cse(e, i), e.code(s);
-  }) : e.func(t, (0, qe._)`${At.default.data}, ${Ese(i)}`, n.$async, () => e.code(A7(r, i)).code(s));
+  i.code.es5 ? e.func(t, (0, je._)`${At.default.data}, ${At.default.valCxt}`, n.$async, () => {
+    e.code((0, je._)`"use strict"; ${A7(r, i)}`), Cse(e, i), e.code(s);
+  }) : e.func(t, (0, je._)`${At.default.data}, ${Ese(i)}`, n.$async, () => e.code(A7(r, i)).code(s));
 }
 function Ese(e) {
-  return (0, qe._)`{${At.default.instancePath}="", ${At.default.parentData}, ${At.default.parentDataProperty}, ${At.default.rootData}=${At.default.data}${e.dynamicRef ? (0, qe._)`, ${At.default.dynamicAnchors}={}` : qe.nil}}={}`;
+  return (0, je._)`{${At.default.instancePath}="", ${At.default.parentData}, ${At.default.parentDataProperty}, ${At.default.rootData}=${At.default.data}${e.dynamicRef ? (0, je._)`, ${At.default.dynamicAnchors}={}` : je.nil}}={}`;
 }
 function Cse(e, t) {
   e.if(At.default.valCxt, () => {
-    e.var(At.default.instancePath, (0, qe._)`${At.default.valCxt}.${At.default.instancePath}`), e.var(At.default.parentData, (0, qe._)`${At.default.valCxt}.${At.default.parentData}`), e.var(At.default.parentDataProperty, (0, qe._)`${At.default.valCxt}.${At.default.parentDataProperty}`), e.var(At.default.rootData, (0, qe._)`${At.default.valCxt}.${At.default.rootData}`), t.dynamicRef && e.var(At.default.dynamicAnchors, (0, qe._)`${At.default.valCxt}.${At.default.dynamicAnchors}`);
+    e.var(At.default.instancePath, (0, je._)`${At.default.valCxt}.${At.default.instancePath}`), e.var(At.default.parentData, (0, je._)`${At.default.valCxt}.${At.default.parentData}`), e.var(At.default.parentDataProperty, (0, je._)`${At.default.valCxt}.${At.default.parentDataProperty}`), e.var(At.default.rootData, (0, je._)`${At.default.valCxt}.${At.default.rootData}`), t.dynamicRef && e.var(At.default.dynamicAnchors, (0, je._)`${At.default.valCxt}.${At.default.dynamicAnchors}`);
   }, () => {
-    e.var(At.default.instancePath, (0, qe._)`""`), e.var(At.default.parentData, (0, qe._)`undefined`), e.var(At.default.parentDataProperty, (0, qe._)`undefined`), e.var(At.default.rootData, At.default.data), t.dynamicRef && e.var(At.default.dynamicAnchors, (0, qe._)`{}`);
+    e.var(At.default.instancePath, (0, je._)`""`), e.var(At.default.parentData, (0, je._)`undefined`), e.var(At.default.parentDataProperty, (0, je._)`undefined`), e.var(At.default.rootData, At.default.data), t.dynamicRef && e.var(At.default.dynamicAnchors, (0, je._)`{}`);
   });
 }
 function Ise(e) {
@@ -15874,11 +15874,11 @@ function Ise(e) {
 }
 function yse(e) {
   const { gen: t, validateName: r } = e;
-  e.evaluated = t.const("evaluated", (0, qe._)`${r}.evaluated`), t.if((0, qe._)`${e.evaluated}.dynamicProps`, () => t.assign((0, qe._)`${e.evaluated}.props`, (0, qe._)`undefined`)), t.if((0, qe._)`${e.evaluated}.dynamicItems`, () => t.assign((0, qe._)`${e.evaluated}.items`, (0, qe._)`undefined`));
+  e.evaluated = t.const("evaluated", (0, je._)`${r}.evaluated`), t.if((0, je._)`${e.evaluated}.dynamicProps`, () => t.assign((0, je._)`${e.evaluated}.props`, (0, je._)`undefined`)), t.if((0, je._)`${e.evaluated}.dynamicItems`, () => t.assign((0, je._)`${e.evaluated}.items`, (0, je._)`undefined`));
 }
 function A7(e, t) {
   const r = typeof e == "object" && e[t.schemaId];
-  return r && (t.code.source || t.code.process) ? (0, qe._)`/*# sourceURL=${r} */` : qe.nil;
+  return r && (t.code.source || t.code.process) ? (0, je._)`/*# sourceURL=${r} */` : je.nil;
 }
 function wse(e, t) {
   if (xk(e) && (Pk(e), Mk(e))) {
@@ -15902,7 +15902,7 @@ function bse(e, t) {
   const { schema: r, gen: n, opts: i } = e;
   i.$comment && r.$comment && Vk(e), _se(e), Sse(e);
   const s = n.const("_errs", At.default.errors);
-  Hk(e, s), n.var(t, (0, qe._)`${s} === ${At.default.errors}`);
+  Hk(e, s), n.var(t, (0, je._)`${s} === ${At.default.errors}`);
 }
 function Pk(e) {
   (0, No.checkUnknownRules)(e), Bse(e);
@@ -15932,18 +15932,18 @@ function Sse(e) {
 function Vk({ gen: e, schemaEnv: t, schema: r, errSchemaPath: n, opts: i }) {
   const s = r.$comment;
   if (i.$comment === !0)
-    e.code((0, qe._)`${At.default.self}.logger.log(${s})`);
+    e.code((0, je._)`${At.default.self}.logger.log(${s})`);
   else if (typeof i.$comment == "function") {
-    const a = (0, qe.str)`${n}/$comment`, u = e.scopeValue("root", { ref: t.root });
-    e.code((0, qe._)`${At.default.self}.opts.$comment(${s}, ${a}, ${u}.schema)`);
+    const a = (0, je.str)`${n}/$comment`, u = e.scopeValue("root", { ref: t.root });
+    e.code((0, je._)`${At.default.self}.opts.$comment(${s}, ${a}, ${u}.schema)`);
   }
 }
 function Qse(e) {
   const { gen: t, schemaEnv: r, validateName: n, ValidationError: i, opts: s } = e;
-  r.$async ? t.if((0, qe._)`${At.default.errors} === 0`, () => t.return(At.default.data), () => t.throw((0, qe._)`new ${i}(${At.default.vErrors})`)) : (t.assign((0, qe._)`${n}.errors`, At.default.vErrors), s.unevaluated && Tse(e), t.return((0, qe._)`${At.default.errors} === 0`));
+  r.$async ? t.if((0, je._)`${At.default.errors} === 0`, () => t.return(At.default.data), () => t.throw((0, je._)`new ${i}(${At.default.vErrors})`)) : (t.assign((0, je._)`${n}.errors`, At.default.vErrors), s.unevaluated && Tse(e), t.return((0, je._)`${At.default.errors} === 0`));
 }
 function Tse({ gen: e, evaluated: t, props: r, items: n }) {
-  r instanceof qe.Name && e.assign((0, qe._)`${t}.props`, r), n instanceof qe.Name && e.assign((0, qe._)`${t}.items`, n);
+  r instanceof je.Name && e.assign((0, je._)`${t}.props`, r), n instanceof je.Name && e.assign((0, je._)`${t}.items`, n);
 }
 function f7(e, t, r, n) {
   const { gen: i, schema: s, data: a, allErrors: u, opts: o, self: l } = e, { RULES: c } = l;
@@ -15957,7 +15957,7 @@ function f7(e, t, r, n) {
     d(c.post);
   });
   function d(A) {
-    (0, sI.shouldUseGroup)(s, A) && (A.type ? (i.if((0, pm.checkDataType)(A.type, a, o.strictNumbers)), p7(e, A), t.length === 1 && t[0] === A.type && r && (i.else(), (0, pm.reportTypeError)(e)), i.endIf()) : p7(e, A), u || i.if((0, qe._)`${At.default.errors} === ${n || 0}`));
+    (0, sI.shouldUseGroup)(s, A) && (A.type ? (i.if((0, pm.checkDataType)(A.type, a, o.strictNumbers)), p7(e, A), t.length === 1 && t[0] === A.type && r && (i.else(), (0, pm.reportTypeError)(e)), i.endIf()) : p7(e, A), u || i.if((0, je._)`${At.default.errors} === ${n || 0}`));
   }
 }
 function p7(e, t) {
@@ -16019,13 +16019,13 @@ class Yk {
     ("code" in r ? r.trackErrors : r.errors !== !1) && (this.errsCount = t.gen.const("_errs", At.default.errors));
   }
   result(t, r, n) {
-    this.failResult((0, qe.not)(t), r, n);
+    this.failResult((0, je.not)(t), r, n);
   }
   failResult(t, r, n) {
     this.gen.if(t), n ? n() : this.error(), r ? (this.gen.else(), r(), this.allErrors && this.gen.endIf()) : this.allErrors ? this.gen.endIf() : this.gen.else();
   }
   pass(t, r) {
-    this.failResult((0, qe.not)(t), void 0, r);
+    this.failResult((0, je.not)(t), void 0, r);
   }
   fail(t) {
     if (t === void 0) {
@@ -16038,7 +16038,7 @@ class Yk {
     if (!this.$data)
       return this.fail(t);
     const { schemaCode: r } = this;
-    this.fail((0, qe._)`${r} !== undefined && (${(0, qe.or)(this.invalid$data(), t)})`);
+    this.fail((0, je._)`${r} !== undefined && (${(0, je.or)(this.invalid$data(), t)})`);
   }
   error(t, r, n) {
     if (r) {
@@ -16064,35 +16064,35 @@ class Yk {
   setParams(t, r) {
     r ? Object.assign(this.params, t) : this.params = t;
   }
-  block$data(t, r, n = qe.nil) {
+  block$data(t, r, n = je.nil) {
     this.gen.block(() => {
       this.check$data(t, n), r();
     });
   }
-  check$data(t = qe.nil, r = qe.nil) {
+  check$data(t = je.nil, r = je.nil) {
     if (!this.$data)
       return;
     const { gen: n, schemaCode: i, schemaType: s, def: a } = this;
-    n.if((0, qe.or)((0, qe._)`${i} === undefined`, r)), t !== qe.nil && n.assign(t, !0), (s.length || a.validateSchema) && (n.elseIf(this.invalid$data()), this.$dataError(), t !== qe.nil && n.assign(t, !1)), n.else();
+    n.if((0, je.or)((0, je._)`${i} === undefined`, r)), t !== je.nil && n.assign(t, !0), (s.length || a.validateSchema) && (n.elseIf(this.invalid$data()), this.$dataError(), t !== je.nil && n.assign(t, !1)), n.else();
   }
   invalid$data() {
     const { gen: t, schemaCode: r, schemaType: n, def: i, it: s } = this;
-    return (0, qe.or)(a(), u());
+    return (0, je.or)(a(), u());
     function a() {
       if (n.length) {
-        if (!(r instanceof qe.Name))
+        if (!(r instanceof je.Name))
           throw new Error("ajv implementation error");
         const o = Array.isArray(n) ? n : [n];
-        return (0, qe._)`${(0, pm.checkDataTypes)(o, r, s.opts.strictNumbers, pm.DataType.Wrong)}`;
+        return (0, je._)`${(0, pm.checkDataTypes)(o, r, s.opts.strictNumbers, pm.DataType.Wrong)}`;
       }
-      return qe.nil;
+      return je.nil;
     }
     function u() {
       if (i.validateSchema) {
         const o = t.scopeValue("validate$data", { ref: i.validateSchema });
-        return (0, qe._)`!${o}(${r})`;
+        return (0, je._)`!${o}(${r})`;
       }
-      return qe.nil;
+      return je.nil;
     }
   }
   subschema(t, r) {
@@ -16108,7 +16108,7 @@ class Yk {
   mergeValidEvaluated(t, r) {
     const { it: n, gen: i } = this;
     if (n.opts.unevaluated && (n.props !== !0 || n.items !== !0))
-      return i.if(r, () => this.mergeEvaluated(t, qe.Name)), !0;
+      return i.if(r, () => this.mergeEvaluated(t, je.Name)), !0;
   }
 }
 Gs.KeywordCxt = Yk;
@@ -16143,7 +16143,7 @@ function qk(e, { dataLevel: t, dataNames: r, dataPathArr: n }) {
   let a = s;
   const u = i.split("/");
   for (const l of u)
-    l && (s = (0, qe._)`${s}${(0, qe.getProperty)((0, No.unescapeJsonPointer)(l))}`, a = (0, qe._)`${a} && ${s}`);
+    l && (s = (0, je._)`${s}${(0, je.getProperty)((0, No.unescapeJsonPointer)(l))}`, a = (0, je._)`${a} && ${s}`);
   return a;
   function o(l, c) {
     return `Cannot access ${l} ${c} levels up, current level is ${t}`;
@@ -16407,7 +16407,7 @@ uI.default = Jk;
     unicode: '"minLength"/"maxLength" account for unicode characters by default.'
   }, E = 200;
   function w(V) {
-    var k, H, $, y, v, j, L, S, ne, J, te, ae, Y, K, fe, Ee, we, Se, Ye, Ne, Ue, Fe, $t, Re, hr;
+    var k, H, $, y, v, j, L, S, ne, J, te, ae, Y, K, fe, Ee, we, Se, We, Ne, Ue, Fe, $t, Re, hr;
     const Pr = V.strict, jt = (k = V.code) === null || k === void 0 ? void 0 : k.optimize, en = jt === !0 || jt === void 0 ? 1 : jt || 0, pn = ($ = (H = V.code) === null || H === void 0 ? void 0 : H.regExp) !== null && $ !== void 0 ? $ : f, Qr = (y = V.uriResolver) !== null && y !== void 0 ? y : A.default;
     return {
       strictSchema: (j = (v = V.strictSchema) !== null && v !== void 0 ? v : Pr) !== null && j !== void 0 ? j : !0,
@@ -16420,7 +16420,7 @@ uI.default = Jk;
       loopEnum: (Ee = V.loopEnum) !== null && Ee !== void 0 ? Ee : E,
       meta: (we = V.meta) !== null && we !== void 0 ? we : !0,
       messages: (Se = V.messages) !== null && Se !== void 0 ? Se : !0,
-      inlineRefs: (Ye = V.inlineRefs) !== null && Ye !== void 0 ? Ye : !0,
+      inlineRefs: (We = V.inlineRefs) !== null && We !== void 0 ? We : !0,
       schemaId: (Ne = V.schemaId) !== null && Ne !== void 0 ? Ne : "$id",
       addUsedSchema: (Ue = V.addUsedSchema) !== null && Ue !== void 0 ? Ue : !0,
       validateSchema: (Fe = V.validateSchema) !== null && Fe !== void 0 ? Fe : !0,
@@ -27308,7 +27308,7 @@ const Yu = "ConfigManager", v0e = {
   },
   csvLogPath: {
     type: "string",
-    default: He.join(je.getPath("userData"), "Kill-Log.csv")
+    default: He.join(Ye.getPath("userData"), "Kill-Log.csv")
     // Default to app data folder
   },
   fetchProfileData: {
@@ -27597,7 +27597,7 @@ function KF() {
     label: "Quit",
     icon: ru("quit"),
     click: () => {
-      T(Er, "Quit clicked."), pve(!0), je.quit();
+      T(Er, "Quit clicked."), pve(!0), Ye.quit();
     }
   }), eD.buildFromTemplate(t);
 }
@@ -28359,7 +28359,7 @@ class J0e {
         webSecurity: !0,
         allowRunningInsecureContent: !1,
         session: a,
-        devTools: !je.isPackaged
+        devTools: !Ye.isPackaged
         // Disable DevTools in production
       }
     });
@@ -28529,7 +28529,7 @@ new Zf({
 const de = "WindowManager", z0e = NA(import.meta.url), rp = He.dirname(z0e);
 let nt = null, Dt = null, Nt = null, uL = null, Xe = null, io = null, o9 = null;
 function np(e, t) {
-  if (!je.isPackaged && !process.env.CI) {
+  if (!Ye.isPackaged && !process.env.CI) {
     T(de, `[DevTools] Development mode - enabling DevTools for ${t}`);
     try {
       e.webContents.openDevTools({ mode: "right" }), T(de, `[DevTools] Opened immediately (docked right) for ${t}`), setTimeout(() => {
@@ -28697,7 +28697,7 @@ class X0e {
           preload: a ? qa("webview-preload.mjs") : void 0,
           webSecurity: !0,
           allowRunningInsecureContent: !1,
-          devTools: !je.isPackaged
+          devTools: !Ye.isPackaged
           // Disable DevTools in production
         },
         show: !1,
@@ -28823,11 +28823,11 @@ function eE(e, t) {
   }, 500);
 }
 function ic() {
-  const e = je.isPackaged, t = process.env.VITE_PUBLIC, r = je.getAppPath();
+  const e = Ye.isPackaged, t = process.env.VITE_PUBLIC, r = Ye.getAppPath();
   let n = "";
   const i = process.platform === "win32", s = i ? "voidlog-icon.ico" : "voidlog-icon.png";
   let a = "";
-  if (e ? (a = He.join(je.getAppPath(), "dist"), T(de, `Production mode. Using app.getAppPath()/dist as base: ${a}`)) : (a = t || "", he(de, `Development mode detected. Using VITE_PUBLIC as base for icons: ${a}`)), a && typeof a == "string") {
+  if (e ? (a = He.join(Ye.getAppPath(), "dist"), T(de, `Production mode. Using app.getAppPath()/dist as base: ${a}`)) : (a = t || "", he(de, `Development mode detected. Using VITE_PUBLIC as base for icons: ${a}`)), a && typeof a == "string") {
     const u = He.join(a, s);
     he(de, `Checking production icon path inside app/dist: ${u}`);
     try {
@@ -28851,7 +28851,7 @@ function qa(e) {
   const r = He.join(t, "dist-electron");
   he(de, `Calculated mainDist for preload: ${r}`);
   let n;
-  if (je.isPackaged)
+  if (Ye.isPackaged)
     n = He.join(r, e), T(de, `[Prod Mode] Resolving preload path for: ${e}. Checking: ${n}`), it.existsSync(n) ? T(de, `[Prod Mode] Preload path FOUND: ${n}`) : re(de, `[Prod Mode] Preload path NOT FOUND: ${n}. Preload script will fail to load.`);
   else {
     const i = He.join(t, "electron", e);
@@ -28885,10 +28885,10 @@ function ip(e) {
       preload: qa("preload.mjs"),
       nodeIntegration: !1,
       contextIsolation: !0,
-      devTools: !je.isPackaged,
+      devTools: !Ye.isPackaged,
       // Enable DevTools only in development (like other windows)
       spellcheck: !1,
-      webSecurity: je.isPackaged
+      webSecurity: Ye.isPackaged
       // Disable web security in development to allow HTTP images
     },
     frame: !1,
@@ -28911,7 +28911,7 @@ function ip(e) {
   }) ? (T(de, "Applying saved window bounds:", s), u.x = s.x, u.y = s.y, u.width = s.width, u.height = s.height) : (Ce(de, "Saved window bounds are outside visible screen area. Using defaults."), Uo.delete("windowBounds")) : T(de, `No saved bounds found. Using default size: ${t}x${i}`), nt = new qt(u), qA.attachTitlebarToWindow(nt), nt.setTitle("SC Kill Feed"), np(nt, "main window"), nt.on("ready-to-show", () => {
     nt == null || nt.show(), nt && bA(nt);
   }), nt.webContents.on("did-finish-load", () => {
-    nt == null || nt.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`), !je.isPackaged && !process.env.CI && (setTimeout(() => {
+    nt == null || nt.webContents.send("main-process-message", `Main window loaded at ${(/* @__PURE__ */ new Date()).toLocaleString()}`), !Ye.isPackaged && !process.env.CI && (setTimeout(() => {
       if (nt && !nt.isDestroyed()) {
         T(de, "[DevTools] FORCING DevTools open after did-finish-load (attempt 1)");
         try {
@@ -29003,9 +29003,9 @@ function dy() {
       preload: qa("preload.mjs"),
       nodeIntegration: !1,
       contextIsolation: !0,
-      devTools: !je.isPackaged,
+      devTools: !Ye.isPackaged,
       spellcheck: !1,
-      webSecurity: je.isPackaged
+      webSecurity: Ye.isPackaged
       // Disable web security in development to allow HTTP images
     },
     frame: !1,
@@ -29047,7 +29047,7 @@ function dy() {
     });
   }), Dt.once("ready-to-show", () => {
     var u;
-    Dt == null || Dt.show(), Dt && bA(Dt), (u = ft()) == null || u.webContents.send("settings-window-status", { isOpen: !0 }), T(de, "Sent settings-window-status { isOpen: true }"), je.isPackaged || Dt == null || Dt.webContents.openDevTools();
+    Dt == null || Dt.show(), Dt && bA(Dt), (u = ft()) == null || u.webContents.send("settings-window-status", { isOpen: !0 }), T(de, "Sent settings-window-status { isOpen: true }"), Ye.isPackaged || Dt == null || Dt.webContents.openDevTools();
   }), Dt.on("closed", () => {
     var u;
     Dt = null, (u = ft()) == null || u.webContents.send("settings-window-status", { isOpen: !1 }), T(de, "Sent settings-window-status { isOpen: false }");
@@ -29071,7 +29071,7 @@ function cL(e, t) {
       preload: qa("preload.mjs"),
       nodeIntegration: !1,
       contextIsolation: !0,
-      devTools: !je.isPackaged,
+      devTools: !Ye.isPackaged,
       spellcheck: !1
     },
     frame: !1,
@@ -29103,7 +29103,7 @@ function cL(e, t) {
     });
   }
   u.once("ready-to-show", () => {
-    u == null || u.show(), u && bA(u), je.isPackaged || u == null || u.webContents.openDevTools();
+    u == null || u.show(), u && bA(u), Ye.isPackaged || u == null || u.webContents.openDevTools();
   }), u.on("closed", () => {
     o9 = null, T(de, "Event details window closed. Cleared active event data.");
   });
@@ -29129,7 +29129,7 @@ function Ay(e) {
       // Use standard preload for web content window
       nodeIntegration: !1,
       contextIsolation: !0,
-      devTools: !je.isPackaged,
+      devTools: !Ye.isPackaged,
       spellcheck: !1,
       webviewTag: !0
       // Enable the <webview> tag
@@ -29166,7 +29166,7 @@ function Ay(e) {
     });
   }
   Nt.once("ready-to-show", () => {
-    Nt == null || Nt.show(), Nt && bA(Nt), je.isPackaged || Nt == null || Nt.webContents.openDevTools();
+    Nt == null || Nt.show(), Nt && bA(Nt), Ye.isPackaged || Nt == null || Nt.webContents.openDevTools();
   }), Nt.on("closed", () => {
     Nt = null, io = null, T(de, "Web content window closed. Cleared active section.");
   });
@@ -29207,7 +29207,7 @@ function tE() {
       preload: t,
       nodeIntegration: !1,
       contextIsolation: !0,
-      devTools: !je.isPackaged,
+      devTools: !Ye.isPackaged,
       spellcheck: !1
     },
     frame: !1,
@@ -29232,7 +29232,7 @@ function tE() {
   }
   he(de, "Login window created, loading content..."), Xe.webContents.on("console-message", (i, s, a, u, o) => {
     he(de, `Login window console [${s}]: ${a} (${o}:${u})`);
-  }), je.isPackaged || Xe.webContents.openDevTools();
+  }), Ye.isPackaged || Xe.webContents.openDevTools();
   const n = process.env.VITE_DEV_SERVER_URL;
   if (n)
     Xe.loadURL(`${n}/login.html`);
@@ -107967,10 +107967,10 @@ nE.PROCESSING_OPTIONS = Ld;
     for (const Se of K) {
       if (Se === "")
         return Y;
-      const Ye = D(Se);
-      if (Ye === i)
+      const We = D(Se);
+      if (We === i)
         return Y;
-      fe.push(Ye);
+      fe.push(We);
     }
     for (let Se = 0; Se < fe.length - 1; ++Se)
       if (fe[Se] > 255)
@@ -108005,11 +108005,11 @@ nE.PROCESSING_OPTIONS = Ld;
         ++we, ++fe, Ee = fe;
         continue;
       }
-      let Se = 0, Ye = 0;
-      for (; Ye < 4 && c(Y[we]); )
-        Se = Se * 16 + parseInt(a(Y, we), 16), ++we, ++Ye;
+      let Se = 0, We = 0;
+      for (; We < 4 && c(Y[we]); )
+        Se = Se * 16 + parseInt(a(Y, we), 16), ++we, ++We;
       if (Y[we] === 46) {
-        if (Ye === 0 || (we -= Ye, fe > 6))
+        if (We === 0 || (we -= We, fe > 6))
           return i;
         let Ne = 0;
         for (; Y[we] !== void 0; ) {
@@ -108049,8 +108049,8 @@ nE.PROCESSING_OPTIONS = Ld;
     if (Ee !== null) {
       let Se = fe - Ee;
       for (fe = 7; fe !== 0 && Se > 0; ) {
-        const Ye = K[Ee + Se - 1];
-        K[Ee + Se - 1] = K[fe], K[fe] = Ye, --fe, --Se;
+        const We = K[Ee + Se - 1];
+        K[Ee + Se - 1] = K[fe], K[fe] = We, --fe, --Se;
       }
     } else if (Ee === null && fe !== 8)
       return i;
@@ -108134,12 +108134,12 @@ nE.PROCESSING_OPTIONS = Ld;
         fragment: null,
         cannotBeABaseURL: !1
       };
-      const Ye = $(this.input);
-      Ye !== this.input && (this.parseError = !0), this.input = Ye;
+      const We = $(this.input);
+      We !== this.input && (this.parseError = !0), this.input = We;
     }
     const Se = y(this.input);
     for (Se !== this.input && (this.parseError = !0), this.input = Se, this.state = we || "scheme start", this.buffer = "", this.atFlag = !1, this.arrFlag = !1, this.passwordTokenSeenFlag = !1, this.input = t.ucs2.decode(this.input); this.pointer <= this.input.length; ++this.pointer) {
-      const Ye = this.input[this.pointer], Ne = isNaN(Ye) ? void 0 : String.fromCodePoint(Ye), Ue = this["parse " + this.state](Ye, Ne);
+      const We = this.input[this.pointer], Ne = isNaN(We) ? void 0 : String.fromCodePoint(We), Ue = this["parse " + this.state](We, Ne);
       if (Ue) {
         if (Ue === i) {
           this.failure = !0;
@@ -108192,8 +108192,8 @@ nE.PROCESSING_OPTIONS = Ld;
           this.passwordTokenSeenFlag = !0;
           continue;
         }
-        const Ye = z(Se, M);
-        this.passwordTokenSeenFlag ? this.url.password += Ye : this.url.username += Ye;
+        const We = z(Se, M);
+        this.passwordTokenSeenFlag ? this.url.password += We : this.url.username += We;
       }
       this.buffer = "";
     } else if (isNaN(K) || K === 47 || K === 63 || K === 35 || w(this.url) && K === 92) {
@@ -133056,7 +133056,7 @@ function bi() {
       }
     return !0;
   }
-  function Ye(G) {
+  function We(G) {
   }
   function Ne(G, se) {
     return G.origin === se.origin && G.origin === "null" || G.protocol === se.protocol && G.hostname === se.hostname && G.port === se.port;
@@ -133388,7 +133388,7 @@ function bi() {
     isValidEncodedURL: N,
     createDeferredPromise: Ue,
     ReadableStreamFrom: d,
-    tryUpgradeRequestToAPotentiallyTrustworthyURL: Ye,
+    tryUpgradeRequestToAPotentiallyTrustworthyURL: We,
     clampAndCoarsenConnectionTimingInfo: k,
     coarsenedSharedCurrentTime: H,
     determineRequestsReferrer: j,
@@ -139920,7 +139920,7 @@ function mp() {
     }
   }
   let y = !1;
-  const Ye = class Ye {
+  const We = class We {
     // https://fetch.spec.whatwg.org/#dom-request
     constructor(Ue, Fe = void 0) {
       /** @type {AbortSignal} */
@@ -140107,22 +140107,22 @@ function mp() {
     }
     // Returns request’s HTTP method, which is "GET" by default.
     get method() {
-      return M.brandCheck(this, Ye), b(this, Se).method;
+      return M.brandCheck(this, We), b(this, Se).method;
     }
     // Returns the URL of request as a string.
     get url() {
-      return M.brandCheck(this, Ye), z(b(this, Se).url);
+      return M.brandCheck(this, We), z(b(this, Se).url);
     }
     // Returns a Headers object consisting of the headers associated with request.
     // Note that headers added in the network layer by the user agent will not
     // be accounted for in this object, e.g., the "Host" header.
     get headers() {
-      return M.brandCheck(this, Ye), b(this, we);
+      return M.brandCheck(this, We), b(this, we);
     }
     // Returns the kind of resource requested by request, e.g., "document"
     // or "script".
     get destination() {
-      return M.brandCheck(this, Ye), b(this, Se).destination;
+      return M.brandCheck(this, We), b(this, Se).destination;
     }
     // Returns the referrer of request. Its value can be a same-origin URL if
     // explicitly set in init, the empty string to indicate no referrer, and
@@ -140130,78 +140130,78 @@ function mp() {
     // during fetching to determine the value of the `Referer` header of the
     // request being made.
     get referrer() {
-      return M.brandCheck(this, Ye), b(this, Se).referrer === "no-referrer" ? "" : b(this, Se).referrer === "client" ? "about:client" : b(this, Se).referrer.toString();
+      return M.brandCheck(this, We), b(this, Se).referrer === "no-referrer" ? "" : b(this, Se).referrer === "client" ? "about:client" : b(this, Se).referrer.toString();
     }
     // Returns the referrer policy associated with request.
     // This is used during fetching to compute the value of the request’s
     // referrer.
     get referrerPolicy() {
-      return M.brandCheck(this, Ye), b(this, Se).referrerPolicy;
+      return M.brandCheck(this, We), b(this, Se).referrerPolicy;
     }
     // Returns the mode associated with request, which is a string indicating
     // whether the request will use CORS, or will be restricted to same-origin
     // URLs.
     get mode() {
-      return M.brandCheck(this, Ye), b(this, Se).mode;
+      return M.brandCheck(this, We), b(this, Se).mode;
     }
     // Returns the credentials mode associated with request,
     // which is a string indicating whether credentials will be sent with the
     // request always, never, or only when sent to a same-origin URL.
     get credentials() {
-      return M.brandCheck(this, Ye), b(this, Se).credentials;
+      return M.brandCheck(this, We), b(this, Se).credentials;
     }
     // Returns the cache mode associated with request,
     // which is a string indicating how the request will
     // interact with the browser’s cache when fetching.
     get cache() {
-      return M.brandCheck(this, Ye), b(this, Se).cache;
+      return M.brandCheck(this, We), b(this, Se).cache;
     }
     // Returns the redirect mode associated with request,
     // which is a string indicating how redirects for the
     // request will be handled during fetching. A request
     // will follow redirects by default.
     get redirect() {
-      return M.brandCheck(this, Ye), b(this, Se).redirect;
+      return M.brandCheck(this, We), b(this, Se).redirect;
     }
     // Returns request’s subresource integrity metadata, which is a
     // cryptographic hash of the resource being fetched. Its value
     // consists of multiple hashes separated by whitespace. [SRI]
     get integrity() {
-      return M.brandCheck(this, Ye), b(this, Se).integrity;
+      return M.brandCheck(this, We), b(this, Se).integrity;
     }
     // Returns a boolean indicating whether or not request can outlive the
     // global in which it was created.
     get keepalive() {
-      return M.brandCheck(this, Ye), b(this, Se).keepalive;
+      return M.brandCheck(this, We), b(this, Se).keepalive;
     }
     // Returns a boolean indicating whether or not request is for a reload
     // navigation.
     get isReloadNavigation() {
-      return M.brandCheck(this, Ye), b(this, Se).reloadNavigation;
+      return M.brandCheck(this, We), b(this, Se).reloadNavigation;
     }
     // Returns a boolean indicating whether or not request is for a history
     // navigation (a.k.a. back-forward navigation).
     get isHistoryNavigation() {
-      return M.brandCheck(this, Ye), b(this, Se).historyNavigation;
+      return M.brandCheck(this, We), b(this, Se).historyNavigation;
     }
     // Returns the signal associated with request, which is an AbortSignal
     // object indicating whether or not request has been aborted, and its
     // abort event handler.
     get signal() {
-      return M.brandCheck(this, Ye), b(this, fe);
+      return M.brandCheck(this, We), b(this, fe);
     }
     get body() {
-      return M.brandCheck(this, Ye), b(this, Se).body ? b(this, Se).body.stream : null;
+      return M.brandCheck(this, We), b(this, Se).body ? b(this, Se).body.stream : null;
     }
     get bodyUsed() {
-      return M.brandCheck(this, Ye), !!b(this, Se).body && A.isDisturbed(b(this, Se).body.stream);
+      return M.brandCheck(this, We), !!b(this, Se).body && A.isDisturbed(b(this, Se).body.stream);
     }
     get duplex() {
-      return M.brandCheck(this, Ye), "half";
+      return M.brandCheck(this, We), "half";
     }
     // Returns a clone of request.
     clone() {
-      if (M.brandCheck(this, Ye), n(b(this, Se)))
+      if (M.brandCheck(this, We), n(b(this, Se)))
         throw new TypeError("unusable");
       const Ue = Y(b(this, Se)), Fe = new AbortController();
       if (this.signal.aborted)
@@ -140280,7 +140280,7 @@ function mp() {
     }
   };
   fe = new WeakMap(), Ee = new WeakMap(), we = new WeakMap(), Se = new WeakMap();
-  let v = Ye;
+  let v = We;
   const { setRequestSignal: j, getRequestDispatcher: L, setRequestDispatcher: S, setRequestHeaders: ne, getRequestState: J, setRequestState: te } = v;
   Reflect.deleteProperty(v, "setRequestSignal"), Reflect.deleteProperty(v, "getRequestDispatcher"), Reflect.deleteProperty(v, "setRequestDispatcher"), Reflect.deleteProperty(v, "setRequestHeaders"), Reflect.deleteProperty(v, "getRequestState"), Reflect.deleteProperty(v, "setRequestState"), t(v, J);
   function ae(Ne) {
@@ -140502,7 +140502,7 @@ function DE() {
     safeMethodsSet: Y,
     requestBodyHeader: K,
     subresourceSet: fe
-  } = CE(), Ee = kA, { Readable: we, pipeline: Se, finished: Ye, isErrored: Ne, isReadable: Ue } = Zn, { addAbortListener: Fe, bufferToLowerCasedHeaderName: $t } = mt, { dataURLProcessor: Re, serializeAMimeType: hr, minimizeSupportedMimeType: Pr } = gs(), { getGlobalDispatcher: jt } = tw, { webidl: en } = Pn(), { STATUS_CODES: pn } = Km, Qr = ["GET", "HEAD"], vi = typeof __UNDICI_IS_NODE__ < "u" || typeof esbuildDetection < "u" ? "node" : "undici";
+  } = CE(), Ee = kA, { Readable: we, pipeline: Se, finished: We, isErrored: Ne, isReadable: Ue } = Zn, { addAbortListener: Fe, bufferToLowerCasedHeaderName: $t } = mt, { dataURLProcessor: Re, serializeAMimeType: hr, minimizeSupportedMimeType: Pr } = gs(), { getGlobalDispatcher: jt } = tw, { webidl: en } = Pn(), { STATUS_CODES: pn } = Km, Qr = ["GET", "HEAD"], vi = typeof __UNDICI_IS_NODE__ < "u" || typeof esbuildDetection < "u" ? "node" : "undici";
   let hn;
   class si extends Ee {
     constructor($e) {
@@ -140757,7 +140757,7 @@ function DE() {
       pe.processResponse($e), pe.processResponse = null;
     });
     const ce = $e.type === "error" ? $e : $e.internalResponse ?? $e;
-    ce.body == null ? se() : Ye(ce.body.stream, () => {
+    ce.body == null ? se() : We(ce.body.stream, () => {
       se();
     });
   }
@@ -143992,7 +143992,7 @@ async function KU() {
   }
   return no;
 }
-const n7e = "/api/definitions", i7e = "/api/definitions/version", Gd = rr.join(je.getPath("userData"), "local-definitions.json"), MT = 5 * 60 * 1e3;
+const n7e = "/api/definitions", i7e = "/api/definitions/version", Gd = rr.join(Ye.getPath("userData"), "local-definitions.json"), MT = 5 * 60 * 1e3;
 let bt = null, Tc = /* @__PURE__ */ new Map(), Mc = [], Ao = [], Ad = [], iC = null, G3 = null;
 function Gm() {
   var e;
@@ -144492,7 +144492,7 @@ class C7e {
     ke(this, "deleteEventByIdStmt");
     ke(this, "MAX_LOCAL_EVENTS", 1e4);
     var n, i;
-    const t = je.getPath("userData"), r = rr.join(t, "data");
+    const t = Ye.getPath("userData"), r = rr.join(t, "data");
     Ws.existsSync(r) || Ws.mkdirSync(r, { recursive: !0 }), this.dbPath = rr.join(r, "events.db"), CA(et, "SQLite Database Location", this.dbPath), this.db = new gx(this.dbPath), E2(et, "SQLite database connection established");
     try {
       const s = this.db.prepare("SELECT json_group_array(compile_options) as opts FROM pragma_compile_options()").get(), a = (n = s == null ? void 0 : s.opts) == null ? void 0 : n.includes("ENABLE_FTS5"), u = (i = s == null ? void 0 : s.opts) == null ? void 0 : i.includes("OMIT_FTS5");
@@ -145843,7 +145843,7 @@ class sM {
           nodeIntegration: !1,
           contextIsolation: !0,
           webSecurity: !0,
-          devTools: !je.isPackaged
+          devTools: !Ye.isPackaged
           // Disable DevTools in production
         }
       }), T(ar, "Separate window created successfully");
@@ -145862,7 +145862,7 @@ class sM {
           allowRunningInsecureContent: !1,
           session: t,
           preload: qa("webcontents-view-preload.js"),
-          devTools: !je.isPackaged
+          devTools: !Ye.isPackaged
           // Disable DevTools in production
         }
       }), await this.setupAuthentication(t), this.separateWindow && this.separateWindow.contentView && (this.separateWindow.contentView.addChildView(this.webContentView), this.updateWebContentBounds(), T(ar, "WebContentsView added to separate window")), T(ar, "WebContentsView created successfully");
@@ -146460,7 +146460,7 @@ async function GT(e, t) {
         webSecurity: !0,
         allowRunningInsecureContent: !1,
         session: n,
-        devTools: !je.isPackaged,
+        devTools: !Ye.isPackaged,
         // Disable DevTools in production
         ...i ? { preload: i } : {}
       }
@@ -146797,9 +146797,9 @@ function rve() {
       if (process.env.NODE_ENV === "development")
         return he(De, "Development mode detected, skipping OS login item setup"), r;
       const n = He.dirname(process.execPath), i = He.basename(process.execPath);
-      if (process.platform === "win32" && je.isPackaged) {
+      if (process.platform === "win32" && Ye.isPackaged) {
         const a = He.resolve(n, "..", i);
-        T(De, `Setting Windows startup (${r}) with Squirrel path: ${a}`), je.setLoginItemSettings({
+        T(De, `Setting Windows startup (${r}) with Squirrel path: ${a}`), Ye.setLoginItemSettings({
           openAtLogin: r,
           path: a,
           args: [
@@ -146810,12 +146810,12 @@ function rve() {
           ]
         });
       } else
-        T(De, `Setting startup (${r}) with standard configuration`), je.setLoginItemSettings({
+        T(De, `Setting startup (${r}) with standard configuration`), Ye.setLoginItemSettings({
           openAtLogin: r,
           args: ["--hidden"]
           // Start hidden when launched at startup
         });
-      const s = je.getLoginItemSettings();
+      const s = Ye.getLoginItemSettings();
       T(De, `Startup setting updated. New state: openAtLogin=${s.openAtLogin}`);
     } catch (n) {
       re(De, "Failed to update OS login item settings:", n);
@@ -146828,7 +146828,7 @@ function rve() {
   })), Ie.handle("set-api-settings", (e, t) => (Q0e(t.offlineMode), !0)), Ie.handle("get-csv-log-path", () => ny()), Ie.handle("set-csv-log-path", (e, t) => T0e(t)), he(De, "Attempting to register handler for 'get-resource-path'...");
   try {
     Ie.handle("get-resource-path", () => {
-      const e = je.isPackaged, t = process.env.VITE_PUBLIC, r = process.resourcesPath, n = e ? r : t;
+      const e = Ye.isPackaged, t = process.env.VITE_PUBLIC, r = process.resourcesPath, n = e ? r : t;
       return he(De, `Providing resource path: ${n} (isProd: ${e})`), n && typeof n == "string" ? n : (re(De, `Could not determine valid resource path. isProd=${e}, resourcesPath=${r}, vitePublic=${t}`), "");
     }), T(De, "Successfully registered handler for 'get-resource-path'.");
   } catch (e) {
@@ -146836,7 +146836,7 @@ function rve() {
   }
   he(De, "Attempting to register handler for 'get-app-version'...");
   try {
-    Ie.handle("get-app-version", () => je.getVersion()), T(De, "Successfully registered handler for 'get-app-version'.");
+    Ie.handle("get-app-version", () => Ye.getVersion()), T(De, "Successfully registered handler for 'get-app-version'.");
   } catch (e) {
     re(De, `FATAL: Failed to register handler for 'get-app-version': ${e.message}`, e.stack);
   }
@@ -146902,7 +146902,7 @@ function rve() {
       return re(De, "Error handling login success:", e), { success: !1, error: "Failed to handle login success" };
     }
   }), Ie.handle("auth:closeLoginWindow", () => (_m(), { success: !0 })), Ie.handle("auth:show-login", () => (T(De, "Received 'auth:show-login' request. Opening login window."), tE(), { success: !0 })), Ie.on("auth:reset-guest-mode", async () => {
-    T(De, "Received 'auth:reset-guest-mode' request. Resetting guest mode and restarting app."), GF(!1), je.relaunch({ args: process.argv.slice(1).concat(["--relaunch"]) }), je.exit();
+    T(De, "Received 'auth:reset-guest-mode' request. Resetting guest mode and restarting app."), GF(!1), Ye.relaunch({ args: process.argv.slice(1).concat(["--relaunch"]) }), Ye.exit();
   }), Ie.handle("app:get-guest-mode-status", () => (T(De, "Received 'app:get-guest-mode-status' request."), VF())), Ie.handle("open-external", async (e, t) => {
     T(De, `Received 'open-external' request for URL: ${t}`);
     try {
@@ -146910,7 +146910,7 @@ function rve() {
     } catch (r) {
       throw re(De, `Failed to open external URL: ${t}`, r), r;
     }
-  }), Ie.handle("reset-sessions", () => (j7e(), !0)), Ie.handle("send-log-to-main", (e, t) => (console.log(t), he("RENDERER-DEBUG", t), !0)), Ie.handle("app:get-version", () => (T(De, "Received 'app:get-version' request."), je.getVersion())), Ie.handle("reset-events", () => (S7e(), !0)), Ie.handle("rescan-log", async () => {
+  }), Ie.handle("reset-sessions", () => (j7e(), !0)), Ie.handle("send-log-to-main", (e, t) => (console.log(t), he("RENDERER-DEBUG", t), !0)), Ie.handle("app:get-version", () => (T(De, "Received 'app:get-version' request."), Ye.getVersion())), Ie.handle("reset-events", () => (S7e(), !0)), Ie.handle("rescan-log", async () => {
     try {
       return await z7e(), !0;
     } catch (e) {
@@ -146928,18 +146928,20 @@ function rve() {
     T(De, "Update install requested");
     try {
       const { autoUpdater: e } = require("electron-updater");
-      if (!e.downloadedUpdateHelper) {
-        re(De, "No update downloaded - cannot install");
-        const r = ft();
-        r && !r.isDestroyed() && r.webContents.send("update-error", "No update available to install");
-        return;
-      }
-      T(De, "Preparing to quit and install update..."), await new Promise((r) => setTimeout(r, 500));
+      T(De, "Preparing to quit and install update..."), await new Promise((n) => setTimeout(n, 500));
       const t = qt.getAllWindows();
       T(De, `Closing ${t.length} windows before update installation`);
-      for (const r of t)
-        r.isDestroyed() || (r.removeAllListeners("close"), r.close());
-      await new Promise((r) => setTimeout(r, 1e3)), T(De, "Executing quitAndInstall..."), e.quitAndInstall(!1, !0);
+      for (const n of t)
+        n.isDestroyed() || (n.removeAllListeners("close"), n.close());
+      await new Promise((n) => setTimeout(n, 1e3)), T(De, "Executing quitAndInstall...");
+      const r = setTimeout(() => {
+        re(De, "Installation timeout - forcing app quit"), Ye.quit();
+      }, 3e4);
+      try {
+        e.quitAndInstall(!1, !0), clearTimeout(r);
+      } catch (n) {
+        throw clearTimeout(r), n;
+      }
     } catch (e) {
       re(De, "Failed to install update:", e);
       const t = ft();
@@ -147081,7 +147083,7 @@ function rve() {
   }), T(De, "Registering enhanced WebContentsView IPC handlers..."), oM(), Kr(De, "IPC handlers registered (including enhanced WebContentsView handlers).");
 }
 function Go() {
-  const e = je.getVersion(), t = ZM.hostname(), r = wl();
+  const e = Ye.getVersion(), t = ZM.hostname(), r = wl();
   return `VoidLogClient-${e} (User Hostname: ${t}, Client ID: ${r})`;
 }
 const Me = "AppLifecycle";
@@ -147128,7 +147130,7 @@ async function ave(e) {
   }
 }
 function ove(e) {
-  if (!(!je.isPackaged && !process.env.CI)) {
+  if (!(!Ye.isPackaged && !process.env.CI)) {
     T(Me, "Production mode detected - DevTools shortcuts disabled for security");
     return;
   }
@@ -147166,12 +147168,12 @@ function uve() {
     }
     const e = HF();
     T(Me, `Launch on startup setting: ${e}`);
-    const t = je.getLoginItemSettings();
+    const t = Ye.getLoginItemSettings();
     t.wasOpenedAtLogin && (T(Me, "App was launched at system startup"), t.wasOpenedAsHidden && T(Me, "App should start hidden/minimized"));
     const r = He.dirname(process.execPath), n = He.basename(process.execPath);
-    if (process.platform === "win32" && je.isPackaged) {
+    if (process.platform === "win32" && Ye.isPackaged) {
       const s = He.resolve(r, "..", n);
-      T(Me, `Setting up Windows startup with Squirrel-compatible path: ${s}`), je.setLoginItemSettings({
+      T(Me, `Setting up Windows startup with Squirrel-compatible path: ${s}`), Ye.setLoginItemSettings({
         openAtLogin: e,
         path: s,
         args: [
@@ -147182,12 +147184,12 @@ function uve() {
         ]
       });
     } else
-      T(Me, `Setting up startup with standard path: ${process.execPath}`), je.setLoginItemSettings({
+      T(Me, `Setting up startup with standard path: ${process.execPath}`), Ye.setLoginItemSettings({
         openAtLogin: e,
         args: ["--hidden"]
         // Start hidden/minimized when launched at startup
       });
-    const i = je.getLoginItemSettings();
+    const i = Ye.getLoginItemSettings();
     T(Me, "Startup setting applied successfully. Current state:", {
       openAtLogin: i.openAtLogin,
       executableWillLaunchAtLogin: i.executableWillLaunchAtLogin,
@@ -147198,16 +147200,16 @@ function uve() {
   }
 }
 function cve() {
-  const e = je.getLoginItemSettings(), t = e.wasOpenedAtLogin && e.wasOpenedAsHidden, r = process.argv.includes("--hidden"), n = t || r;
+  const e = Ye.getLoginItemSettings(), t = e.wasOpenedAtLogin && e.wasOpenedAsHidden, r = process.argv.includes("--hidden"), n = t || r;
   return n && T(Me, `App should start minimized. wasLaunchedAtStartup: ${t}, hasHiddenArg: ${r}`), n;
 }
 async function lve() {
-  if (vo(Me, "Application ready - starting initialization sequence..."), process.env.APP_ROOT = je.getAppPath(), CA(Me, "APP_ROOT", process.env.APP_ROOT), typeof process.env.APP_ROOT != "string" || !process.env.APP_ROOT) {
+  if (vo(Me, "Application ready - starting initialization sequence..."), process.env.APP_ROOT = Ye.getAppPath(), CA(Me, "APP_ROOT", process.env.APP_ROOT), typeof process.env.APP_ROOT != "string" || !process.env.APP_ROOT) {
     re(Me, `FATAL: process.env.APP_ROOT is not a valid string after app.getAppPath()! Value: ${process.env.APP_ROOT}. Cannot proceed.`);
     return;
   }
   const e = process.env.VITE_DEV_SERVER_URL;
-  if (process.env.VITE_PUBLIC = e ? He.join(process.env.APP_ROOT, "public") : He.join(process.env.APP_ROOT, "dist"), CA(Me, "VITE_PUBLIC", process.env.VITE_PUBLIC), !je.isPackaged && !process.env.CI)
+  if (process.env.VITE_PUBLIC = e ? He.join(process.env.APP_ROOT, "public") : He.join(process.env.APP_ROOT, "dist"), CA(Me, "VITE_PUBLIC", process.env.VITE_PUBLIC), !Ye.isPackaged && !process.env.CI)
     T(Me, "Development mode - Application menu enabled");
   else {
     const { Menu: a } = await import("electron");
@@ -147248,7 +147250,7 @@ async function lve() {
   }, 1e4), vo(Me, "✅ Application initialization completed successfully!");
 }
 async function dve() {
-  T(Me, "WindowAllClosed event."), process.platform !== "darwin" && (T(Me, "Quitting because all windows are closed (non-macOS)."), await lM(), je.quit());
+  T(Me, "WindowAllClosed event."), process.platform !== "darwin" && (T(Me, "Quitting because all windows are closed (non-macOS)."), await lM(), Ye.quit());
 }
 function Ave() {
   var e;
@@ -147258,7 +147260,7 @@ function Ave() {
   }) : (e = ft()) == null || e.focus();
 }
 async function fve(e) {
-  T(Me, "WillQuit event."), e.preventDefault(), await lM(), T(Me, "Cleanup finished. Exiting application."), je.exit();
+  T(Me, "WillQuit event."), e.preventDefault(), await lM(), T(Me, "Cleanup finished. Exiting application."), Ye.exit();
 }
 async function lM() {
   T(Me, "Performing cleanup..."), e8.unregisterAll(), T(Me, "Unregistered all global shortcuts."), await J7e(), fl(), H0e(), hL(), T(Me, "Cleanup operations complete.");
@@ -147267,11 +147269,11 @@ function pve(e) {
   lw = e, T(Me, `isQuitting flag set to ${e}.`);
 }
 function hve() {
-  je.whenReady().then(lve).catch((e) => {
+  Ye.whenReady().then(lve).catch((e) => {
     re(Me, "Error during app ready:", e), e instanceof Error ? re(Me, "Error details:", e.message, e.stack) : typeof e == "object" && e !== null && re(Me, "Non-Error object caught:", JSON.stringify(e));
-  }), je.on("window-all-closed", dve), je.on("activate", Ave), je.on("before-quit", () => {
+  }), Ye.on("window-all-closed", dve), Ye.on("activate", Ave), Ye.on("before-quit", () => {
     lw = !0, T(Me, "BeforeQuit event: isQuitting flag set.");
-  }), je.on("will-quit", fve), Kr(Me, "Initialized.");
+  }), Ye.on("will-quit", fve), Kr(Me, "Initialized.");
 }
 const As = "NavigationStateManager";
 let Vt = {
@@ -147594,7 +147596,7 @@ const Nve = NA(import.meta.url);
 He.dirname(Nve);
 const kr = "Main";
 vo(kr, "SC Feeder Client starting up...");
-je.requestSingleInstanceLock() ? (je.on("second-instance", (e, t, r) => {
+Ye.requestSingleInstanceLock() ? (Ye.on("second-instance", (e, t, r) => {
   T(kr, `Second instance launched with command line: ${t.join(" ")}`);
   const n = t.find((s) => s.startsWith("myapp://auth/client-init"));
   if (n) {
@@ -147621,9 +147623,9 @@ je.requestSingleInstanceLock() ? (je.on("second-instance", (e, t, r) => {
     T(kr, "No deep link found in command line arguments.");
   const i = ft();
   i && (i.isMinimized() && i.restore(), i.focus());
-}), qA.setupTitlebar(), eD.setApplicationMenu(null), T(kr, "Global application menu disabled"), process.platform === "win32" && (je.setAppUserModelId(je.name), T(kr, `AppUserModelID set to: ${je.name}`)), hve(), Ive(), Dve(), l7e(IA).catch((e) => {
+}), qA.setupTitlebar(), eD.setApplicationMenu(null), T(kr, "Global application menu disabled"), process.platform === "win32" && (Ye.setAppUserModelId(Ye.name), T(kr, `AppUserModelID set to: ${Ye.name}`)), hve(), Ive(), Dve(), l7e(IA).catch((e) => {
   re(kr, "Failed to initialize definitions on startup:", e);
-})) : (re(kr, "Another instance is already running. Quitting."), je.quit());
+})) : (re(kr, "Another instance is already running. Quitting."), Ye.quit());
 xo.autoUpdater.logger = Hde;
 xo.autoUpdater.on("update-available", (e) => {
   T(kr, `Update available: ${e.version}`);

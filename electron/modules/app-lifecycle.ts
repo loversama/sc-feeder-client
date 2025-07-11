@@ -336,6 +336,38 @@ async function onReady() {
     logger.info(MODULE_NAME, 'Development mode - Application menu enabled');
   }
   
+  // Verify critical DLLs are present on startup (Windows only)
+  if (process.platform === 'win32' && app.isPackaged) {
+    const appDir = path.dirname(process.execPath);
+    const requiredFiles = ['ffmpeg.dll', 'libEGL.dll', 'libGLESv2.dll'];
+    const missingFiles: string[] = [];
+    
+    for (const file of requiredFiles) {
+      const filePath = path.join(appDir, file);
+      try {
+        const fs = require('fs');
+        if (!fs.existsSync(filePath)) {
+          missingFiles.push(file);
+          logger.error(MODULE_NAME, `CRITICAL: Missing required DLL: ${file} at ${filePath}`);
+        } else {
+          logger.debug(MODULE_NAME, `DLL verification passed: ${file}`);
+        }
+      } catch (error) {
+        logger.error(MODULE_NAME, `Error checking for ${file}:`, error);
+        missingFiles.push(file);
+      }
+    }
+    
+    if (missingFiles.length > 0) {
+      logger.error(MODULE_NAME, `Missing DLLs detected: ${missingFiles.join(', ')}`);
+      logger.error(MODULE_NAME, `App directory: ${appDir}`);
+      logger.error(MODULE_NAME, `Process executable path: ${process.execPath}`);
+      // Don't block startup, but log extensively for debugging
+    } else {
+      logger.info(MODULE_NAME, 'All required Windows DLLs verified successfully');
+    }
+  }
+
   // Register IPC handlers first
   registerIpcHandlers();
   registerAuthIpcHandlers();

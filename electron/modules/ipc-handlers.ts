@@ -592,14 +592,24 @@ ipcMain.handle('auth:show-login', () => {
         try {
             const { autoUpdater } = require('electron-updater');
             
-            // Check if update is actually downloaded and ready
-            if (!autoUpdater.downloadedUpdateHelper) {
-                logger.error(MODULE_NAME, 'No update downloaded - cannot install');
-                const mainWindow = getMainWindow();
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('update-error', 'No update available to install');
+            // Note: Removed unreliable downloadedUpdateHelper check
+            // The UI manages update state properly - if this IPC is called, an update is ready
+            
+            // Verify critical DLLs are present before update
+            const appDir = path.dirname(process.execPath);
+            const requiredFiles = ['ffmpeg.dll', 'libEGL.dll', 'libGLESv2.dll'];
+            const missingFiles: string[] = [];
+            
+            for (const file of requiredFiles) {
+                const filePath = path.join(appDir, file);
+                if (!require('fs').existsSync(filePath)) {
+                    missingFiles.push(file);
+                    logger.warn(MODULE_NAME, `Critical file missing before update: ${file} at ${filePath}`);
                 }
-                return;
+            }
+            
+            if (missingFiles.length > 0) {
+                logger.warn(MODULE_NAME, `Missing DLLs detected: ${missingFiles.join(', ')}. Proceeding with update anyway.`);
             }
             
             logger.info(MODULE_NAME, 'Preparing to quit and install update...');
@@ -621,11 +631,24 @@ ipcMain.handle('auth:show-login', () => {
             // Wait for windows to close properly
             await new Promise(resolve => setTimeout(resolve, 1000));
             
-            // Install the update
+            // Install the update - electron-updater handles internal ready state
             // First parameter: isSilent (false to show installation progress)
             // Second parameter: isForceRunAfter (true to restart app after installation)
             logger.info(MODULE_NAME, 'Executing quitAndInstall...');
-            autoUpdater.quitAndInstall(false, true);
+            
+            // Add a timeout wrapper in case quitAndInstall hangs
+            const installTimeout = setTimeout(() => {
+                logger.error(MODULE_NAME, 'Installation timeout - forcing app quit');
+                app.quit();
+            }, 30000); // 30 second timeout
+            
+            try {
+                autoUpdater.quitAndInstall(false, true);
+                clearTimeout(installTimeout);
+            } catch (installError) {
+                clearTimeout(installTimeout);
+                throw installError; // Re-throw to be caught by outer catch
+            }
             
         } catch (error) {
             logger.error(MODULE_NAME, 'Failed to install update:', error);

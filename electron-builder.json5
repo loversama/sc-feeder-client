@@ -36,7 +36,21 @@
         ]
       }
     ],
-    "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}",
+    "extraFiles": [
+      {
+        "from": "node_modules/electron/dist/ffmpeg.dll",
+        "to": "ffmpeg.dll"
+      },
+      {
+        "from": "node_modules/electron/dist/libEGL.dll", 
+        "to": "libEGL.dll"
+      },
+      {
+        "from": "node_modules/electron/dist/libGLESv2.dll",
+        "to": "libGLESv2.dll"
+      }
+    ]
   },
   "nsis": {
     "oneClick": false,
