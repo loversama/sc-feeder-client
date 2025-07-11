@@ -137,6 +137,12 @@ if (!app.requestSingleInstanceLock()) {
   initializeDefinitions(SERVER_API_URL).catch(err => {
     logger.error(MODULE_NAME, 'Failed to initialize definitions on startup:', err);
   });
+
+  // Check for updates on startup (after a brief delay to let the app fully initialize)
+  setTimeout(() => {
+    logger.info(MODULE_NAME, 'Performing initial update check on startup');
+    autoUpdater.checkForUpdates();
+  }, 5000); // 5 second delay
 }
 
 // --- Auto Updater Event Listeners ---

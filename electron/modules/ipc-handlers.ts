@@ -1,6 +1,7 @@
 import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'; // Import app and shell
 import path from 'node:path';
 import fs from 'node:fs';
+import { autoUpdater } from 'electron-updater';
 import * as ConfigManager from './config-manager.ts'; // Added .ts
 // Import window management functions
 import {
@@ -19,7 +20,8 @@ import {
     createLoginWindow, // Added
     createExternalWebWindow, // Added for external website authentication
     createAuthenticatedWebContentWindow, // Added for WebContentsView authentication
-    closeAuthenticatedWebContentWindow // Added for WebContentsView cleanup
+    closeAuthenticatedWebContentWindow, // Added for WebContentsView cleanup
+    webContentBaseWindow // Add direct access to the webContentBaseWindow
 } from './window-manager.ts'; // Added close functions and status getters
 
 // Import enhanced WebContentsView functions
@@ -398,9 +400,6 @@ try {
     ipcMain.handle('web-content-window-minimize', () => {
         logger.info(MODULE_NAME, "Received 'web-content-window-minimize' request.");
         try {
-            const windowManagerModule = require('./window-manager');
-            const webContentBaseWindow = windowManagerModule.webContentBaseWindow;
-            
             if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
                 webContentBaseWindow.minimize();
                 return { success: true };
@@ -415,9 +414,6 @@ try {
     ipcMain.handle('web-content-window-maximize', () => {
         logger.info(MODULE_NAME, "Received 'web-content-window-maximize' request.");
         try {
-            const windowManagerModule = require('./window-manager');
-            const webContentBaseWindow = windowManagerModule.webContentBaseWindow;
-            
             if (webContentBaseWindow && !webContentBaseWindow.isDestroyed()) {
                 if (webContentBaseWindow.isMaximized()) {
                     webContentBaseWindow.unmaximize();
@@ -573,7 +569,6 @@ ipcMain.handle('auth:show-login', () => {
     // --- Update Handlers ---
     ipcMain.on('check-for-update', () => {
         logger.info(MODULE_NAME, 'Manual update check requested');
-        const { autoUpdater } = require('electron-updater');
         const mainWindow = getMainWindow();
         if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('update-checking');
@@ -583,7 +578,6 @@ ipcMain.handle('auth:show-login', () => {
 
     ipcMain.on('download-update', () => {
         logger.info(MODULE_NAME, 'Update download requested');
-        const { autoUpdater } = require('electron-updater');
         autoUpdater.downloadUpdate();
     });
 
@@ -591,7 +585,6 @@ ipcMain.handle('auth:show-login', () => {
         logger.info(MODULE_NAME, 'Update install requested');
         
         try {
-            const { autoUpdater } = require('electron-updater');
             
             // Note: Removed unreliable downloadedUpdateHelper check
             // The UI manages update state properly - if this IPC is called, an update is ready
