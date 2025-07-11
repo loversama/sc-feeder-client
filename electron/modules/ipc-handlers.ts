@@ -586,10 +586,54 @@ ipcMain.handle('auth:show-login', () => {
         autoUpdater.downloadUpdate();
     });
 
-    ipcMain.on('install-update', () => {
+    ipcMain.on('install-update', async () => {
         logger.info(MODULE_NAME, 'Update install requested');
-        const { autoUpdater } = require('electron-updater');
-        setImmediate(() => autoUpdater.quitAndInstall());
+        
+        try {
+            const { autoUpdater } = require('electron-updater');
+            
+            // Check if update is actually downloaded and ready
+            if (!autoUpdater.downloadedUpdateHelper) {
+                logger.error(MODULE_NAME, 'No update downloaded - cannot install');
+                const mainWindow = getMainWindow();
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('update-error', 'No update available to install');
+                }
+                return;
+            }
+            
+            logger.info(MODULE_NAME, 'Preparing to quit and install update...');
+            
+            // Give a brief moment for any pending operations to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Force close all windows gracefully before installing
+            const windows = BrowserWindow.getAllWindows();
+            logger.info(MODULE_NAME, `Closing ${windows.length} windows before update installation`);
+            
+            for (const window of windows) {
+                if (!window.isDestroyed()) {
+                    window.removeAllListeners('close');
+                    window.close();
+                }
+            }
+            
+            // Wait for windows to close properly
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Install the update
+            // First parameter: isSilent (false to show installation progress)
+            // Second parameter: isForceRunAfter (true to restart app after installation)
+            logger.info(MODULE_NAME, 'Executing quitAndInstall...');
+            autoUpdater.quitAndInstall(false, true);
+            
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to install update:', error);
+            const mainWindow = getMainWindow();
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('update-error', `Installation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+        }
     });
 
     // --- Update Simulation Handlers (Debug) ---
