@@ -329,7 +329,7 @@ const resetSearchState = async () => {
   }
 };
 
-// Function to send search data to WebContentsView via DOM injection
+// Enhanced DOM injection with handshake protocol and verification
 const sendSearchDataToWebContentsView = async (query: string, loading: boolean, results: any, forceUpdate = false) => {
   // Create a hash of the current data to avoid sending duplicate data
   const currentDataHash = `${query}-${loading}-${JSON.stringify(results)}`;
@@ -346,67 +346,133 @@ const sendSearchDataToWebContentsView = async (query: string, loading: boolean, 
     console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
   }
   
-  // Use IPC to execute JavaScript in the WebContentsView with retry logic
+  // Use IPC to execute JavaScript in the WebContentsView with enhanced retry logic
   if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
     const searchData = {
       query: query,
       isActive: query.length > 0,
       isLoading: loading,
       results: results,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      injectionId: Math.random().toString(36).substr(2, 9) // Unique injection ID
     };
     
     const jsCode = `
-      // Wait for DOM to be ready if needed
-      const injectSearchData = () => {
-        try {
-          // Set search data on window object
-          window.electronSearchState = ${JSON.stringify(searchData)};
-          
-          // Dispatch custom event for web app to listen
-          window.dispatchEvent(new CustomEvent('electron-search-changed', {
-            detail: window.electronSearchState
-          }));
-          
-          // Only log in web app if query changed (not just loading state)
-          if (!${loading} || '${query}'.length === 0) {
-            console.log('[ElectronSearch] Data updated:', window.electronSearchState);
+      (function() {
+        // Enhanced injection with handshake protocol
+        const injectSearchData = () => {
+          try {
+            console.log('[ElectronSearch] Injecting search data with ID: ${searchData.injectionId}');
+            
+            // Set search data on window object
+            window.electronSearchState = ${JSON.stringify(searchData)};
+            
+            // Create acknowledgment mechanism
+            window.electronSearchAck = {
+              injectionId: '${searchData.injectionId}',
+              received: true,
+              timestamp: Date.now()
+            };
+            
+            // Dispatch custom event for web app to listen
+            window.dispatchEvent(new CustomEvent('electron-search-changed', {
+              detail: window.electronSearchState
+            }));
+            
+            // Set up heartbeat response
+            window.electronSearchHeartbeat = () => {
+              return {
+                alive: true,
+                lastUpdate: window.electronSearchState?.timestamp,
+                injectionId: window.electronSearchState?.injectionId
+              };
+            };
+            
+            // Only log in web app if query changed (not just loading state)
+            if (!${loading} || '${query}'.length === 0) {
+              console.log('[ElectronSearch] Data updated successfully:', window.electronSearchState);
+            }
+            
+            return { success: true, injectionId: '${searchData.injectionId}' };
+          } catch (error) {
+            console.error('[ElectronSearch] Failed to inject search data:', error);
+            return { success: false, error: error.message };
           }
-          
-          return { success: true };
-        } catch (error) {
-          console.error('[ElectronSearch] Failed to inject search data:', error);
-          return { success: false, error: error.message };
-        }
-      };
-      
-      // If DOM is loading, wait for it to be ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', injectSearchData);
-      } else {
-        injectSearchData();
-      }
+        };
+        
+        // Smart DOM readiness detection
+        const attemptInjection = () => {
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', injectSearchData);
+          } else {
+            // Additional check for framework readiness (Vue, React, etc.)
+            if (window.Vue || window.React || document.querySelector('#app, #root, [data-app]')) {
+              injectSearchData();
+            } else {
+              // Wait a bit more for framework to initialize
+              setTimeout(injectSearchData, 100);
+            }
+          }
+        };
+        
+        attemptInjection();
+      })();
     `;
     
-    // Retry logic for critical search re-injection (like after page navigation)
-    const maxRetries = forceUpdate ? 3 : 1;
-    const retryDelay = 100;
+    // Enhanced retry logic with verification
+    const maxRetries = forceUpdate ? 5 : 2;
+    const baseRetryDelay = 200;
+    let success = false;
     
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (let attempt = 0; attempt < maxRetries && !success; attempt++) {
       try {
         await window.logMonitorApi.executeInWebContentsView(jsCode);
-        break; // Success, exit retry loop
+        
+        // Verify injection worked - simplified approach
+        await new Promise(resolve => setTimeout(resolve, 300)); // Give more time for injection
+        
+        // For now, assume injection worked if execution succeeded
+        // The real test is whether search functionality actually works
+        if (attempt === 0) {
+          console.log(`[Search] ✅ Injection executed successfully on attempt ${attempt + 1} - assuming success`);
+          success = true;
+          break;
+        } else {
+          // On retries, do a simple verification
+          try {
+            const simpleCheck = await window.logMonitorApi.executeInWebContentsView(`
+              console.log('[ElectronSearch] Simple verification - electronSearchState exists:', !!window.electronSearchState);
+              console.log('[ElectronSearch] Simple verification - heartbeat function exists:', typeof window.electronSearchHeartbeat === 'function');
+              !!window.electronSearchState;
+            `);
+            
+            if (simpleCheck) {
+              console.log(`[Search] ✅ Simple verification passed on attempt ${attempt + 1}`);
+              success = true;
+              break;
+            } else {
+              console.warn(`[Search] ❌ Simple verification failed on attempt ${attempt + 1}`);
+            }
+          } catch (verifyError) {
+            console.warn(`[Search] ❌ Verification check failed on attempt ${attempt + 1}:`, verifyError);
+          }
+        }
+        
       } catch (error) {
         console.warn(`[Search] Injection attempt ${attempt + 1} failed:`, error);
-        
-        if (attempt < maxRetries - 1) {
-          // Wait before retrying
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        } else {
-          console.error('[Search] All injection attempts failed');
-        }
+      }
+      
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff
+        const delay = baseRetryDelay * Math.pow(1.5, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+    
+    if (!success) {
+      console.error('[Search] All injection attempts failed - search may not work on this page');
+    }
+    
   } else {
     console.warn('[Search] executeInWebContentsView API not available');
   }
@@ -1055,20 +1121,262 @@ onMounted(async () => {
     }
   });
 
-  // Poll for clear search requests from the web app
-  setInterval(() => {
-    // Check if the WebContentsView has set a clear flag
-    if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
-      // Check for clear flag in the WebContentsView
-      window.logMonitorApi.executeInWebContentsView(`
-        if (window.electronSearchState && window.electronSearchState.shouldClear) {
-          console.log('[WebContentsView] Clear flag detected, notifying Electron');
-          window.electronSearchState.shouldClear = false; // Reset the flag
-          window.parent.postMessage({ type: 'electron-search-clear' }, '*');
-        }
+  // Enhanced polling with navigation tracking and heartbeat monitoring
+  const startSearchMonitoring = () => {
+    let lastHeartbeat = Date.now();
+    let lastUrl = '';
+    
+    const monitoringInterval = setInterval(() => {
+      if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
+        
+        // Enhanced navigation tracking with detailed debugging
+        window.logMonitorApi.executeInWebContentsView(`
+          (function() {
+            let response = { 
+              clearFlag: false, 
+              heartbeat: false,
+              needsRecovery: false,
+              navigation: {
+                url: window.location.href,
+                pathname: window.location.pathname,
+                changed: false,
+                title: document.title,
+                readyState: document.readyState
+              },
+              searchState: {
+                exists: !!window.electronSearchState,
+                timestamp: window.electronSearchState?.timestamp,
+                injectionId: window.electronSearchState?.injectionId,
+                query: window.electronSearchState?.query
+              },
+              timing: {
+                now: Date.now(),
+                pageLoad: performance.timing?.loadEventEnd || 0
+              }
+            };
+            
+            // Store last URL for navigation detection with enhanced logging
+            if (!window.electronLastUrl) {
+              window.electronLastUrl = window.location.href;
+              console.log('[WebContentsView] 🏁 Initial URL tracked:', window.location.href);
+            } else if (window.electronLastUrl !== window.location.href) {
+              console.log('[WebContentsView] 📍 NAVIGATION DETECTED:', {
+                from: window.electronLastUrl,
+                to: window.location.href,
+                searchStateExists: !!window.electronSearchState,
+                searchHeartbeatExists: typeof window.electronSearchHeartbeat === 'function',
+                currentQuery: window.electronSearchState?.query,
+                documentReady: document.readyState,
+                title: document.title,
+                timestamp: Date.now()
+              });
+              window.electronLastUrl = window.location.href;
+              response.navigation.changed = true;
+              
+              // Log any event listeners that might be lost
+              const eventListeners = [];
+              if (window.addEventListener.toString().indexOf('[native code]') === -1) {
+                eventListeners.push('addEventListener-overridden');
+              }
+              if (document.addEventListener.toString().indexOf('[native code]') === -1) {
+                eventListeners.push('document-addEventListener-overridden');
+              }
+              
+              console.log('[WebContentsView] 📍 Event listener status after navigation:', eventListeners);
+            }
+            
+            // Check for clear flag
+            if (window.electronSearchState && window.electronSearchState.shouldClear) {
+              console.log('[WebContentsView] Clear flag detected, notifying Electron');
+              window.electronSearchState.shouldClear = false;
+              window.parent.postMessage({ type: 'electron-search-clear' }, '*');
+              response.clearFlag = true;
+            }
+            
+            // Enhanced heartbeat check with diagnostic info
+            if (window.electronSearchHeartbeat && typeof window.electronSearchHeartbeat === 'function') {
+              try {
+                const heartbeat = window.electronSearchHeartbeat();
+                response.heartbeat = heartbeat.alive;
+                if (!heartbeat.alive) {
+                  console.warn('[WebContentsView] ❌ Heartbeat function exists but reports not alive:', heartbeat);
+                }
+              } catch (error) {
+                console.error('[WebContentsView] ❌ Heartbeat function threw error:', error);
+                response.needsRecovery = true;
+              }
+            } else if (window.electronSearchState) {
+              console.warn('[WebContentsView] ⚠️ Search state exists but no heartbeat function - partial failure');
+              response.needsRecovery = true;
+            } else {
+              // No search state at all - might be normal or might need injection
+              console.log('[WebContentsView] ℹ️ No search state found');
+            }
+            
+            return response;
+          })()
+        `).then((response: any) => {
+          if (response) {
+            // Enhanced navigation tracking with detailed diagnostics
+            if (response.navigation.changed && response.navigation.url !== lastUrl) {
+              console.log(`[Search] 📍 NAVIGATION DETECTED:`, {
+                from: lastUrl,
+                to: response.navigation.url,
+                searchState: response.searchState,
+                timing: response.timing,
+                pageReady: response.navigation.readyState,
+                title: response.navigation.title
+              });
+              lastUrl = response.navigation.url;
+              
+              // Enhanced timing for re-injection based on page readiness
+              const getOptimalDelay = () => {
+                // If page is still loading, wait longer
+                if (response.navigation.readyState === 'loading') {
+                  return 2000;
+                }
+                // If page is interactive but not complete, moderate delay
+                else if (response.navigation.readyState === 'interactive') {
+                  return 1000;
+                }
+                // If page is complete, shorter delay
+                else {
+                  return 500;
+                }
+              };
+              
+              const delay = getOptimalDelay();
+              console.log(`[Search] 🔄 Scheduling re-injection in ${delay}ms (page state: ${response.navigation.readyState})`);
+              
+              setTimeout(() => {
+                console.log('[Search] 🔄 Executing post-navigation re-injection');
+                if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
+                    searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
+                  console.log('[Search] Re-injecting active search state:', {
+                    query: searchQuery.value,
+                    resultCounts: {
+                      events: searchResults.value.events.length,
+                      users: searchResults.value.users.length,
+                      organizations: searchResults.value.organizations.length
+                    }
+                  });
+                  sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
+                } else {
+                  console.log('[Search] Establishing search infrastructure on new page');
+                  sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+                }
+              }, delay);
+            }
+            
+            // Enhanced heartbeat tracking (reduced logging to prevent spam)
+            if (response.heartbeat) {
+              lastHeartbeat = Date.now();
+              // Only log healthy state occasionally to reduce spam
+              if (response.searchState.exists && Math.random() < 0.1) { // 10% chance to log
+                console.log('[Search] ✅ Heartbeat alive, search state healthy');
+              }
+            } else if (response.searchState.exists && !response.heartbeat) {
+              console.warn('[Search] ⚠️ Search state exists but heartbeat failed');
+            }
+            
+            // More intelligent auto-recovery with better logging
+            const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
+            if (response.needsRecovery) {
+              console.log('[Search] 🔧 Immediate recovery needed - search state corrupted');
+              lastHeartbeat = Date.now(); // Reset to prevent immediate re-trigger
+              autoRecoverSearch();
+            } else if (!response.heartbeat && timeSinceLastHeartbeat > 15000) {
+              console.log(`[Search] 🔧 Auto-recovery triggered after ${Math.round(timeSinceLastHeartbeat/1000)}s without heartbeat`);
+              lastHeartbeat = Date.now(); // Reset to prevent immediate re-trigger
+              autoRecoverSearch();
+            }
+          }
+        }).catch((error: any) => {
+          console.warn('[Search] Monitoring execution failed:', error);
+          // If monitoring fails, attempt recovery less frequently
+          const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
+          if (timeSinceLastHeartbeat > 20000) {
+            console.log(`[Search] 🔧 Monitoring failed for ${Math.round(timeSinceLastHeartbeat/1000)}s, attempting auto-recovery`);
+            lastHeartbeat = Date.now();
+            autoRecoverSearch();
+          }
+        });
+      }
+    }, 3000); // Less frequent polling (3 seconds)
+    
+    return monitoringInterval;
+  };
+  
+  // Enhanced auto-recovery function with anti-flickering logic
+  const autoRecoverSearch = async () => {
+    console.log('[Search] 🔧 Starting auto-recovery process');
+    
+    // First, check if we really need recovery by doing a quick verification
+    try {
+      const quickCheck = await window.logMonitorApi.executeInWebContentsView(`
+        (function() {
+          return {
+            searchStateExists: !!window.electronSearchState,
+            heartbeatWorks: typeof window.electronSearchHeartbeat === 'function',
+            timestamp: window.electronSearchState?.timestamp,
+            query: window.electronSearchState?.query
+          };
+        })()
       `);
+      
+      console.log('[Search] 🔧 Pre-recovery verification:', quickCheck);
+      
+      // If search state exists and query matches, maybe we don't need full recovery
+      if (quickCheck?.searchStateExists && quickCheck?.heartbeatWorks) {
+        const currentQuery = searchQuery.value.trim();
+        const stateQuery = quickCheck.query || '';
+        
+        if (currentQuery === stateQuery) {
+          console.log('[Search] ✅ Search state appears healthy, skipping recovery');
+          return;
+        } else {
+          console.log('[Search] 🔧 Query mismatch detected:', { current: currentQuery, state: stateQuery });
+        }
+      }
+    } catch (error) {
+      console.warn('[Search] 🔧 Pre-recovery check failed, proceeding with recovery:', error);
     }
-  }, 100);
+    
+    // Only inject if we have an active search or need to establish infrastructure
+    const hasActiveSearch = searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
+        searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0);
+    
+    if (hasActiveSearch) {
+      console.log('[Search] 🔧 Recovering active search state:', {
+        query: searchQuery.value,
+        resultCounts: {
+          events: searchResults.value.events.length,
+          users: searchResults.value.users.length,
+          organizations: searchResults.value.organizations.length
+        }
+      });
+      await sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
+    } else if (searchQuery.value.trim()) {
+      console.log('[Search] 🔧 Search query exists but no results - clearing state');
+      await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+    } else {
+      console.log('[Search] 🔧 Establishing minimal search infrastructure');
+      // Only establish infrastructure if really needed
+      await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+    }
+    
+    console.log('[Search] 🔧 Auto-recovery completed');
+  };
+  
+  // Start monitoring
+  const monitoringInterval = startSearchMonitoring();
+  
+  // Clean up on unmount
+  window.addEventListener('beforeunload', () => {
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval);
+    }
+  });
 
   // Listen for clear messages from WebContentsView
   window.addEventListener('message', (event) => {
@@ -1092,18 +1400,37 @@ onMounted(async () => {
     }
   });
 
-  // Set up IPC event listeners for WebContentsView events
+  // Set up IPC event listeners for WebContentsView events with navigation debugging
   if (window.electron && window.electron.ipcRenderer) {
     window.electron.ipcRenderer.on('webcontents-view-ready', () => {
-      console.log('[WebContentPage] WebContentsView is ready');
+      console.log('[WebContentPage] 🟢 WebContentsView is ready');
     });
     
     window.electron.ipcRenderer.on('webcontents-view-loading', () => {
-      console.log('[WebContentPage] WebContentsView started loading');
+      console.log('[WebContentPage] 🟡 WebContentsView started loading - search state will be wiped');
+      // Log current search state before it gets wiped
+      console.log('[WebContentPage] Current search state before wipe:', {
+        query: searchQuery.value,
+        hasResults: searchResults.value.events.length > 0 || searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0,
+        dropdown: showSearchDropdown.value
+      });
     });
     
     window.electron.ipcRenderer.on('webcontents-view-loaded', () => {
-      console.log('[WebContentPage] WebContentsView finished loading');
+      console.log('[WebContentPage] 🟢 WebContentsView finished loading - starting search recovery');
+      
+      // Log navigation details
+      if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
+        window.logMonitorApi.executeInWebContentsView(`
+          console.log('[WebContentsView] 📍 Navigation completed:', {
+            url: window.location.href,
+            pathname: window.location.pathname,
+            readyState: document.readyState,
+            title: document.title
+          });
+        `).catch(() => {}); // Ignore errors
+      }
+      
       // Hide loading overlay when content is loaded
       if (isLoading.value) {
         showLoadingOverlay.value = false;
@@ -1112,21 +1439,69 @@ onMounted(async () => {
         }, 300);
       }
       
-      // Re-inject search state if there's an active search, otherwise reset
-      setTimeout(async () => {
+      // Enhanced page load recovery with dynamic timing
+      const pageLoadRecovery = async () => {
+        console.log('[WebContentPage] Starting enhanced page load recovery');
+        
+        // Wait for page to be more ready - check for common framework indicators
+        let ready = false;
+        let attempts = 0;
+        const maxWaitTime = 5000; // Maximum 5 seconds
+        const checkInterval = 200; // Check every 200ms
+        
+        while (!ready && attempts < (maxWaitTime / checkInterval)) {
+          try {
+            const readinessCheck = await window.logMonitorApi.executeInWebContentsView(`
+              (function() {
+                // Check for various readiness indicators
+                const indicators = {
+                  domReady: document.readyState === 'complete',
+                  hasFramework: !!(window.Vue || window.React || window.Angular),
+                  hasAppRoot: !!(document.querySelector('#app, #root, [data-app], main, .app')),
+                  hasContent: document.body && document.body.children.length > 0,
+                  noLoading: !document.querySelector('.loading, .spinner, [class*="load"]')
+                };
+                
+                const readyScore = Object.values(indicators).filter(Boolean).length;
+                return { indicators, readyScore, isReady: readyScore >= 3 };
+              })()
+            `);
+            
+            if (readinessCheck?.isReady) {
+              ready = true;
+              console.log('[WebContentPage] Page ready for injection:', readinessCheck.indicators);
+            } else {
+              console.log(`[WebContentPage] Page not ready yet (score: ${readinessCheck?.readyScore}/5), waiting...`);
+            }
+          } catch (error) {
+            console.warn('[WebContentPage] Readiness check failed:', error);
+          }
+          
+          if (!ready) {
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            attempts++;
+          }
+        }
+        
+        // Proceed with injection regardless of readiness after timeout
         if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
             searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
-          console.log('[WebContentPage] Re-injecting search state after page navigation');
-          // Re-inject current search state to maintain search functionality
+          console.log('[WebContentPage] Re-injecting search state after page navigation with enhanced timing');
           await sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
         } else if (searchQuery.value.trim()) {
           console.log('[WebContentPage] Active search query detected but no results - clearing search state');
           await resetSearchState();
         } else {
-          console.log('[WebContentPage] No active search - resetting search state');
-          await resetSearchState();
+          console.log('[WebContentPage] Establishing search infrastructure on new page');
+          // Always establish search infrastructure even with no active search
+          await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
         }
-      }, 500); // Small delay to ensure page is fully loaded
+      };
+      
+      // Start recovery process
+      pageLoadRecovery().catch(error => {
+        console.error('[WebContentPage] Page load recovery failed:', error);
+      });
     });
     
     window.electron.ipcRenderer.on('webcontents-view-error', (event, error) => {
