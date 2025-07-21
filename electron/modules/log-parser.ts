@@ -4,6 +4,7 @@ import { getMainWindow } from './window-manager.ts'; // Add .ts
 import { startNewSession } from './session-manager.ts'; // Add .ts
 import { fetchRsiProfileData, defaultProfileData } from './rsi-scraper.ts'; // Add .ts
 import { processKillEvent, addOrUpdateEvent, correlateDeathWithDestruction, formatKillEventDescription, determineDeathType, getKillEvents, getGlobalKillEvents, clearEvents } from './event-processor.ts'; // Import addOrUpdateEvent instead of addOrUpdateGlobalEvent
+import { resolveEntityWithType, getProperEntityName, isEntityPlayer, isEntityLocation, cleanEntityName } from './definitionsService.ts'; // Import entity resolution functions
 import { KillEvent, PlayerDeath } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
@@ -54,7 +55,7 @@ const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{
 const cleanupPattern = /^(.+?)_\d+$/;
 const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
 const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<\[ActorState\] Corpse>.*?Player '(?<playerName>[^']+)'/;
-const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<EnemyPilot>[^']+)' \[\d+\] in zone '(?<EnemyShip>[^']+)' killed by '(?<Player>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
+const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<Victim>[^']+)' \[\d+\] in zone '(?<Zone>[^']+)' killed by '(?<Killer>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
 const environmentDeathRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<playerName>[^']+)' .*? damage type '(?<damageType>BleedOut|SuffocationDamage)'/;
 const systemQuitRegex = /<SystemQuit>|System Fast Shutdown/i;
@@ -246,11 +247,11 @@ export async function parseLogContent(content: string, silentMode = false) {
             // --- Detailed Kill (Actor Death) ---
             const killMatch = line.match(killPatternRegex);
             if (killMatch?.groups) {
-                let { timestamp, EnemyPilot, EnemyShip, Player, Weapon, DamageType } = killMatch.groups;
-                const enemyShipCleanup = EnemyShip.match(cleanupPattern);
-                if (enemyShipCleanup?.[1]) EnemyShip = enemyShipCleanup[1];
+                let { timestamp, Victim, Zone, Killer, Weapon, DamageType } = killMatch.groups;
+                const zoneCleanup = Zone.match(cleanupPattern);
+                if (zoneCleanup?.[1]) Zone = zoneCleanup[1];
                 // Further cleanup (optional, based on original script logic)
-                // EnemyShip = EnemyShip.replace(/_(PU|AI|CIV|MIL|PIR)$/, '').replace(/-00[1-9]$/, '');
+                // Zone = Zone.replace(/_(PU|AI|CIV|MIL|PIR)$/, '').replace(/-00[1-9]$/, '');
                 const weaponCleanup = Weapon.match(cleanupPattern);
                 if (weaponCleanup?.[1]) Weapon = weaponCleanup[1];
 
@@ -258,27 +259,69 @@ export async function parseLogContent(content: string, silentMode = false) {
                 if (DamageType === 'Crash') deathType = 'Crash';
                 else if (DamageType === 'Collision') deathType = 'Collision';
 
-                logger.info(MODULE_NAME, 'Detailed kill:', { attacker: Player }, '->', { victim: EnemyPilot }, '(in', { ship: EnemyShip }, ') with', { weapon: Weapon }, `(${DamageType})`);
+                logger.info(MODULE_NAME, 'Detailed kill:', { attacker: Killer }, '->', { victim: Victim }, '(in zone', { zone: Zone }, ') with', { weapon: Weapon }, `(${DamageType})`);
 
-                if (Player && EnemyPilot) {
-                    const isPlayerInvolved = Player === currentUsername || EnemyPilot === currentUsername;
-                    const stableId = `kill_${Player}_${EnemyPilot}_${EnemyShip}_${Weapon}`.replace(/[^a-zA-Z0-9_]/g, '');
+                if (Killer && Victim) {
+                    const isPlayerInvolved = Killer === currentUsername || Victim === currentUsername;
+                    const stableId = `kill_${Killer}_${Victim}_${Zone}_${Weapon}`.replace(/[^a-zA-Z0-9_]/g, '');
+
+                    // Update current location from the event zone (more accurate than last known location)
+                    currentLocation = Zone;
+
+                    // Determine proper vehicle type based on victim entity type, not zone
+                    let resolvedVehicleType: string;
+                    const victimResolution = resolveEntityWithType(Victim);
+                    const killerResolution = resolveEntityWithType(Killer);
+                    
+                    if (victimResolution.isPlayer) {
+                        resolvedVehicleType = "Player"; // Actual human player
+                    } else if (victimResolution.isNpc) {
+                        resolvedVehicleType = "NPC"; // NPC entity (on foot/not in ship)
+                    } else if (victimResolution.isShip) {
+                        resolvedVehicleType = victimResolution.displayName; // Resolved ship name
+                    } else {
+                        // Unknown entity type - use proper name resolution, but not the zone
+                        resolvedVehicleType = getProperEntityName(Victim, true);
+                    }
+                    
+                    // Get properly resolved entity names - only clean NPCs, preserve players and ships
+                    const victimDisplayName = victimResolution.displayName !== Victim ? 
+                                            victimResolution.displayName : 
+                                            (victimResolution.isNpc ? cleanEntityName(Victim) : Victim);
+                    const killerDisplayName = killerResolution.displayName !== Killer ? 
+                                            killerResolution.displayName : 
+                                            (killerResolution.isNpc ? cleanEntityName(Killer) : Killer);
 
                     const partialEvent: Partial<KillEvent> = {
                         id: stableId,
                         timestamp: timestamp,
-                        killers: [Player],
-                        victims: [EnemyPilot],
+                        killers: [killerDisplayName],
+                        victims: [victimDisplayName],
                         deathType: deathType,
-                        vehicleType: EnemyShip.match(shipManufacturerPattern) ? EnemyShip : "Player",
-                        vehicleId: EnemyShip, // Store original zone info as vehicleId for context
-                        location: currentLocation, // Use last known location
+                        vehicleType: resolvedVehicleType,
+                        vehicleId: Zone, // Store zone info as vehicleId for context
+                        location: Zone, // Use actual event zone instead of last known location
                         weapon: Weapon,
                         damageType: DamageType,
                         gameMode: stableGameMode, // Use stable mode
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         isPlayerInvolved: isPlayerInvolved,
+                        // Add metadata for NPC detection on cleaned names
+                        metadata: {
+                            entityTypes: {
+                                [killerDisplayName]: {
+                                    isNpc: killerResolution.isNpc,
+                                    isPlayer: killerResolution.isPlayer,
+                                    originalId: Killer
+                                },
+                                [victimDisplayName]: {
+                                    isNpc: victimResolution.isNpc,
+                                    isPlayer: victimResolution.isPlayer,
+                                    originalId: Victim
+                                }
+                            }
+                        }
                     };
 
                     // Only process events where the current user is involved
@@ -286,13 +329,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                         // Skip Crash deaths when we already handle them as Vehicle Destruction events
                         // This prevents duplicate entries for the same incident
                         if (deathType === 'Crash') {
-                            logger.debug(MODULE_NAME, `Skipping Crash death event - handled by Vehicle Destruction. Victim: ${EnemyPilot}, current user: ${currentUsername}`);
+                            logger.debug(MODULE_NAME, `Skipping Crash death event - handled by Vehicle Destruction. Victim: ${Victim}, current user: ${currentUsername}`);
                         } else {
                             logger.debug(MODULE_NAME, `Processing combat death event - user involved: ${currentUsername}`);
                             await processKillEvent(partialEvent, silentMode, 2); // Assume combat kill is level 2
                         }
                     } else {
-                        logger.debug(MODULE_NAME, `Skipping combat death event - user not involved. Attacker: ${Player}, victim: ${EnemyPilot}, current user: ${currentUsername || 'none'}`);
+                        logger.debug(MODULE_NAME, `Skipping combat death event - user not involved. Attacker: ${Killer}, victim: ${Victim}, current user: ${currentUsername || 'none'}`);
                     }
                 }
                 continue; // Kill line processed
@@ -315,13 +358,24 @@ export async function parseLogContent(content: string, silentMode = false) {
                 const isPlayerInvolved = playerName === currentUsername;
                 const eventId = `env_death_${playerName}_${timestamp}`.replace(/[^a-zA-Z0-9_]/g, '');
 
+                // Determine proper vehicle type for environmental death
+                const victimResolution = resolveEntityWithType(playerName);
+                const resolvedVehicleType = victimResolution.isPlayer ? 'Player' : 
+                                          victimResolution.isNpc ? 'NPC' : 
+                                          getProperEntityName(playerName, true);
+
+                // Get properly resolved victim name - only clean NPCs, preserve players
+                const victimDisplayName = victimResolution.displayName !== playerName ? 
+                                        victimResolution.displayName : 
+                                        (victimResolution.isNpc ? cleanEntityName(playerName) : playerName);
+
                 const partialEvent: Partial<KillEvent> = {
                     id: eventId,
                     timestamp: timestamp,
                     killers: ['Environment'],
-                    victims: [playerName],
+                    victims: [victimDisplayName],
                     deathType: deathType,
-                    vehicleType: 'Player', // Victim was on foot
+                    vehicleType: resolvedVehicleType, // Properly resolved entity type
                     location: currentLocation,
                     weapon: damageType,
                     damageType: damageType,
@@ -329,6 +383,16 @@ export async function parseLogContent(content: string, silentMode = false) {
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
                     isPlayerInvolved: isPlayerInvolved,
+                    // Add metadata for NPC detection on cleaned names
+                    metadata: {
+                        entityTypes: {
+                            [victimDisplayName]: {
+                                isNpc: victimResolution.isNpc,
+                                isPlayer: victimResolution.isPlayer,
+                                originalId: playerName
+                            }
+                        }
+                    }
                 };
 
                 // Only process events where the current user is involved

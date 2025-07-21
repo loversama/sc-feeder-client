@@ -188,6 +188,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.invoke('definitions:get-stats'),
   forceRefreshDefinitions: (serverBaseUrl?: string): Promise<boolean> => 
     ipcRenderer.invoke('definitions:force-refresh', serverBaseUrl),
+  testNpcPatterns: (): Promise<any[]> => 
+    ipcRenderer.invoke('debug:test-npc-patterns'),
   forceRefreshNpcList: (): Promise<boolean> => 
     ipcRenderer.invoke('force-refresh-npc-list'),
 

@@ -196,6 +196,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getDefinitionsVersion: () => require$$0.ipcRenderer.invoke("definitions:get-version"),
   getDefinitionsStats: () => require$$0.ipcRenderer.invoke("definitions:get-stats"),
   forceRefreshDefinitions: (serverBaseUrl) => require$$0.ipcRenderer.invoke("definitions:force-refresh", serverBaseUrl),
+  testNpcPatterns: () => require$$0.ipcRenderer.invoke("debug:test-npc-patterns"),
   forceRefreshNpcList: () => require$$0.ipcRenderer.invoke("force-refresh-npc-list"),
   // Debug Actions
   resetSessions: () => require$$0.ipcRenderer.invoke("reset-sessions"),

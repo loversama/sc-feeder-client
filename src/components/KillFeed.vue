@@ -970,15 +970,20 @@ const savePersistentCache = () => {
 const cleanEntityNameFallback = (name: string | undefined): string => {
   if (!name) return 'Unknown';
   
-  // Basic cleanup: remove manufacturer prefix and replace underscores
-  const parts = name.split('_');
+  // First, remove numeric suffixes (like _123456789) - CRITICAL for NPCs
+  let cleaned = name.replace(/^(.+?)_\d+$/, '$1');
+  
+  // Handle manufacturer prefixes for ships
+  const parts = cleaned.split('_');
   if (parts.length > 1) {
     const manufacturers = ["ORIG", "CRUS", "RSI", "AEGS", "VNCL", "DRAK", "ANVL", "BANU", "MISC", "CNOU", "XIAN", "GAMA", "TMBL", "ESPR", "KRIG", "GRIN", "XNAA", "MRAI"];
     if (manufacturers.includes(parts[0])) {
-      return parts.slice(1).join(' ').replace(/_/g, ' ');
+      cleaned = parts.slice(1).join('_'); // Keep underscores for now
     }
   }
-  return name.replace(/_/g, ' ');
+  
+  // Convert all remaining underscores to spaces
+  return cleaned.replace(/_/g, ' ');
 };
 
 // Synchronous function that returns immediate fallback, but triggers async resolution
@@ -1098,15 +1103,21 @@ const resolveEntityInBackground = async (entityId: string, serverEnriched?: any)
 
 // Helper to get the display name (either cached resolved or fallback)
 const getEntityDisplayName = (entityId: string | undefined): string => {
-  if (!entityId) return 'Unknown';
+  if (!entityId) {
+    console.log(`[DISPLAY] Empty entityId -> 'Unknown'`);
+    return 'Unknown';
+  }
   
   const cacheKey = entityId;
   if (entityDisplayCache.value.has(cacheKey)) {
-    return entityDisplayCache.value.get(cacheKey)!;
+    const cached = entityDisplayCache.value.get(cacheKey)!;
+    console.log(`[DISPLAY] "${entityId}" -> "${cached}" (from displayCache)`);
+    return cached;
   }
   
-  
-  return cleanEntityNameFallback(entityId);
+  const fallback = cleanEntityNameFallback(entityId);
+  console.log(`[DISPLAY] "${entityId}" -> "${fallback}" (from cleanEntityNameFallback)`);
+  return fallback;
 };
 
 // NPC detection cache for reactive updates
@@ -1197,6 +1208,9 @@ const resolveBatchNpcStatus = async (entityIds: string[]): Promise<Map<string, b
 const isEntityNpc = (entityId: string): boolean => {
   if (!entityId) return false;
   
+  // CRITICAL: We need to check the ORIGINAL entity ID, not the cleaned display name
+  // The template passes raw IDs from events, so this should work correctly
+  
   // Check resolved entity cache first (most reliable)
   const resolvedEntity = entityResolutionCache.value.get(entityId);
   if (resolvedEntity) {
@@ -1211,7 +1225,28 @@ const isEntityNpc = (entityId: string): boolean => {
     return isNpc;
   }
   
-  // Start background resolution for unknown entities (this will populate both display name and NPC status)
+  // If no cache hit, do immediate check using API (synchronous fallback)
+  if (window.logMonitorApi?.isNpcEntity) {
+    try {
+      // For critical display, we need immediate results
+      // This will use the backend definitionsService with proper patterns
+      const result = window.logMonitorApi.isNpcEntity(entityId);
+      if (result instanceof Promise) {
+        // If it's async, start background resolution
+        console.log(`[NPC Check] ${entityId} -> Starting async resolution...`);
+        resolveEntityInBackground(entityId);
+        return false; // Default to false while resolving
+      } else {
+        // Synchronous result available
+        console.log(`[NPC Check] ${entityId} -> ${result ? 'NPC' : 'Player'} (from immediate API call)`);
+        return result;
+      }
+    } catch (error) {
+      console.warn(`[NPC Check] Error checking ${entityId}:`, error);
+    }
+  }
+  
+  // Start background resolution for unknown entities
   console.log(`[NPC Check] ${entityId} -> Unknown, starting background resolution...`);
   resolveEntityInBackground(entityId);
   
@@ -1808,12 +1843,14 @@ onMounted(async () => { // Make onMounted async
           console.log(`   Event Type: ${killEvent.deathType}`);
           console.log(`   Killers: ${killEvent.killers.join(', ')}`);
           console.log(`   Victims: ${killEvent.victims.join(', ')}`);
+          console.log(`   VehicleType: "${killEvent.vehicleType}"`);
+          console.log(`   VehicleModel: "${killEvent.vehicleModel}"`);
           console.log(`   Description: ${killEvent.eventDescription}`);
           console.log(`   Player Involved: ${killEvent.isPlayerInvolved}`);
           console.log(`   Metadata: ${JSON.stringify(killEvent.metadata)}`);
           console.log('🔄 Adding to unified event array...');
         } else {
-          console.log(`Received ${source} event:`, killEvent);
+          console.log(`Received ${source} event - VehicleType: "${killEvent.vehicleType}", Killers: [${killEvent.killers.join(', ')}], Victims: [${killEvent.victims.join(', ')}]`);
         }
 
         // Update current player's ship if included
@@ -2192,9 +2229,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
               <div class="victims player-info">
                 <template v-for="(victim, index) in event.victims" :key="victim">
                   <span class="player-entry">
-                    <!-- Display cleaned vehicle name if victim is a ship ID, otherwise the victim name -->
+                    <!-- Display entity name directly for NPCs, use vehicle logic for ships -->
                     <span class="player-name">
-                      {{ victim.includes('_') ? getEntityDisplayName(event.vehicleType || victim) : getEntityDisplayName(victim) }}
+                      {{ isEntityNpc(victim) ? getEntityDisplayName(victim) : (victim.includes('_') ? getEntityDisplayName(event.vehicleType || victim) : getEntityDisplayName(victim)) }}
                       <span v-if="isEntityNpc(victim)" class="npc-tag">NPC</span>
                     </span>
                   </span>

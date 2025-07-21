@@ -702,20 +702,29 @@ export function getDefinitionById(entityId: string): string | undefined {
  * Checks if an entity is an NPC based on ignore patterns.
  */
 export function isNpcEntity(entityId: string): boolean {
-  if (!cachedDefinitions?.npcIgnoreList) return false;
+  if (!cachedDefinitions?.npcIgnoreList) {
+    logger.warn('DefinitionsService', `NPC check failed: no cached definitions for ${entityId}`);
+    return false;
+  }
+  
+  // Log the entity being checked for debugging
+  logger.debug('DefinitionsService', `Checking NPC status for: "${entityId}"`);
   
   // Check exact matches
   if (cachedDefinitions.npcIgnoreList.exactMatches?.includes(entityId)) {
+    logger.info('DefinitionsService', `${entityId} -> NPC (exact match)`);
     return true;
   }
   
   // Check regex patterns
   for (const pattern of npcIgnorePatterns) {
     if (pattern.test(entityId)) {
+      logger.info('DefinitionsService', `${entityId} -> NPC (pattern: ${pattern.source})`);
       return true;
     }
   }
   
+  logger.debug('DefinitionsService', `${entityId} -> Player (no match found)`);
   return false;
 }
 

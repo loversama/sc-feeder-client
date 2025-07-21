@@ -42,6 +42,7 @@ import { getCurrentUsername } from './log-parser.ts'; // Needed for event detail
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
+import { SERVER_API_URL } from './server-config.ts'; // Import server config
 import { registerEnhancedIPCHandlers } from '../enhanced-ipc-handlers'; // Import enhanced handlers
 
 const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
@@ -777,7 +778,20 @@ ipcMain.handle('auth:show-login', () => {
     // --- Entity Resolution Handlers ---
     ipcMain.handle('entity:resolve', (event, entityId: string, serverEnriched?: any) => {
         try {
-            return resolveEntityName(entityId);
+            logger.debug(MODULE_NAME, `Resolving entity: "${entityId}"`);
+            const resolved = resolveEntityName(entityId);
+            const isNpc = isNpcEntity(entityId);
+            
+            // Return full ResolvedEntity object that frontend expects
+            const result = {
+                displayName: resolved.displayName,
+                isNpc: isNpc,
+                category: resolved.category,
+                matchMethod: resolved.matchMethod
+            };
+            
+            logger.debug(MODULE_NAME, `Entity resolution result for "${entityId}": ${JSON.stringify(result)}`);
+            return result;
         } catch (error) {
             logger.error(MODULE_NAME, 'Error resolving entity:', error);
             return {
@@ -791,7 +805,18 @@ ipcMain.handle('auth:show-login', () => {
 
     ipcMain.handle('entity:resolve-batch', (event, entityIds: string[]) => {
         try {
-            return entityIds.map(id => resolveEntityName(id));
+            return entityIds.map(id => {
+                const resolved = resolveEntityName(id);
+                const isNpc = isNpcEntity(id);
+                
+                // Return full ResolvedEntity object that frontend expects
+                return {
+                    displayName: resolved.displayName,
+                    isNpc: isNpc,
+                    category: resolved.category,
+                    matchMethod: resolved.matchMethod
+                };
+            });
         } catch (error) {
             logger.error(MODULE_NAME, 'Error resolving entities batch:', error);
             return entityIds.map(id => ({
@@ -858,7 +883,7 @@ ipcMain.handle('auth:show-login', () => {
     ipcMain.handle('definitions:force-refresh', async (event, serverBaseUrl?: string) => {
         try {
             // Use default server URL if not provided
-            const SERVER_URL = serverBaseUrl || 'http://localhost:5252'; // Default from server-config
+            const SERVER_URL = serverBaseUrl || SERVER_API_URL; // Use proper config
             return await forceRefreshDefinitions(SERVER_URL);
         } catch (error) {
             logger.error(MODULE_NAME, 'Error force refreshing definitions:', error);
@@ -870,12 +895,37 @@ ipcMain.handle('auth:show-login', () => {
     ipcMain.handle('force-refresh-npc-list', async () => {
         try {
             // Use default server URL 
-            const SERVER_URL = 'http://localhost:5252'; // Default from server-config
+            const SERVER_URL = SERVER_API_URL; // Use proper config
             return await forceRefreshNpcList(SERVER_URL);
         } catch (error) {
             logger.error(MODULE_NAME, 'Error force refreshing NPC list:', error);
             return false;
         }
+    });
+
+    // --- Debug NPC Detection Handler ---
+    ipcMain.handle('debug:test-npc-patterns', () => {
+        logger.info(MODULE_NAME, 'Testing NPC patterns with sample data...');
+        
+        const testEntities = [
+            'ASD_Soldier_4893437',
+            'ASD_Guard_123456',
+            'PU_Human_Enemy_GroundCombat_NPC_ASD_soldier_789',
+            'vlk_adult_irradiated_4983435925834',
+            'PDC Turret',
+            'Vanduul Blade',
+            'PlayerName123',
+            'AEGS_Gladius_456789'
+        ];
+        
+        const results = testEntities.map(entityId => {
+            const isNpc = isNpcEntity(entityId);
+            const resolved = resolveEntityName(entityId);
+            logger.info(MODULE_NAME, `Test: "${entityId}" -> NPC: ${isNpc}, Display: "${resolved.displayName}"`);
+            return { entityId, isNpc, displayName: resolved.displayName };
+        });
+        
+        return results;
     });
 
     // --- Enhanced WebContentsView IPC Handlers ---
