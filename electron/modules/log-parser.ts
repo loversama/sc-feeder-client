@@ -25,6 +25,7 @@ const MODE_DEBOUNCE_MS = 2000; // 2 seconds threshold - adjust as needed
 
 let currentGameVersion: string = "";
 let currentLocation: string = ""; // Last known zone location
+let locationHistory: Array<{timestamp: string, location: string, source: string}> = []; // Track location changes for debugging
 
 // Global event queue to correlate vehicle destruction with corpse logs (managed by event-processor now)
 // const pendingDestructionEvents: PendingVehicleDestruction[] = []; // Moved
@@ -54,6 +55,54 @@ const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterio
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
 const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
+
+// Standardized location processing function
+function processLocationData(rawLocation: string | undefined, coordinates?: {x: number, y: number, z: number}, source: string = 'unknown'): {
+    location: string;
+    coordinates?: {x: number, y: number, z: number};
+    locationSource: 'event' | 'fallback' | 'unknown';
+} {
+    let processedLocation: string;
+    let locationSource: 'event' | 'fallback' | 'unknown';
+    
+    if (rawLocation && rawLocation.trim() !== '') {
+        // Clean up the location name
+        const locationCleanup = rawLocation.match(cleanupPattern);
+        processedLocation = locationCleanup?.[1] || rawLocation;
+        locationSource = 'event';
+        
+        // Update current location and history
+        if (processedLocation !== currentLocation) {
+            currentLocation = processedLocation;
+            locationHistory.push({
+                timestamp: new Date().toISOString(),
+                location: processedLocation,
+                source: source
+            });
+            // Keep only last 50 location changes for debugging
+            if (locationHistory.length > 50) {
+                locationHistory = locationHistory.slice(-50);
+            }
+            logger.debug(MODULE_NAME, `Location updated: ${processedLocation} (source: ${source})`);
+        }
+    } else if (currentLocation && currentLocation !== '') {
+        // Fallback to last known location
+        processedLocation = currentLocation;
+        locationSource = 'fallback';
+        logger.debug(MODULE_NAME, `Using fallback location: ${processedLocation} (no location in ${source} event)`);
+    } else {
+        // No location available
+        processedLocation = 'Unknown';
+        locationSource = 'unknown';
+        logger.warn(MODULE_NAME, `No location available for ${source} event, using 'Unknown'`);
+    }
+    
+    return {
+        location: processedLocation,
+        coordinates: coordinates,
+        locationSource: locationSource
+    };
+}
 const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<\[ActorState\] Corpse>.*?Player '(?<playerName>[^']+)'/;
 const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<Victim>[^']+)' \[\d+\] in zone '(?<Zone>[^']+)' killed by '(?<Killer>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
@@ -185,7 +234,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                 const destructionLevel = parseInt(destroy_level_to) || 0;
 
                 logger.info(MODULE_NAME, 'Vehicle destruction:', { ship: vehicleBaseName }, 'in', { location: vehicle_zone }, 'by', { attacker: caused_by }, `(${damage_type}) Lvl ${destroy_level_from}->${destroy_level_to}`);
-                currentLocation = vehicle_zone; // Update last known location
+                
+                // Process location data with coordinates
+                const locationData = processLocationData(
+                    vehicle_zone, 
+                    { x: parseFloat(pos_x || '0'), y: parseFloat(pos_y || '0'), z: parseFloat(pos_z || '0') },
+                    'vehicle_destruction'
+                );
 
                 if (destructionLevel >= 1) { // Process soft death (level 1) or hard death (level >= 2)
                     const deathType = determineDeathType(destructionLevel, damage_type, caused_by, driver);
@@ -203,14 +258,19 @@ export async function parseLogContent(content: string, silentMode = false) {
                         vehicleType: vehicleBaseName,
                         vehicleModel: vehicleBaseName,
                         vehicleId: vehicle,
-                        location: vehicle_zone,
+                        location: locationData.location,
                         weapon: damage_type, // Use damage_type as initial weapon/cause
                         damageType: damage_type,
                         gameMode: stableGameMode, // Use stable mode
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
-                        coordinates: { x: parseFloat(pos_x || '0'), y: parseFloat(pos_y || '0'), z: parseFloat(pos_z || '0') },
+                        coordinates: locationData.coordinates,
                         isPlayerInvolved: isPlayerInvolved,
+                        // Add metadata to track location source for debugging
+                        metadata: {
+                            locationSource: locationData.locationSource,
+                            originalZone: vehicle_zone
+                        }
                     };
 
                     // Only process events where the current user is involved
@@ -260,14 +320,14 @@ export async function parseLogContent(content: string, silentMode = false) {
                 else if (DamageType === 'Collision') deathType = 'Collision';
 
                 logger.info(MODULE_NAME, 'Detailed kill:', { attacker: Killer }, '->', { victim: Victim }, '(in zone', { zone: Zone }, ') with', { weapon: Weapon }, `(${DamageType})`);
-                logger.info(MODULE_NAME, 'DEBUG - Zone details:', { originalZone: killMatch.groups.Zone, cleanedZone: Zone, currentLocation: currentLocation });
+                
+                // Process location data (no coordinates available from combat deaths)
+                const locationData = processLocationData(Zone, undefined, 'combat_death');
+                logger.info(MODULE_NAME, 'DEBUG - Zone details:', { originalZone: killMatch.groups.Zone, cleanedZone: Zone, processedLocation: locationData.location, locationSource: locationData.locationSource });
 
                 if (Killer && Victim) {
                     const isPlayerInvolved = Killer === currentUsername || Victim === currentUsername;
                     const stableId = `kill_${Killer}_${Victim}_${Zone}_${Weapon}`.replace(/[^a-zA-Z0-9_]/g, '');
-
-                    // Update current location from the event zone (more accurate than last known location)
-                    currentLocation = Zone;
 
                     // Determine proper vehicle type based on victim entity type, not zone
                     let resolvedVehicleType: string;
@@ -295,15 +355,20 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: deathType,
                         vehicleType: resolvedVehicleType,
                         vehicleId: Zone, // Store zone info as vehicleId for context
-                        location: Zone, // Use actual event zone instead of last known location
+                        location: locationData.location, // Use processed location with fallback hierarchy
                         weapon: Weapon,
                         damageType: DamageType,
                         gameMode: stableGameMode, // Use stable mode
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
+                        coordinates: locationData.coordinates, // Will be undefined for combat deaths
                         isPlayerInvolved: isPlayerInvolved,
-                        // Add metadata for NPC detection on cleaned names
-                        metadata: {}
+                        // Add metadata for NPC detection and location tracking
+                        metadata: {
+                            locationSource: locationData.locationSource,
+                            originalZone: killMatch.groups.Zone,
+                            cleanedZone: Zone
+                        }
                     };
 
                     // Only process events where the current user is involved
@@ -349,6 +414,9 @@ export async function parseLogContent(content: string, silentMode = false) {
 
                 // Get properly resolved victim name
                 const victimDisplayName = victimResolution.displayName;
+                
+                // Process location data for environmental deaths (use fallback to currentLocation)
+                const locationData = processLocationData(undefined, undefined, 'environmental_death');
 
                 const partialEvent: Partial<KillEvent> = {
                     id: eventId,
@@ -357,15 +425,19 @@ export async function parseLogContent(content: string, silentMode = false) {
                     victims: [victimDisplayName],
                     deathType: deathType,
                     vehicleType: resolvedVehicleType, // Properly resolved entity type
-                    location: currentLocation || 'Unknown', // Use currentLocation for environmental deaths, fallback to Unknown
+                    location: locationData.location, // Use processed location with fallback hierarchy
                     weapon: damageType,
                     damageType: damageType,
                     gameMode: stableGameMode, // Use stable mode
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
+                    coordinates: locationData.coordinates, // Will be undefined for environmental deaths
                     isPlayerInvolved: isPlayerInvolved,
-                    // Add metadata for NPC detection on cleaned names
-                    metadata: {}
+                    // Add metadata for NPC detection and location tracking
+                    metadata: {
+                        locationSource: locationData.locationSource,
+                        fallbackUsed: locationData.locationSource !== 'event'
+                    }
                 };
 
                 // Only process events where the current user is involved
@@ -408,6 +480,7 @@ export function resetParserState() {
     }
     currentGameVersion = "";
     currentLocation = "";
+    locationHistory.length = 0; // Clear location history
     recentPlayerDeaths.length = 0; // Clear recent deaths
     // Event lists are cleared in event-processor
 }
@@ -415,4 +488,26 @@ export function resetParserState() {
 // Getter for current username (might be needed by other modules like window manager)
 export function getCurrentUsername(): string | null {
     return currentUsername;
+}
+
+// Export functions for location data access
+export function getCurrentLocation(): string {
+    return currentLocation || 'Unknown';
+}
+
+export function getLocationHistory(): Array<{timestamp: string, location: string, source: string}> {
+    return [...locationHistory]; // Return a copy to prevent external modification
+}
+
+// Export function to get detailed location state for debugging
+export function getLocationState(): {
+    currentLocation: string;
+    locationHistory: Array<{timestamp: string, location: string, source: string}>;
+    historyCount: number;
+} {
+    return {
+        currentLocation: currentLocation || 'Unknown',
+        locationHistory: [...locationHistory],
+        historyCount: locationHistory.length
+    };
 }

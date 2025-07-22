@@ -316,6 +316,11 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
   getGuestModeStatus: (): Promise<boolean> => ipcRenderer.invoke('app:get-guest-mode-status'),
 
+  // Location Data API
+  getCurrentLocation: (): Promise<string> => ipcRenderer.invoke('get-current-location'),
+  getLocationHistory: (): Promise<Array<{timestamp: string, location: string, source: string}>> => ipcRenderer.invoke('get-location-history'),
+  getLocationState: (): Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}> => ipcRenderer.invoke('get-location-state'),
+
   // --- Generic IPC Message Listener ---
   onIpcMessage: (channel: string, callback: (...args: any[]) => void) => {
     const listener = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);

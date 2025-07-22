@@ -251,6 +251,10 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getPreloadPath: (scriptName) => require$$0.ipcRenderer.invoke("get-preload-path", scriptName),
   getAppVersion: () => require$$0.ipcRenderer.invoke("get-app-version"),
   getGuestModeStatus: () => require$$0.ipcRenderer.invoke("app:get-guest-mode-status"),
+  // Location Data API
+  getCurrentLocation: () => require$$0.ipcRenderer.invoke("get-current-location"),
+  getLocationHistory: () => require$$0.ipcRenderer.invoke("get-location-history"),
+  getLocationState: () => require$$0.ipcRenderer.invoke("get-location-state"),
   // --- Generic IPC Message Listener ---
   onIpcMessage: (channel, callback) => {
     const listener = (_event, ...args) => callback(...args);

@@ -222,6 +222,11 @@ export interface LogMonitorApi {
   getAppVersion: () => Promise<string>;
   getGuestModeStatus: () => Promise<boolean>;
 
+  // Location Data API
+  getCurrentLocation: () => Promise<string>;
+  getLocationHistory: () => Promise<Array<{timestamp: string, location: string, source: string}>>;
+  getLocationState: () => Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}>;
+
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;
   onLogReset: (callback: (event: IpcRendererEvent) => void) => () => void;

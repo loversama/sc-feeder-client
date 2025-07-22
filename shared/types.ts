@@ -101,6 +101,11 @@ export interface KillEvent {
       external: boolean; // Event has been received from external source (server)
     };
     mergedFrom?: string[]; // Array of event IDs that were merged into this event
+    // Location processing metadata for debugging
+    locationSource?: 'event' | 'fallback' | 'unknown'; // How location was determined
+    originalZone?: string; // Original zone string from log before cleanup
+    cleanedZone?: string; // Zone string after cleanup patterns
+    fallbackUsed?: boolean; // Whether fallback location was used
   };
 }
 

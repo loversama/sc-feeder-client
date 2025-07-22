@@ -41,7 +41,7 @@ import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
 import * as RsiScraper from './rsi-scraper.ts'; // Added .ts
 import * as CsvLogger from './csv-logger.ts'; // Added .ts
-import { getCurrentUsername } from './log-parser.ts'; // Needed for event details window - Added .ts
+import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState } from './log-parser.ts'; // Needed for event details window and location data - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
@@ -823,6 +823,23 @@ ipcMain.handle('auth:show-login', () => {
         }
     });
 
+    // --- Location Data Handlers ---
+    ipcMain.handle('get-current-location', () => {
+        logger.debug(MODULE_NAME, 'Getting current location');
+        return getCurrentLocation();
+    });
+
+    ipcMain.handle('get-location-history', () => {
+        logger.debug(MODULE_NAME, 'Getting location history');
+        return getLocationHistory();
+    });
+
+    ipcMain.handle('get-location-state', () => {
+        logger.debug(MODULE_NAME, 'Getting location state for debugging');
+        return getLocationState();
+    });
+
+    // --- Debug Handlers ---
     ipcMain.on('debug:reset-update-simulation', () => {
         logger.info(MODULE_NAME, 'Debug: Resetting update simulation');
         const mainWindow = getMainWindow();

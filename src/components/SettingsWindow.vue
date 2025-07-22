@@ -39,6 +39,50 @@ const languageSelection = ref<string>('en');
 // User state - use global state instead of duplicate local state
 const { state: userState, updateAuthStatus } = useUserState();
 
+// Location state management
+const locationState = ref({
+  currentLocation: 'Unknown',
+  locationHistory: [] as Array<{timestamp: string, location: string, source: string}>,
+  historyCount: 0
+});
+
+// Location methods
+const refreshLocationState = async () => {
+  try {
+    if (window.logMonitorApi?.getLocationState) {
+      const state = await window.logMonitorApi.getLocationState();
+      locationState.value = state;
+      setStatus('Location state refreshed successfully.');
+    } else {
+      setStatus('Location API not available.');
+    }
+  } catch (error) {
+    console.error('Failed to refresh location state:', error);
+    setStatus('Error refreshing location state.');
+  }
+};
+
+const clearLocationHistory = async () => {
+  try {
+    // Note: This would require a new IPC method to clear history
+    // For now, just refresh to show current state
+    await refreshLocationState();
+    setStatus('Location history display refreshed.');
+  } catch (error) {
+    console.error('Failed to clear location history:', error);
+    setStatus('Error clearing location history.');
+  }
+};
+
+const formatTimestamp = (timestamp: string): string => {
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString();
+  } catch {
+    return timestamp;
+  }
+};
+
 // Icon mapping
 const getIcon = (iconName: string) => {
   const icons = {
@@ -189,6 +233,9 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to get guest mode status:', error);
   }
+
+  // Load initial location state
+  await refreshLocationState();
 });
 
 // Account Methods - redirect to main app for authentication
@@ -575,6 +622,50 @@ const toggleLaunchOnStartup = async () => {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Location Debug Section -->
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Location Debug</h4>
+              <div class="space-y-3 text-sm font-mono">
+                <div class="grid grid-cols-1 gap-2">
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">Current Location:</span>
+                    <span class="text-theme-text-light">{{ locationState.currentLocation || 'Loading...' }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">History Count:</span>
+                    <span class="text-theme-text-light">{{ locationState.historyCount || 0 }} changes</span>
+                  </div>
+                </div>
+                
+                <!-- Recent Location History -->
+                <div v-if="locationState.locationHistory?.length > 0" class="mt-4">
+                  <h5 class="text-theme-text-white text-sm mb-2">Recent Location Changes:</h5>
+                  <div class="max-h-48 overflow-y-auto bg-theme-bg-dark rounded border p-3 space-y-1">
+                    <div 
+                      v-for="(entry, index) in locationState.locationHistory.slice(-10)" 
+                      :key="index"
+                      class="text-xs"
+                    >
+                      <div class="flex justify-between items-center">
+                        <span class="text-green-400">{{ entry.location }}</span>
+                        <span class="text-gray-500">{{ entry.source }}</span>
+                      </div>
+                      <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="flex gap-2 mt-4">
+                  <el-button @click="refreshLocationState" size="small" type="primary">
+                    Refresh
+                  </el-button>
+                  <el-button @click="clearLocationHistory" size="small" type="warning">
+                    Clear History
+                  </el-button>
                 </div>
               </div>
             </div>
