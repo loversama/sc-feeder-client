@@ -19,12 +19,16 @@ const { state: userState, reset: resetUser, updateAuthStatus } = useUserState()
 
 // Computed values for template
 const displayName = computed(() => {
+  if (userState.value.isAuthLoading) {
+    return userState.value.lastLoggedInUser || 'Loading...' // Show loading instead of Guest
+  }
   if (userState.value.isAuthenticated) {
     return userState.value.username
   }
   return userState.value.lastLoggedInUser || 'Guest'
 })
 const isAuthenticated = computed(() => userState.value.isAuthenticated)
+const isAuthLoading = computed(() => userState.value.isAuthLoading) // Add loading state
 const rsiHandle = computed(() => userState.value.rsiHandle)
 const rsiMoniker = computed(() => userState.value.rsiMoniker)
 const avatar = computed(() => userState.value.avatar)
@@ -217,9 +221,9 @@ const changePage = (page: string) => {
                 </div>
                 <span
                   class="text-[11px] font-medium tracking-widest uppercase leading-none"
-                  :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : 'text-[#737373]'"
+                  :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : (isAuthLoading ? 'text-[#999]' : 'text-[#737373]')"
                 >
-                  {{ isAuthenticated ? `@${rsiMoniker || rsiHandle || 'Unknown'}` : 'GUEST MODE' }}
+                  {{ isAuthLoading ? 'LOADING...' : (isAuthenticated ? `@${rsiMoniker || rsiHandle || 'Unknown'}` : 'GUEST MODE') }}
                 </span>
               </div>
             </div>

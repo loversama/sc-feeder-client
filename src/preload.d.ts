@@ -162,6 +162,9 @@ export interface LogMonitorApi {
   rescanLog: () => Promise<boolean>;
   sendLogToMain: (message: string) => Promise<boolean>;
 
+  // Enhanced Diagnostic Functions (added for auto-update and startup diagnostics)
+  // These are accessed via invoke() method with specific channels
+
   // Auth Actions
   authLogin: (identifier: string, password: string) => Promise<{ success: boolean; error?: string }>;
   authLogout: () => Promise<boolean>;
@@ -170,6 +173,7 @@ export interface LogMonitorApi {
   authGetTokens: () => Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }>; // New
   authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }) => Promise<{ success: boolean; error?: string }>; // New
   authRefreshToken: () => Promise<UserProfile | null>; // Renamed from ipc-handler's 'auth:refreshToken'
+  authShowLogin: () => Promise<void>;
   
   // Authentication Actions for Login Popup
   authLoginSuccess: () => Promise<void>;

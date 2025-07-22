@@ -210,6 +210,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authGetTokens: () => require$$0.ipcRenderer.invoke("auth:get-tokens"),
   authStoreTokens: (tokens) => require$$0.ipcRenderer.invoke("auth:store-tokens", tokens),
   authRefreshToken: () => require$$0.ipcRenderer.invoke("auth:refreshToken"),
+  authShowLogin: () => require$$0.ipcRenderer.invoke("auth:show-login"),
   // Authentication Actions for Login Popup
   authLoginSuccess: () => require$$0.ipcRenderer.invoke("auth:loginSuccess"),
   authContinueAsGuest: () => require$$0.ipcRenderer.invoke("auth:continueAsGuest"),

@@ -8,50 +8,44 @@ interface UserState {
   isAuthenticated: boolean
   lastLoggedInUser: string
   roles: string[]
+  isAuthLoading: boolean // Add loading state for race condition fix
 }
 
-// Create a reactive state
-const state = ref<UserState>({
+// Create a SINGLE reactive state (fix for dual state bug)
+const globalState = ref<UserState>({
   username: '',
   rsiHandle: '',
   rsiMoniker: null,
   avatar: '',
   isAuthenticated: false,
   lastLoggedInUser: '',
-  roles: []
+  roles: [],
+  isAuthLoading: true // Start as loading
 })
 
 export function useUserState() {
-
-  // --- State ---
-  const state = ref<UserState>({
-    username: '',
-    rsiHandle: '',
-    rsiMoniker: null,
-    avatar: '',
-    isAuthenticated: false,
-    lastLoggedInUser: '',
-    roles: []
-  })
+  // Use the global state instead of creating a new one
 
   // --- Methods ---
 
   // Load initial state and sync with server profile if authenticated
   async function loadProfile() {
     try {
+      globalState.value.isAuthLoading = true // Set loading state
+      
       // Get last logged in user (for guest mode display)
       if (window.logMonitorApi?.getLastLoggedInUser) {
         const lastUser = await window.logMonitorApi.getLastLoggedInUser()
         if (lastUser) {
-          state.value.lastLoggedInUser = lastUser
-          state.value.username = lastUser // Default to last logged in user
+          globalState.value.lastLoggedInUser = lastUser
+          globalState.value.username = lastUser // Default to last logged in user
         }
       }
 
       // Check auth status
       if (window.logMonitorApi?.authGetStatus) {
         const status = await window.logMonitorApi.authGetStatus()
-        state.value.isAuthenticated = status.isAuthenticated
+        globalState.value.isAuthenticated = status.isAuthenticated
 
         if (status.isAuthenticated && status.username) {
           // If authenticated, fetch full profile from server
@@ -64,6 +58,8 @@ export function useUserState() {
     } catch (error) {
       console.error('Failed to load user profile:', error)
       reset() // Ensure state is reset on error
+    } finally {
+      globalState.value.isAuthLoading = false // Clear loading state
     }
   }
 
@@ -73,55 +69,56 @@ export function useUserState() {
       if (window.logMonitorApi?.getProfile) {
         const profile = await window.logMonitorApi.getProfile()
         if (profile) {
-          state.value.username = profile.username
-          state.value.rsiHandle = profile.rsiHandle
-          state.value.rsiMoniker = profile.rsiMoniker
-          state.value.avatar = profile.avatar || ''
-          state.value.roles = profile.roles || ['user']
-          state.value.isAuthenticated = true
+          globalState.value.username = profile.username
+          globalState.value.rsiHandle = profile.rsiHandle
+          globalState.value.rsiMoniker = profile.rsiMoniker
+          globalState.value.avatar = profile.avatar || ''
+          globalState.value.roles = profile.roles || ['user']
+          globalState.value.isAuthenticated = true
           console.log(`[useUserState] Profile synced for ${profile.username} with roles: [${profile.roles?.join(', ')}]`)
         } else {
           // If profile data not found, use last known username
-          state.value.username = state.value.lastLoggedInUser || 'User'
-          state.value.rsiHandle = ''
-          state.value.rsiMoniker = null
-          state.value.avatar = ''
-          state.value.roles = []
+          globalState.value.username = globalState.value.lastLoggedInUser || 'User'
+          globalState.value.rsiHandle = ''
+          globalState.value.rsiMoniker = null
+          globalState.value.avatar = ''
+          globalState.value.roles = []
         }
       } else {
         console.warn('logMonitorApi.getProfile not available')
-        state.value.username = state.value.lastLoggedInUser || 'User'
-        state.value.rsiHandle = ''
-        state.value.avatar = ''
-        state.value.roles = []
+        globalState.value.username = globalState.value.lastLoggedInUser || 'User'
+        globalState.value.rsiHandle = ''
+        globalState.value.avatar = ''
+        globalState.value.roles = []
       }
     } catch (error) {
       console.error('Failed to sync profile:', error)
       // On error, keep authenticated state but reset profile data
-      state.value.username = state.value.lastLoggedInUser || 'User'
-      state.value.rsiHandle = ''
-      state.value.avatar = ''
-      state.value.roles = []
+      globalState.value.username = globalState.value.lastLoggedInUser || 'User'
+      globalState.value.rsiHandle = ''
+      globalState.value.avatar = ''
+      globalState.value.roles = []
     }
   }
 
 
   // Reset state to guest mode
   function reset() {
-    state.value.username = state.value.lastLoggedInUser || 'User' // Default to 'User' if no last user
-    state.value.rsiHandle = '' // No RSI handle in guest mode
-    state.value.rsiMoniker = null // No RSI moniker in guest mode
-    state.value.avatar = '' // No avatar in guest mode
-    state.value.roles = [] // No roles in guest mode
-    state.value.isAuthenticated = false
+    globalState.value.username = globalState.value.lastLoggedInUser || 'Guest' // Standardize to 'Guest'
+    globalState.value.rsiHandle = '' // No RSI handle in guest mode
+    globalState.value.rsiMoniker = null // No RSI moniker in guest mode
+    globalState.value.avatar = '' // No avatar in guest mode
+    globalState.value.roles = [] // No roles in guest mode
+    globalState.value.isAuthenticated = false
   }
 
   // Update auth status and trigger profile sync if authenticated
   async function updateAuthStatus() {
     try {
+      globalState.value.isAuthLoading = true
       const status = await window.logMonitorApi?.authGetStatus()
       if (status) {
-        state.value.isAuthenticated = status.isAuthenticated
+        globalState.value.isAuthenticated = status.isAuthenticated
         if (status.isAuthenticated && status.username) {
           // If authenticated, sync profile data
           await syncProfile()
@@ -135,13 +132,15 @@ export function useUserState() {
     } catch (error) {
       console.error('Failed to update auth status:', error)
       reset() // Reset on error
+    } finally {
+      globalState.value.isAuthLoading = false
     }
   }
 
   // --- Event Listener Setup ---
   const handleAuthStatusChange = (event: any, status: { isAuthenticated: boolean; username: string | null; userId: string | null }) => {
     console.log('Received auth-status-changed event:', status)
-    state.value.isAuthenticated = status.isAuthenticated
+    globalState.value.isAuthenticated = status.isAuthenticated
     if (status.isAuthenticated) {
       // If authenticated, sync profile data
       syncProfile()
@@ -179,7 +178,7 @@ export function useUserState() {
   // --- Return ---
   // Return readonly state and methods
   return {
-    state: readonly(state),
+    state: readonly(globalState),
     loadProfile,
     reset,
     updateAuthStatus, // Keep this in case manual update is needed elsewhere

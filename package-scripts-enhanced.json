@@ -1,0 +1,36 @@
+{
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:pack": "electron-builder",
+    "electron:dist": "npm run build && electron-builder",
+    
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac",  
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:all": "npm run build && electron-builder --win --mac --linux",
+    
+    "release": "npm run build && electron-builder --publish always",
+    "release:draft": "npm run build && electron-builder --publish never",
+    "release:win": "npm run build && electron-builder --win --publish always",
+    "release:mac": "npm run build && electron-builder --mac --publish always",
+    "release:linux": "npm run build && electron-builder --linux --publish always",
+    
+    "build:enhanced": "npm run build && electron-builder --config electron-builder-enhanced.json5",
+    "release:enhanced": "npm run build && electron-builder --config electron-builder-enhanced.json5 --publish always",
+    "build:squirrel": "npm run build && electron-builder --config electron-builder-enhanced.json5 --win --publish never",
+    "build:nsis": "npm run build && electron-builder --win --publish never",
+    
+    "test:autoupdate": "node scripts/test-autoupdate.js",
+    "test:startup": "node scripts/test-startup.js", 
+    "diagnose": "node scripts/run-diagnostics.js",
+    "fix:autoupdate": "node scripts/fix-autoupdate.js",
+    
+    "postinstall": "electron-builder install-app-deps",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
+    "typecheck": "vue-tsc --noEmit"
+  }
+}

@@ -36,16 +36,8 @@ const isGuestMode = ref<boolean>(false);
 const themeSelection = ref<string>('dark');
 const languageSelection = ref<string>('en');
 
-// Account State
-const loginIdentifier = ref<string>('');
-const loginPassword = ref<string>('');
-const loginError = ref<string>('');
-const loginLoading = ref<boolean>(false);
-const authStatus = ref<'loading' | 'authenticated' | 'unauthenticated'>('loading');
-const loggedInUsername = ref<string | null>(null);
-
-// User state for debugging
-const { state: userState } = useUserState();
+// User state - use global state instead of duplicate local state
+const { state: userState, updateAuthStatus } = useUserState();
 
 // Icon mapping
 const getIcon = (iconName: string) => {
@@ -199,35 +191,16 @@ onMounted(async () => {
   }
 });
 
-// Account Methods
-const handleLogin = async () => {
-    loginLoading.value = true;
-    loginError.value = '';
-    if (!window.logMonitorApi?.authLogin) {
-        loginError.value = 'API bridge (authLogin) not available.';
-        setStatus('Login error: API bridge missing.');
-        loginLoading.value = false;
-        return;
-    }
-    try {
-        setStatus('Login attempt...');
-        const result = await window.logMonitorApi.authLogin(loginIdentifier.value, loginPassword.value);
-        if (result.success) {
-           await updateAuthStatus();
-           setStatus('Login successful!');
-           loginPassword.value = '';
-        } else {
-           loginError.value = result.error || 'Login failed.';
-           setStatus('Login failed.');
-        }
-
-    } catch (err: any) {
-        console.error('Login IPC error:', err);
-        loginError.value = err.message || 'An error occurred.';
-        setStatus('Login error.');
-    } finally {
-        loginLoading.value = false;
-    }
+// Account Methods - redirect to main app for authentication
+const handleLoginRedirect = async () => {
+  try {
+    setStatus('Opening login window...');
+    await window.logMonitorApi.authShowLogin();
+    setStatus('Login window opened. Please complete authentication in the popup.');
+  } catch (error) {
+    console.error('Failed to open login window:', error);
+    setStatus('Error opening login window. Please try using the main application window.');
+  }
 };
 
 const handleLogout = async () => {
@@ -240,10 +213,7 @@ const handleLogout = async () => {
         const success = await window.logMonitorApi.authLogout();
         if (success) {
            await updateAuthStatus();
-           loginIdentifier.value = '';
-           loginPassword.value = '';
-           loginError.value = '';
-           setStatus('Logged out.');
+           setStatus('Logged out successfully.');
         } else {
            setStatus('Logout failed.');
         }
@@ -251,26 +221,6 @@ const handleLogout = async () => {
          console.error('Logout IPC error:', err);
          setStatus('Logout error.');
      }
-};
-
-// Function to get current auth status from main process
-const updateAuthStatus = async () => {
-    authStatus.value = 'loading';
-    if (!window.logMonitorApi?.authGetStatus) {
-        authStatus.value = 'unauthenticated';
-        loggedInUsername.value = null;
-        console.error('Cannot get auth status: API bridge missing.');
-        return;
-    }
-    try {
-        const status = await window.logMonitorApi.authGetStatus();
-        loggedInUsername.value = status.username;
-        authStatus.value = status.isAuthenticated ? 'authenticated' : 'unauthenticated';
-    } catch (err) {
-        console.error('Error getting auth status:', err);
-        authStatus.value = 'unauthenticated';
-        loggedInUsername.value = null;
-    }
 };
 
 // Toggle notifications setting
@@ -553,16 +503,17 @@ const toggleLaunchOnStartup = async () => {
             <p class="text-gray-400">Manage your account and authentication</p>
           </div>
 
-          <div v-if="authStatus === 'loading'" class="bg-theme-bg-panel/80 rounded-lg p-8 border border-theme-border text-center">
+          <div v-if="userState.isAuthLoading" class="bg-theme-bg-panel/80 rounded-lg p-8 border border-theme-border text-center">
             <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(99,99,247)] mx-auto mb-4"></div>
             <p class="text-gray-400">Loading account status...</p>
           </div>
 
           <!-- Logged In View -->
-          <div v-else-if="authStatus === 'authenticated'" class="space-y-6">
+          <div v-else-if="userState.isAuthenticated" class="space-y-6">
             <div class="bg-green-900/20 border border-green-500/30 rounded-lg p-6">
               <h4 class="text-lg font-semibold text-green-400 mb-2">Authenticated</h4>
-              <p class="text-green-300">Logged in as: <strong>{{ loggedInUsername || 'Unknown' }}</strong></p>
+              <p class="text-green-300">Logged in as: <strong>{{ userState.username || 'Unknown' }}</strong></p>
+              <p class="text-green-200 text-sm mt-2">Authentication is managed globally across the application.</p>
             </div>
 
             <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
@@ -633,43 +584,31 @@ const toggleLaunchOnStartup = async () => {
             </el-button>
           </div>
 
-          <!-- Logged Out View -->
+          <!-- Guest Mode View -->
           <div v-else class="space-y-6">
-            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <p class="text-gray-400 mb-6">Log in to sync settings and potentially link activity across devices (feature pending).</p>
+            <div class="bg-orange-900/20 border border-orange-500/30 rounded-lg p-6">
+              <h4 class="text-lg font-semibold text-orange-400 mb-2">Guest Mode</h4>
+              <p class="text-orange-300 mb-4">Currently running in guest mode.</p>
+              <p class="text-gray-300 text-sm mb-4">To login and access authenticated features, please use the main application window.</p>
               
-              <div class="space-y-4">
-                <div>
-                  <label class="block text-sm font-medium text-theme-text-light mb-2">Username or Email</label>
-                  <el-input
-                    v-model="loginIdentifier"
-                    placeholder="your_handle / user@email.com"
-                    :disabled="loginLoading"
-                  />
-                </div>
-                
-                <div>
-                  <label class="block text-sm font-medium text-theme-text-light mb-2">Password</label>
-                  <el-input
-                    v-model="loginPassword"
-                    type="password"
-                    placeholder="********"
-                    :disabled="loginLoading"
-                    show-password
-                  />
-                </div>
-                
-                <p v-if="loginError" class="text-red-400 text-sm">{{ loginError }}</p>
-                
-                <el-button 
-                  @click="handleLogin" 
-                  type="primary" 
-                  :loading="loginLoading"
-                  class="px-6"
-                >
-                  {{ loginLoading ? 'Logging in...' : 'Login' }}
-                </el-button>
-              </div>
+              <el-button 
+                @click="handleLoginRedirect" 
+                type="primary" 
+                class="px-6"
+              >
+                Login in Main App
+              </el-button>
+            </div>
+
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-2">Authentication Info</h4>
+              <p class="text-gray-400 text-sm">
+                Authentication is now managed globally across all application windows. 
+                This eliminates the need to login separately in different parts of the app.
+              </p>
+              <p class="text-gray-400 text-sm mt-2">
+                Last known user: <strong>{{ userState.lastLoggedInUser || 'None' }}</strong>
+              </p>
             </div>
           </div>
         </section>

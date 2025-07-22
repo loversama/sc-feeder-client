@@ -10,7 +10,7 @@ const MODULE_NAME = 'ConfigManager'; // Define module name for logger
 const schema = {
   logFilePath: {
     type: 'string',
-    default: 'E:\\StarCitizen\\LIVE\\Game.log' // Default path - Consider making this OS-aware or prompting user
+    default: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log' // Default path - Consider making this OS-aware or prompting user
   },
   sessions: {
     type: 'array',

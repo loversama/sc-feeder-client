@@ -2,7 +2,10 @@ import { ipcMain, dialog, BrowserWindow, app, shell } from 'electron'; // Import
 import path from 'node:path';
 import fs from 'node:fs';
 import { autoUpdater } from 'electron-updater';
-import * as ConfigManager from './config-manager.ts'; // Added .ts
+import * as ConfigManager from './config-manager.ts';
+import { updateStartupSetting, getStartupStatus } from './enhanced-startup-manager';
+import { diagnoseStartupSystem, testStartupFunctionality } from './startup-diagnostics';
+import { diagnoseAutoUpdateSystem, testUpdateWorkflow, applyAutoUpdateFixes } from './autoupdate-diagnostics'; // Added .ts
 // Import window management functions
 import {
     getMainWindow,
@@ -228,57 +231,150 @@ export function registerIpcHandlers() {
         return !!value;
     });
 
-    // --- Launch on Startup Handlers ---
+    // --- Enhanced Launch on Startup Handlers ---
     ipcMain.handle('get-launch-on-startup', () => {
         return ConfigManager.getLaunchOnStartup();
     });
-    ipcMain.handle('set-launch-on-startup', (event, value: boolean) => {
+    
+    ipcMain.handle('set-launch-on-startup', async (event, value: boolean) => {
         const boolValue = !!value;
-        ConfigManager.setLaunchOnStartup(boolValue);
+        logger.info(MODULE_NAME, `Setting launch on startup to: ${boolValue}`);
         
         try {
-            // Don't set up auto-launch in development mode
-            if (process.env.NODE_ENV === 'development') {
-                logger.debug(MODULE_NAME, 'Development mode detected, skipping OS login item setup');
-                return boolValue;
-            }
-
-            // Set OS login item with platform-specific configuration
-            const appFolder = path.dirname(process.execPath);
-            const exeName = path.basename(process.execPath);
+            const result = await updateStartupSetting(boolValue);
             
-            if (process.platform === 'win32' && app.isPackaged) {
-                // Windows production - use Squirrel-compatible path for auto-updater
-                const stubLauncher = path.resolve(appFolder, '..', exeName);
-                logger.info(MODULE_NAME, `Setting Windows startup (${boolValue}) with Squirrel path: ${stubLauncher}`);
+            if (result.success) {
+                logger.success(MODULE_NAME, `Startup setting updated successfully: enabled=${result.enabled}, method=${result.method}`);
                 
-                app.setLoginItemSettings({
-                    openAtLogin: boolValue,
-                    path: stubLauncher,
-                    args: [
-                        '--processStart', `"${exeName}"`,
-                        '--process-start-args', '"--hidden"'
-                    ]
-                });
+                if (result.warnings.length > 0) {
+                    result.warnings.forEach(warning => 
+                        logger.warn(MODULE_NAME, `Startup warning: ${warning}`)
+                    );
+                }
+                
+                return { 
+                    success: true, 
+                    enabled: result.enabled, 
+                    method: result.method,
+                    warnings: result.warnings 
+                };
             } else {
-                // macOS, Linux, or development
-                logger.info(MODULE_NAME, `Setting startup (${boolValue}) with standard configuration`);
-                
-                app.setLoginItemSettings({
-                    openAtLogin: boolValue,
-                    args: ['--hidden'] // Start hidden when launched at startup
-                });
+                logger.error(MODULE_NAME, `Failed to update startup setting:`, result.errors);
+                return { 
+                    success: false, 
+                    enabled: result.enabled, 
+                    errors: result.errors,
+                    warnings: result.warnings 
+                };
             }
-
-            // Verify the setting was applied correctly
-            const verifySettings = app.getLoginItemSettings();
-            logger.info(MODULE_NAME, `Startup setting updated. New state: openAtLogin=${verifySettings.openAtLogin}`);
-            
         } catch (error) {
-            logger.error(MODULE_NAME, 'Failed to update OS login item settings:', error);
+            const errorMsg = `Exception while updating startup setting: ${error}`;
+            logger.error(MODULE_NAME, errorMsg, error);
+            return { 
+                success: false, 
+                enabled: boolValue, 
+                errors: [errorMsg] 
+            };
         }
-        
-        return boolValue;
+    });
+
+    // --- Startup Diagnostics Handlers ---
+    ipcMain.handle('startup-diagnose', async () => {
+        logger.info(MODULE_NAME, 'Running startup diagnostics...');
+        try {
+            const result = await diagnoseStartupSystem();
+            logger.info(MODULE_NAME, `Diagnostics complete: ${result.errors.length} errors, ${result.warnings.length} warnings`);
+            return result;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Startup diagnostics failed:', error);
+            return {
+                isConfigured: false,
+                osRegistered: false,
+                pathExists: false,
+                errors: [`Diagnostics failed: ${error}`],
+                warnings: [],
+                recommendations: ['Contact support with log files'],
+                platformDetails: {
+                    platform: process.platform,
+                    isPackaged: app.isPackaged,
+                    execPath: process.execPath
+                }
+            };
+        }
+    });
+
+    ipcMain.handle('startup-test', async () => {
+        logger.info(MODULE_NAME, 'Running comprehensive startup functionality test...');
+        try {
+            await testStartupFunctionality();
+            return { success: true, message: 'Startup test completed successfully' };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Startup functionality test failed:', error);
+            return { success: false, error: `Test failed: ${error}` };
+        }
+    });
+
+    ipcMain.handle('get-startup-status', () => {
+        try {
+            const status = getStartupStatus();
+            logger.debug(MODULE_NAME, 'Startup status requested:', status);
+            return status;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get startup status:', error);
+            return {
+                configStored: false,
+                osRegistered: false,
+                inSync: false,
+                isOperationInProgress: false,
+                loginItemSettings: null,
+                error: `Failed to get status: ${error}`
+            };
+        }
+    });
+
+    // --- Auto-Update Diagnostics Handlers ---
+    ipcMain.handle('autoupdate-diagnose', async () => {
+        logger.info(MODULE_NAME, 'Running auto-update system diagnostics...');
+        try {
+            const result = await diagnoseAutoUpdateSystem();
+            logger.info(MODULE_NAME, `Auto-update diagnostics complete: ${result.criticalIssues.length} critical, ${result.errors.length} errors, ${result.warnings.length} warnings`);
+            return result;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Auto-update diagnostics failed:', error);
+            return {
+                updateSystemHealth: { isConfigured: false, canCheckUpdates: false, canDownloadUpdates: false, canInstallUpdates: false, hasValidSignature: false },
+                buildConfiguration: { installer: 'unknown', isASAREnabled: false, hasCodeSigning: false, updateChannel: 'unknown', publishProvider: 'unknown' },
+                startupCompatibility: { startupPathValid: false, squirrelExpected: false, squirrelFound: false, pathMismatch: false },
+                networkConfiguration: { canReachUpdateServer: false, hasValidCredentials: false, rateLimit: false },
+                errors: [`Diagnostics failed: ${error}`],
+                warnings: [],
+                recommendations: ['Contact support with log files'],
+                criticalIssues: [`System diagnostic failure: ${error}`]
+            };
+        }
+    });
+
+    ipcMain.handle('autoupdate-test', async () => {
+        logger.info(MODULE_NAME, 'Running comprehensive auto-update workflow test...');
+        try {
+            await testUpdateWorkflow();
+            return { success: true, message: 'Auto-update test completed successfully' };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Auto-update workflow test failed:', error);
+            return { success: false, error: `Test failed: ${error}` };
+        }
+    });
+
+    ipcMain.handle('autoupdate-fix', async () => {
+        logger.info(MODULE_NAME, 'Applying auto-update fixes...');
+        try {
+            const result = await applyAutoUpdateFixes();
+            logger.info(MODULE_NAME, `Auto-update fixes completed: ${result.applied.length} applied, ${result.failed.length} failed`);
+            return result;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Auto-update fix application failed:', error);
+            return { success: false, applied: [], failed: [`Fix application failed: ${error}`] };
+        }
     });
 
     // API/CSV Settings

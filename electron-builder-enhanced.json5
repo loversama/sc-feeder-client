@@ -1,0 +1,173 @@
+{
+  // Enhanced electron-builder configuration for improved auto-updates
+  "appId": "com.voidlog.gg",
+  "productName": "VOIDLOG.GG",
+  "copyright": "Copyright © 2024 VOIDLOG.GG",
+  "electronVersion": "33.2.0",
+  "asar": true, // ENABLED: More efficient updates with delta support
+  "compression": "maximum",
+  "artifactName": "${productName}-${os}-${version}-${arch}.${ext}",
+  
+  "directories": {
+    "output": "release/${version}",
+    "buildResources": "electron/resources/"
+  },
+
+  // Enhanced publishing configuration
+  "publish": {
+    "provider": "github",
+    "owner": "loversama",
+    "repo": "sc-feeder-client",
+    "vPrefixedTagName": true,
+    "releaseType": "draft" // Create drafts for manual review
+  },
+
+  // Code signing configuration (Windows)
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "squirrel", // ADD: Squirrel support for better startup integration
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}-Windows-${version}-Setup.${ext}",
+    "extraFiles": [
+      {
+        "from": "electron/resources/windows/",
+        "to": "./",
+        "filter": "*.dll"
+      }
+    ],
+    // Code signing settings (uncomment when certificates are available)
+    // "certificateFile": "path/to/certificate.p12",
+    // "certificatePassword": "", // Use environment variable
+    // "signingHashAlgorithms": ["sha1", "sha256"],
+    // "timestampServer": "http://timestamp.sectigo.com",
+    "publisherName": "VOIDLOG.GG",
+    "verifyUpdateCodeSignature": false // Temporarily disabled until signing is set up
+  },
+
+  // Enhanced NSIS configuration
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": true,
+    "installerIcon": "electron/resources/icon.ico",
+    "uninstallerIcon": "electron/resources/icon.ico",
+    "installerHeaderIcon": "electron/resources/icon.ico",
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "${productName}",
+    "include": "electron/resources/windows/installer.nsh", // Custom installer script
+    "warningsAsErrors": false,
+    // Better startup integration for NSIS
+    "runAfterFinish": true,
+    "menuCategory": "Games"
+  },
+
+  // Squirrel.Windows configuration for better startup integration
+  "squirrelWindows": {
+    "iconUrl": "https://raw.githubusercontent.com/loversama/sc-feeder-client/main/electron/resources/icon.ico",
+    "loadingGif": "electron/resources/loading.gif",
+    "msi": true,
+    "useAppIdAsId": true
+  },
+
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "artifactName": "${productName}-macOS-${version}-${arch}.${ext}",
+    "category": "public.app-category.games",
+    "icon": "electron/resources/icon.icns",
+    // Code signing for macOS (uncomment when certificates are available)
+    // "identity": "Developer ID Application: Your Name",
+    // "gatekeeperAssess": false,
+    // "hardened": true,
+    // "entitlements": "electron/resources/entitlements.mac.plist",
+    // "entitlementsInherit": "electron/resources/entitlements.mac.plist",
+    "notarize": false // Enable when Apple Developer account is set up
+  },
+
+  "dmg": {
+    "sign": false, // Enable when signing is set up
+    "contents": [
+      {
+        "x": 110,
+        "y": 150
+      },
+      {
+        "x": 240,
+        "y": 150,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  },
+
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}-Linux-${version}-${arch}.${ext}",
+    "category": "Game",
+    "vendor": "VOIDLOG.GG",
+    "maintainer": "VOIDLOG.GG <support@voidlog.gg>",
+    "synopsis": "Star Citizen Kill Feed Monitor",
+    "description": "Real-time Star Citizen combat event monitoring and statistics tracking application."
+  },
+
+  // File associations
+  "fileAssociations": [
+    {
+      "ext": "sclog",
+      "name": "Star Citizen Log File",
+      "description": "Star Citizen Game Log",
+      "role": "Viewer"
+    }
+  ],
+
+  // Enhanced auto-updater settings
+  "electronUpdaterCompatibility": ">= 6.0.0",
+  
+  // Build optimization
+  "buildDependenciesFromSource": false,
+  "nodeGypRebuild": false,
+  "npmRebuild": false,
+
+  // Extra metadata for better update handling
+  "extraMetadata": {
+    "main": "main.js",
+    "name": "voidlog-gg-client",
+    "homepage": "https://voidlog.gg",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/loversama/sc-feeder-client.git"
+    },
+    "bugs": {
+      "url": "https://github.com/loversama/sc-feeder-client/issues"
+    }
+  },
+
+  // Protocol handler for deep linking
+  "protocols": [
+    {
+      "name": "voidlog-gg",
+      "schemes": ["voidlog"]
+    }
+  ]
+}

@@ -2180,6 +2180,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                   'mode-ac': event.gameMode === 'AC'
                 }">{{ event.gameMode }}</span>
           <span class="event-location" v-if="event.location">{{ getEntityDisplayName(event.location) }}</span>
+          <!-- Temporary debug: Show raw location -->
           <div class="event-time-container">
             <span class="event-time">{{ formatTime(event.timestamp) }}</span>
             <!-- Server Source Indicator (world icon pip under timestamp) -->

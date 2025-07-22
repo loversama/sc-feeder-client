@@ -5,7 +5,7 @@ import { showNotification } from './notification-manager';
 // import { sendKillToApi, LogMode } from './api-client.ts'; // Removed API client dependency
 import { logKillToCsv } from './csv-logger.ts'; // Add .ts
 import { getMainWindow } from './window-manager';
-import { getCurrentUsername } from './log-parser.ts'; // To check involvement - Added .ts
+import { getCurrentUsername, resetParserState } from './log-parser.ts'; // To check involvement - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import { getEntityName } from './definitionsService'; // Import for readable names
 import { getEventStore as getEventStoreInstance, type EventStore } from './event-store';
@@ -193,6 +193,14 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         });
     }
 
+    // Debug location data
+    logger.info(MODULE_NAME, 'DEBUG - Event location data:', {
+        eventId: partialEvent.id,
+        partialEventLocation: partialEvent.location,
+        existingEventLocation: existingEvent?.location,
+        finalLocation: partialEvent.location ?? existingEvent?.location
+    });
+
     const fullEvent: KillEvent = {
         // Base required fields
         id: partialEvent.id,
@@ -207,7 +215,7 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         vehicleType: partialEvent.vehicleType || existingEvent?.vehicleType || 'Player',
         vehicleModel: partialEvent.vehicleModel || existingEvent?.vehicleModel || partialEvent.vehicleType || 'Player', // Fallback chain
         vehicleId: partialEvent.vehicleId || existingEvent?.vehicleId,
-        location: partialEvent.location || existingEvent?.location,
+        location: partialEvent.location ?? existingEvent?.location, // Always prefer new location data (even if empty string) over existing
         weapon: partialEvent.weapon || existingEvent?.weapon,
         damageType: partialEvent.damageType || existingEvent?.damageType,
         gameMode: partialEvent.gameMode || existingEvent?.gameMode || 'Unknown',
@@ -590,6 +598,10 @@ export async function clearEvents(): Promise<void> {
         const win = getMainWindow();
         win?.webContents.send('kill-feed-event', null); // Send null event to signal clear
     }
+    
+    // CRITICAL: Reset parser state to clear stale location data
+    resetParserState();
+    logger.info(MODULE_NAME, "Reset parser state including location data.");
 }
 
 // New EventStore accessor functions

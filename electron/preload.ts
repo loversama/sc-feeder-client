@@ -206,6 +206,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authGetTokens: (): Promise<{ accessToken: string | null; refreshToken: string | null; user: UserProfile | null }> => ipcRenderer.invoke('auth:get-tokens'),
   authStoreTokens: (tokens: { accessToken: string; refreshToken: string; user?: UserProfile }): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('auth:store-tokens', tokens),
   authRefreshToken: (): Promise<UserProfile | null> => ipcRenderer.invoke('auth:refreshToken'),
+  authShowLogin: (): Promise<void> => ipcRenderer.invoke('auth:show-login'),
   
   // Authentication Actions for Login Popup
   authLoginSuccess: (): Promise<void> => ipcRenderer.invoke('auth:loginSuccess'),
