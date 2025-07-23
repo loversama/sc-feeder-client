@@ -249,14 +249,27 @@ export async function parseLogContent(content: string, silentMode = false) {
                     const initialVictims = (driver && driver !== 'unknown') ? [driver] : [vehicleBaseName]; // Use vehicle name as placeholder if driver unknown
                     const isPlayerInvolved = initialKillers.includes(currentUsername || '') || initialVictims.includes(currentUsername || '');
 
+                    // Apply consistent NPC-aware vehicleType resolution (same logic as combat deaths)
+                    const vehicleResolution = resolveEntityName(vehicleBaseName);
+                    let resolvedVehicleType: string;
+                    
+                    if (vehicleResolution.category === 'npc') {
+                        resolvedVehicleType = "NPC"; // NPC entity (consistent with combat deaths)
+                    } else if (vehicleResolution.category === 'ship') {
+                        resolvedVehicleType = vehicleResolution.displayName; // Resolved ship name
+                    } else {
+                        // Unknown entity type - use resolved name
+                        resolvedVehicleType = vehicleResolution.displayName;
+                    }
+
                     const partialEvent: Partial<KillEvent> = {
                         id: stableId,
                         timestamp: timestamp,
                         killers: initialKillers,
                         victims: initialVictims,
                         deathType: deathType,
-                        vehicleType: vehicleBaseName,
-                        vehicleModel: vehicleBaseName,
+                        vehicleType: resolvedVehicleType,
+                        vehicleModel: vehicleBaseName, // Keep original name for model reference
                         vehicleId: vehicle,
                         location: locationData.location,
                         weapon: damage_type, // Use damage_type as initial weapon/cause
@@ -350,8 +363,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                     const partialEvent: Partial<KillEvent> = {
                         id: stableId,
                         timestamp: timestamp,
-                        killers: [killerDisplayName],
-                        victims: [victimDisplayName],
+                        killers: [Killer], // Keep original entity ID for NPC detection
+                        victims: [Victim], // Keep original entity ID for NPC detection
                         deathType: deathType,
                         vehicleType: resolvedVehicleType,
                         vehicleId: Zone, // Store zone info as vehicleId for context
@@ -422,7 +435,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     id: eventId,
                     timestamp: timestamp,
                     killers: ['Environment'],
-                    victims: [victimDisplayName],
+                    victims: [playerName], // Keep original entity ID for NPC detection
                     deathType: deathType,
                     vehicleType: resolvedVehicleType, // Properly resolved entity type
                     location: locationData.location, // Use processed location with fallback hierarchy

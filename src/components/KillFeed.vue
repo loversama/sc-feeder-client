@@ -1108,6 +1108,14 @@ const getEntityDisplayName = (entityId: string | undefined): string => {
     return 'Unknown';
   }
   
+  // Check if we have a resolved entity with display name
+  const resolvedEntity = entityResolutionCache.value.get(entityId);
+  if (resolvedEntity) {
+    console.log(`[DISPLAY] "${entityId}" -> "${resolvedEntity.displayName}" (from resolved entity cache)`);
+    return resolvedEntity.displayName;
+  }
+  
+  // Check display cache for pre-resolved names
   const cacheKey = entityId;
   if (entityDisplayCache.value.has(cacheKey)) {
     const cached = entityDisplayCache.value.get(cacheKey)!;
@@ -2204,8 +2212,8 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                 <template v-for="(victim, index) in event.victims" :key="victim">
                   <span class="victim">
                     {{ getEntityDisplayName(victim) }}
-                    <span v-if="isEntityNpc(victim)" class="npc-tag">NPC</span>
                   </span>
+                  <span v-if="isEntityNpc(victim)" class="npc-pip">NPC</span>
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
               </div>
@@ -2221,8 +2229,8 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                 <span v-for="(attacker, index) in event.killers" :key="attacker" class="player-entry">
                   <span class="player-name">
                     {{ getEntityDisplayName(attacker) }}
-                    <span v-if="isEntityNpc(attacker)" class="npc-tag">NPC</span>
                   </span>
+                  <span v-if="isEntityNpc(attacker)" class="npc-pip">NPC</span>
                   <span v-if="index < event.killers.length - 1" class="operator"> + </span>
                 </span>
               </div>
@@ -2233,15 +2241,15 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                     <!-- Display entity name directly for NPCs, use vehicle logic for ships -->
                     <span class="player-name">
                       {{ isEntityNpc(victim) ? getEntityDisplayName(victim) : (victim.includes('_') ? getEntityDisplayName(event.vehicleType || victim) : getEntityDisplayName(victim)) }}
-                      <span v-if="isEntityNpc(victim)" class="npc-tag">NPC</span>
                     </span>
+                    <span v-if="isEntityNpc(victim)" class="npc-pip">NPC</span>
                   </span>
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
               </div>
             </template>
-            <!-- Show vehicle info only if victim is NOT a ship ID and vehicleType exists -->
-            <div class="vehicle-info" v-if="event.vehicleType && event.vehicleType !== 'Player' && !event.victims[0]?.includes('_')">
+            <!-- Show vehicle info only if victim is NOT a ship ID and vehicleType exists and is NOT an NPC -->
+            <div class="vehicle-info" v-if="event.vehicleType && event.vehicleType !== 'Player' && !event.victims[0]?.includes('_') && !isEntityNpc(event.vehicleType)">
               ({{ getEntityDisplayName(event.vehicleType) }})
             </div>
           </div>
@@ -3103,33 +3111,32 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   text-orientation: mixed;
 }
 
-/* NPC Tag Styling */
-.npc-tag {
+/* NPC Pip Styling - matches game mode pills but with dark grey theme */
+.npc-pip {
   display: inline-block;
-  background-color: #1a1a1a; /* Dark background */
-  color: #888; /* Gray text */
-  font-size: 0.7em;
-  font-weight: 600;
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: 3px;
-  margin-left: 6px;
-  border: 1px solid #333;
+  font-size: 0.75em;
+  font-weight: bold;
   text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid;
   letter-spacing: 0.5px;
   vertical-align: middle;
   transition: all 0.2s ease;
+  margin-left: 6px;
+  
+  /* Dark grey color scheme */
+  background-color: rgba(64, 64, 64, 0.2);
+  color: #999;
+  border-color: rgba(64, 64, 64, 0.4);
 }
 
-/* Optional hover effect for NPC tags */
-.npc-tag:hover {
-  background-color: #2a2a2a;
-  border-color: #444;
-}
-
-/* Make NPC tags slightly smaller in victim context */
-.victim .npc-tag {
-  font-size: 0.65em;
-  padding: 1px 4px;
+/* Hover effect for NPC pips */
+.npc-pip:hover {
+  background-color: rgba(64, 64, 64, 0.3);
+  border-color: rgba(64, 64, 64, 0.6);
+  color: #bbb;
 }
 
 </style>

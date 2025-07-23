@@ -319,7 +319,9 @@ function getDefaultNpcIgnoreList(): any {
       '^PU_Human', '^NPC_', '_NPC$', '^Security_.*', '^Guard_.*',
       '^Civilian_.*', '^Pirate_.*', '^BountyTarget_.*', '^[A-Za-z]+Security$',
       '^[A-Za-z]+Guard$', '^[A-Za-z]+Police$', '^PU_Pilots', '^AIModule_',
-      '^Kopion_', '^vlk_juvenile_sentry_', '^Orbital_Sentry_'
+      '^Kopion_', '^vlk_juvenile_sentry_', '^Orbital_Sentry_',
+      '^ASD\\s', '^vlk\\s', '\\bSoldier$', '\\bTechie$', '\\bSpecialist$',
+      'irradiated$', '^Vanduul', '^Xi\'an'
     ]
   };
 }

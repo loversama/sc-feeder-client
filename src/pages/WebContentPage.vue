@@ -1313,7 +1313,7 @@ onMounted(async () => {
     
     // First, check if we really need recovery by doing a quick verification
     try {
-      const quickCheck = await window.logMonitorApi.executeInWebContentsView(`
+      const quickCheckResult = await window.logMonitorApi.executeInWebContentsView(`
         (function() {
           return {
             searchStateExists: !!window.electronSearchState,
@@ -1323,6 +1323,8 @@ onMounted(async () => {
           };
         })()
       `);
+      
+      const quickCheck = quickCheckResult.success ? quickCheckResult as any : null;
       
       console.log('[Search] 🔧 Pre-recovery verification:', quickCheck);
       
@@ -1451,7 +1453,7 @@ onMounted(async () => {
         
         while (!ready && attempts < (maxWaitTime / checkInterval)) {
           try {
-            const readinessCheck = await window.logMonitorApi.executeInWebContentsView(`
+            const readinessResult = await window.logMonitorApi.executeInWebContentsView(`
               (function() {
                 // Check for various readiness indicators
                 const indicators = {
@@ -1466,6 +1468,8 @@ onMounted(async () => {
                 return { indicators, readyScore, isReady: readyScore >= 3 };
               })()
             `);
+            
+            const readinessCheck = readinessResult.success ? readinessResult as any : null;
             
             if (readinessCheck?.isReady) {
               ready = true;

@@ -39,6 +39,38 @@ const languageSelection = ref<string>('en');
 // User state - use global state instead of duplicate local state
 const { state: userState, updateAuthStatus } = useUserState();
 
+// Entity display cache for location names
+const entityDisplayCache = new Map<string, string>();
+
+// Function to get entity display name (resolves location IDs to friendly names)
+const getEntityDisplayName = async (entityId: string | undefined): Promise<string> => {
+  if (!entityId || entityId === 'Unknown' || entityId === 'Loading...') {
+    return entityId || 'Unknown';
+  }
+  
+  // Check cache first
+  if (entityDisplayCache.has(entityId)) {
+    return entityDisplayCache.get(entityId)!;
+  }
+  
+  try {
+    // Use the resolveEntity API to get friendly name
+    if (window.logMonitorApi?.resolveEntity) {
+      const resolved = await window.logMonitorApi.resolveEntity(entityId);
+      const displayName = resolved?.displayName || entityId;
+      entityDisplayCache.set(entityId, displayName);
+      return displayName;
+    }
+  } catch (error) {
+    console.warn('Failed to resolve entity:', entityId, error);
+  }
+  
+  // Fallback to basic cleanup
+  const fallbackName = entityId.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+  entityDisplayCache.set(entityId, fallbackName);
+  return fallbackName;
+};
+
 // Location state management
 const locationState = ref({
   currentLocation: 'Unknown',
@@ -46,12 +78,34 @@ const locationState = ref({
   historyCount: 0
 });
 
+// Reactive display names for locations
+const currentLocationDisplayName = ref<string>('Unknown');
+const locationHistoryDisplayNames = ref<Map<string, string>>(new Map());
+
 // Location methods
 const refreshLocationState = async () => {
   try {
     if (window.logMonitorApi?.getLocationState) {
       const state = await window.logMonitorApi.getLocationState();
       locationState.value = state;
+      
+      // Resolve display names for current location
+      currentLocationDisplayName.value = await getEntityDisplayName(state.currentLocation);
+      
+      // Resolve display names for location history
+      const newDisplayNames = new Map<string, string>();
+      for (const entry of state.locationHistory) {
+        if (!locationHistoryDisplayNames.value.has(entry.location)) {
+          const displayName = await getEntityDisplayName(entry.location);
+          newDisplayNames.set(entry.location, displayName);
+        }
+      }
+      // Merge existing with new display names
+      locationHistoryDisplayNames.value = new Map([
+        ...locationHistoryDisplayNames.value,
+        ...newDisplayNames
+      ]);
+      
       setStatus('Location state refreshed successfully.');
     } else {
       setStatus('Location API not available.');
@@ -64,8 +118,8 @@ const refreshLocationState = async () => {
 
 const clearLocationHistory = async () => {
   try {
-    // Note: This would require a new IPC method to clear history
-    // For now, just refresh to show current state
+    // Clear cached display names and refresh
+    locationHistoryDisplayNames.value.clear();
     await refreshLocationState();
     setStatus('Location history display refreshed.');
   } catch (error) {
@@ -633,7 +687,11 @@ const toggleLaunchOnStartup = async () => {
                 <div class="grid grid-cols-1 gap-2">
                   <div class="flex">
                     <span class="text-gray-400 w-32">Current Location:</span>
-                    <span class="text-theme-text-light">{{ locationState.currentLocation || 'Loading...' }}</span>
+                    <span class="text-theme-text-light">{{ currentLocationDisplayName || 'Loading...' }}</span>
+                  </div>
+                  <div class="flex">
+                    <span class="text-gray-400 w-32">Raw Location ID:</span>
+                    <span class="text-theme-text-light text-xs opacity-75">{{ locationState.currentLocation || 'Unknown' }}</span>
                   </div>
                   <div class="flex">
                     <span class="text-gray-400 w-32">History Count:</span>
@@ -651,10 +709,13 @@ const toggleLaunchOnStartup = async () => {
                       class="text-xs"
                     >
                       <div class="flex justify-between items-center">
-                        <span class="text-green-400">{{ entry.location }}</span>
+                        <span class="text-green-400">{{ locationHistoryDisplayNames.get(entry.location) || entry.location }}</span>
                         <span class="text-gray-500">{{ entry.source }}</span>
                       </div>
-                      <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
+                      <div class="flex justify-between items-center">
+                        <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
+                        <div class="text-gray-500 text-xs opacity-75">{{ entry.location }}</div>
+                      </div>
                     </div>
                   </div>
                 </div>
