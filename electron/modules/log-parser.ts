@@ -8,6 +8,18 @@ import { resolveEntityName, getEntityName, isNpcEntity } from './definitionsServ
 import { KillEvent, PlayerDeath } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
+// Enhanced zone hierarchy imports
+import { ZoneHistoryManager } from './zone-history-manager';
+import { ZoneResolver } from './zone-resolver';
+import { ZoneClassifier } from './zone-classifier';
+import {
+  ZoneResolution,
+  EnhancedEventZoneInfo,
+  EventZoneMetadata,
+  LocationServiceState,
+  ZoneHistoryEntry
+} from '../../shared/zone-types';
+
 const MODULE_NAME = 'LogParser'; // Define module name for logger
 
 // --- Module State ---
@@ -24,8 +36,12 @@ let modeDebounceTimer: NodeJS.Timeout | null = null;
 const MODE_DEBOUNCE_MS = 2000; // 2 seconds threshold - adjust as needed
 
 let currentGameVersion: string = "";
-let currentLocation: string = ""; // Last known zone location
-let locationHistory: Array<{timestamp: string, location: string, source: string}> = []; // Track location changes for debugging
+let currentLocation: string = ""; // Legacy location tracking for backward compatibility
+let locationHistory: Array<{timestamp: string, location: string, source: string}> = []; // Legacy history for debugging
+
+// Enhanced zone management
+let zoneHistoryManager: ZoneHistoryManager | null = null;
+let isZoneSystemInitialized = false;
 
 // Global event queue to correlate vehicle destruction with corpse logs (managed by event-processor now)
 // const pendingDestructionEvents: PendingVehicleDestruction[] = []; // Moved
@@ -56,22 +72,74 @@ const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{
 const cleanupPattern = /^(.+?)_\d+$/;
 const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
 
-// Standardized location processing function
-function processLocationData(rawLocation: string | undefined, coordinates?: {x: number, y: number, z: number}, source: string = 'unknown'): {
+// Initialize enhanced zone system
+function initializeZoneSystem(): void {
+    if (!isZoneSystemInitialized) {
+        try {
+            ZoneResolver.initialize();
+            zoneHistoryManager = new ZoneHistoryManager({
+                maxHistorySize: 10,
+                persistToStorage: true,
+                debugLogging: false
+            });
+            isZoneSystemInitialized = true;
+            logger.info(MODULE_NAME, 'Enhanced zone hierarchy system initialized');
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to initialize zone system:', error);
+            // Fallback to legacy system
+            zoneHistoryManager = null;
+            isZoneSystemInitialized = false;
+        }
+    }
+}
+
+// Enhanced location processing with zone hierarchy
+function processLocationDataEnhanced(
+    rawLocation: string | undefined, 
+    coordinates?: {x: number, y: number, z: number}, 
+    source: string = 'unknown'
+): {
     location: string;
     coordinates?: {x: number, y: number, z: number};
     locationSource: 'event' | 'fallback' | 'unknown';
+    zoneInfo?: EnhancedEventZoneInfo;
+    zoneResolution?: ZoneResolution;
 } {
+    // Initialize zone system if needed
+    initializeZoneSystem();
+    
     let processedLocation: string;
     let locationSource: 'event' | 'fallback' | 'unknown';
+    let zoneInfo: EnhancedEventZoneInfo | undefined;
+    let zoneResolution: ZoneResolution | undefined;
     
     if (rawLocation && rawLocation.trim() !== '') {
         // Clean up the location name
         const locationCleanup = rawLocation.match(cleanupPattern);
-        processedLocation = locationCleanup?.[1] || rawLocation;
-        locationSource = 'event';
+        const cleanLocation = locationCleanup?.[1] || rawLocation;
         
-        // Update current location and history
+        // Enhanced zone processing
+        if (zoneHistoryManager && isZoneSystemInitialized) {
+            try {
+                zoneResolution = zoneHistoryManager.addZoneToHistory(cleanLocation, source, coordinates);
+                zoneInfo = createEnhancedZoneInfo(zoneResolution);
+                processedLocation = zoneInfo.displayLocation;
+                locationSource = 'event';
+                
+                logger.debug(MODULE_NAME, `Enhanced zone processed: ${processedLocation} (${zoneResolution.zone.classification}, ${zoneResolution.zone.system})`);
+            } catch (error) {
+                logger.warn(MODULE_NAME, `Zone processing failed, using legacy method:`, error);
+                // Fallback to legacy processing
+                processedLocation = cleanLocation;
+                locationSource = 'event';
+            }
+        } else {
+            // Legacy processing
+            processedLocation = cleanLocation;
+            locationSource = 'event';
+        }
+        
+        // Update legacy tracking for backward compatibility
         if (processedLocation !== currentLocation) {
             currentLocation = processedLocation;
             locationHistory.push({
@@ -83,24 +151,93 @@ function processLocationData(rawLocation: string | undefined, coordinates?: {x: 
             if (locationHistory.length > 50) {
                 locationHistory = locationHistory.slice(-50);
             }
-            logger.debug(MODULE_NAME, `Location updated: ${processedLocation} (source: ${source})`);
         }
-    } else if (currentLocation && currentLocation !== '') {
-        // Fallback to last known location
-        processedLocation = currentLocation;
-        locationSource = 'fallback';
-        logger.debug(MODULE_NAME, `Using fallback location: ${processedLocation} (no location in ${source} event)`);
     } else {
-        // No location available
-        processedLocation = 'Unknown';
-        locationSource = 'unknown';
-        logger.warn(MODULE_NAME, `No location available for ${source} event, using 'Unknown'`);
+        // Handle missing location data
+        if (zoneHistoryManager && isZoneSystemInitialized) {
+            const currentZone = zoneHistoryManager.getCurrentZone();
+            if (currentZone) {
+                processedLocation = currentZone.zone.displayName;
+                locationSource = 'fallback';
+                zoneInfo = createEnhancedZoneInfo(currentZone);
+                zoneResolution = currentZone;
+                logger.debug(MODULE_NAME, `Using current zone as fallback: ${processedLocation}`);
+            } else {
+                processedLocation = 'Unknown';
+                locationSource = 'unknown';
+                logger.warn(MODULE_NAME, `No zone data available for ${source} event`);
+            }
+        } else if (currentLocation && currentLocation !== '') {
+            // Legacy fallback
+            processedLocation = currentLocation;
+            locationSource = 'fallback';
+            logger.debug(MODULE_NAME, `Using legacy fallback location: ${processedLocation}`);
+        } else {
+            processedLocation = 'Unknown';
+            locationSource = 'unknown';
+            logger.warn(MODULE_NAME, `No location available for ${source} event`);
+        }
     }
     
     return {
         location: processedLocation,
         coordinates: coordinates,
-        locationSource: locationSource
+        locationSource: locationSource,
+        zoneInfo: zoneInfo,
+        zoneResolution: zoneResolution
+    };
+}
+
+// Create enhanced zone information for events
+function createEnhancedZoneInfo(zoneResolution: ZoneResolution): EnhancedEventZoneInfo {
+    const zone = zoneResolution.zone;
+    let primary = null;
+    let secondary = null;
+    
+    if (zone.classification === 'primary') {
+        primary = zone as any; // PrimaryZone
+    } else {
+        secondary = zone as any; // SecondaryZone
+        // Try to get associated primary zone
+        if (zoneHistoryManager) {
+            primary = zoneHistoryManager.matchSecondaryToPrimary(secondary);
+        }
+    }
+    
+    // Build location hierarchy for breadcrumb display
+    const hierarchy: string[] = [];
+    if (zone.system !== 'unknown') {
+        hierarchy.push(zone.system === 'stanton' ? 'Stanton System' : 
+                      zone.system === 'pyro' ? 'Pyro System' : 
+                      'Unknown System');
+    }
+    if (primary && primary.displayName !== zone.displayName) {
+        hierarchy.push(primary.displayName);
+    }
+    hierarchy.push(zone.displayName);
+    
+    return {
+        primary: primary,
+        secondary: secondary,
+        system: zone.system,
+        displayLocation: zone.displayName,
+        locationHierarchy: hierarchy,
+        zoneTransition: false, // Would be determined by comparing with previous event
+        derivedFromHistory: zoneResolution.matchMethod === 'derived'
+    };
+}
+
+// Legacy location processing function for compatibility
+function processLocationData(rawLocation: string | undefined, coordinates?: {x: number, y: number, z: number}, source: string = 'unknown'): {
+    location: string;
+    coordinates?: {x: number, y: number, z: number};
+    locationSource: 'event' | 'fallback' | 'unknown';
+} {
+    const result = processLocationDataEnhanced(rawLocation, coordinates, source);
+    return {
+        location: result.location,
+        coordinates: result.coordinates,
+        locationSource: result.locationSource
     };
 }
 const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<\[ActorState\] Corpse>.*?Player '(?<playerName>[^']+)'/;
@@ -151,6 +288,9 @@ function updateStableGameMode(newStableMode: 'PU' | 'AC' | 'Unknown') {
 // --- Main Parsing Function ---
 
 export async function parseLogContent(content: string, silentMode = false) {
+    // Initialize zone system on first parse
+    initializeZoneSystem();
+    
     const lines = content.split('\n');
     const win = getMainWindow(); // Get window reference once
 
@@ -235,8 +375,8 @@ export async function parseLogContent(content: string, silentMode = false) {
 
                 logger.info(MODULE_NAME, 'Vehicle destruction:', { ship: vehicleBaseName }, 'in', { location: vehicle_zone }, 'by', { attacker: caused_by }, `(${damage_type}) Lvl ${destroy_level_from}->${destroy_level_to}`);
                 
-                // Process location data with coordinates
-                const locationData = processLocationData(
+                // Process location data with enhanced zone hierarchy
+                const locationData = processLocationDataEnhanced(
                     vehicle_zone, 
                     { x: parseFloat(pos_x || '0'), y: parseFloat(pos_y || '0'), z: parseFloat(pos_z || '0') },
                     'vehicle_destruction'
@@ -279,11 +419,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates,
                         isPlayerInvolved: isPlayerInvolved,
-                        // Add metadata to track location source for debugging
+                        // Add enhanced metadata with zone information
                         metadata: {
                             locationSource: locationData.locationSource,
-                            originalZone: vehicle_zone
-                        }
+                            originalZone: vehicle_zone,
+                            zoneInfo: locationData.zoneInfo,
+                            zoneResolution: locationData.zoneResolution
+                        } as EventZoneMetadata
                     };
 
                     // Only process events where the current user is involved
@@ -334,9 +476,16 @@ export async function parseLogContent(content: string, silentMode = false) {
 
                 logger.info(MODULE_NAME, 'Detailed kill:', { attacker: Killer }, '->', { victim: Victim }, '(in zone', { zone: Zone }, ') with', { weapon: Weapon }, `(${DamageType})`);
                 
-                // Process location data (no coordinates available from combat deaths)
-                const locationData = processLocationData(Zone, undefined, 'combat_death');
-                logger.info(MODULE_NAME, 'DEBUG - Zone details:', { originalZone: killMatch.groups.Zone, cleanedZone: Zone, processedLocation: locationData.location, locationSource: locationData.locationSource });
+                // Process location data with enhanced zone hierarchy (no coordinates from combat deaths)
+                const locationData = processLocationDataEnhanced(Zone, undefined, 'combat_death');
+                logger.info(MODULE_NAME, 'DEBUG - Enhanced zone details:', { 
+                    originalZone: killMatch.groups.Zone, 
+                    cleanedZone: Zone, 
+                    processedLocation: locationData.location, 
+                    locationSource: locationData.locationSource,
+                    zoneClassification: locationData.zoneResolution?.zone.classification,
+                    zoneSystem: locationData.zoneResolution?.zone.system
+                });
 
                 if (Killer && Victim) {
                     const isPlayerInvolved = Killer === currentUsername || Victim === currentUsername;
@@ -367,7 +516,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         victims: [Victim], // Keep original entity ID for NPC detection
                         deathType: deathType,
                         vehicleType: resolvedVehicleType,
-                        vehicleId: Zone, // Store zone info as vehicleId for context
+                        vehicleId: undefined, // Zone belongs in location, not vehicle field
                         location: locationData.location, // Use processed location with fallback hierarchy
                         weapon: Weapon,
                         damageType: DamageType,
@@ -376,12 +525,14 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates, // Will be undefined for combat deaths
                         isPlayerInvolved: isPlayerInvolved,
-                        // Add metadata for NPC detection and location tracking
+                        // Add enhanced metadata with zone hierarchy information
                         metadata: {
                             locationSource: locationData.locationSource,
                             originalZone: killMatch.groups.Zone,
-                            cleanedZone: Zone
-                        }
+                            cleanedZone: Zone,
+                            zoneInfo: locationData.zoneInfo,
+                            zoneResolution: locationData.zoneResolution
+                        } as EventZoneMetadata
                     };
 
                     // Only process events where the current user is involved
@@ -428,8 +579,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                 // Get properly resolved victim name
                 const victimDisplayName = victimResolution.displayName;
                 
-                // Process location data for environmental deaths (use fallback to currentLocation)
-                const locationData = processLocationData(undefined, undefined, 'environmental_death');
+                // Process location data for environmental deaths with enhanced zone system
+                const locationData = processLocationDataEnhanced(undefined, undefined, 'environmental_death');
 
                 const partialEvent: Partial<KillEvent> = {
                     id: eventId,
@@ -446,11 +597,13 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     coordinates: locationData.coordinates, // Will be undefined for environmental deaths
                     isPlayerInvolved: isPlayerInvolved,
-                    // Add metadata for NPC detection and location tracking
+                    // Add enhanced metadata with zone hierarchy information
                     metadata: {
                         locationSource: locationData.locationSource,
-                        fallbackUsed: locationData.locationSource !== 'event'
-                    }
+                        fallbackUsed: locationData.locationSource !== 'event',
+                        zoneInfo: locationData.zoneInfo,
+                        zoneResolution: locationData.zoneResolution
+                    } as EventZoneMetadata
                 };
 
                 // Only process events where the current user is involved
@@ -495,6 +648,14 @@ export function resetParserState() {
     currentLocation = "";
     locationHistory.length = 0; // Clear location history
     recentPlayerDeaths.length = 0; // Clear recent deaths
+    
+    // Reset enhanced zone system
+    if (zoneHistoryManager) {
+        zoneHistoryManager.clearHistory();
+    }
+    isZoneSystemInitialized = false;
+    zoneHistoryManager = null;
+    
     // Event lists are cleared in event-processor
 }
 
@@ -512,7 +673,7 @@ export function getLocationHistory(): Array<{timestamp: string, location: string
     return [...locationHistory]; // Return a copy to prevent external modification
 }
 
-// Export function to get detailed location state for debugging
+// Export function to get detailed location state for debugging (legacy)
 export function getLocationState(): {
     currentLocation: string;
     locationHistory: Array<{timestamp: string, location: string, source: string}>;
@@ -523,4 +684,90 @@ export function getLocationState(): {
         locationHistory: [...locationHistory],
         historyCount: locationHistory.length
     };
+}
+
+// Export function to get enhanced zone service state
+export function getZoneServiceState(): LocationServiceState | null {
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        return null;
+    }
+    
+    try {
+        return zoneHistoryManager.getLocationState();
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error getting zone service state:', error);
+        return null;
+    }
+}
+
+// Export function to get zone statistics
+export function getZoneStatistics() {
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        return null;
+    }
+    
+    try {
+        return zoneHistoryManager.getZoneStatistics();
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error getting zone statistics:', error);
+        return null;
+    }
+}
+
+// Export function to get current zone information
+export function getCurrentZoneInfo(): ZoneResolution | null {
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        return null;
+    }
+    
+    try {
+        return zoneHistoryManager.getCurrentZone();
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error getting current zone:', error);
+        return null;
+    }
+}
+
+// Export function to get zone history with filtering
+export function getZoneHistory(filter?: {
+    classification?: 'primary' | 'secondary';
+    system?: 'stanton' | 'pyro' | 'unknown';
+    limit?: number;
+}): ZoneHistoryEntry[] {
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        return [];
+    }
+    
+    try {
+        return zoneHistoryManager.getHistory(filter);
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error getting zone history:', error);
+        return [];
+    }
+}
+
+// Export function to manually add zone to history (for testing or external integration)
+export function addZoneToHistory(
+    zoneId: string, 
+    source: string, 
+    coordinates?: {x: number, y: number, z: number}
+): ZoneResolution | null {
+    initializeZoneSystem();
+    
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        logger.warn(MODULE_NAME, 'Zone system not available for manual zone addition');
+        return null;
+    }
+    
+    try {
+        return zoneHistoryManager.addZoneToHistory(zoneId, source, coordinates);
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error adding zone to history:', error);
+        return null;
+    }
+}
+
+// Export function to check if zone system is available
+export function isZoneSystemAvailable(): boolean {
+    return isZoneSystemInitialized && zoneHistoryManager !== null;
 }

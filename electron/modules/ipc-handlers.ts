@@ -41,7 +41,7 @@ import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
 import * as RsiScraper from './rsi-scraper.ts'; // Added .ts
 import * as CsvLogger from './csv-logger.ts'; // Added .ts
-import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState } from './log-parser.ts'; // Needed for event details window and location data - Added .ts
+import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState, getZoneServiceState, getZoneStatistics, getCurrentZoneInfo, getZoneHistory, addZoneToHistory, isZoneSystemAvailable } from './log-parser.ts'; // Needed for event details window and enhanced zone data - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
@@ -837,6 +837,102 @@ ipcMain.handle('auth:show-login', () => {
     ipcMain.handle('get-location-state', () => {
         logger.debug(MODULE_NAME, 'Getting location state for debugging');
         return getLocationState();
+    });
+
+    // --- Enhanced Zone System Handlers ---
+    ipcMain.handle('zone:get-service-state', () => {
+        try {
+            logger.debug(MODULE_NAME, 'Getting enhanced zone service state');
+            return getZoneServiceState();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting zone service state:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('zone:get-current-zone', () => {
+        try {
+            logger.debug(MODULE_NAME, 'Getting current zone information');
+            return getCurrentZoneInfo();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting current zone:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('zone:get-history', (event, filter?: {
+        classification?: 'primary' | 'secondary';
+        system?: 'stanton' | 'pyro' | 'unknown';
+        limit?: number;
+    }) => {
+        try {
+            logger.debug(MODULE_NAME, 'Getting zone history with filter:', filter);
+            return getZoneHistory(filter);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting zone history:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('zone:get-statistics', () => {
+        try {
+            logger.debug(MODULE_NAME, 'Getting zone statistics');
+            return getZoneStatistics();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting zone statistics:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('zone:add-to-history', (event, zoneId: string, source: string, coordinates?: {x: number, y: number, z: number}) => {
+        try {
+            logger.debug(MODULE_NAME, `Manually adding zone to history: ${zoneId} (source: ${source})`);
+            return addZoneToHistory(zoneId, source, coordinates);
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error adding zone to history:', error);
+            return null;
+        }
+    });
+
+    ipcMain.handle('zone:is-system-available', () => {
+        try {
+            return isZoneSystemAvailable();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error checking zone system availability:', error);
+            return false;
+        }
+    });
+
+    ipcMain.handle('zone:get-primary-zones', (event, system?: 'stanton' | 'pyro' | 'unknown') => {
+        try {
+            logger.debug(MODULE_NAME, `Getting primary zones${system ? ` for system: ${system}` : ''}`);
+            const history = getZoneHistory({ classification: 'primary', system, limit: 50 });
+            return history;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting primary zones:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('zone:get-secondary-zones', (event, system?: 'stanton' | 'pyro' | 'unknown') => {
+        try {
+            logger.debug(MODULE_NAME, `Getting secondary zones${system ? ` for system: ${system}` : ''}`);
+            const history = getZoneHistory({ classification: 'secondary', system, limit: 50 });
+            return history;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting secondary zones:', error);
+            return [];
+        }
+    });
+
+    ipcMain.handle('zone:get-recent-zones', (event, limit: number = 10) => {
+        try {
+            logger.debug(MODULE_NAME, `Getting recent zones (limit: ${limit})`);
+            return getZoneHistory({ limit });
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error getting recent zones:', error);
+            return [];
+        }
     });
 
     // --- Debug Handlers ---
