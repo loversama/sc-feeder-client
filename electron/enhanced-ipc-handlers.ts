@@ -411,6 +411,86 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
+    // --- Config Management Handlers ---
+
+    // Get event filter preference
+    ipcMain.handle('config:get-event-filter', async () => {
+        try {
+            const { getEventFilter } = await import('./modules/config-manager');
+            const filter = getEventFilter();
+            logger.debug(MODULE_NAME, `Retrieved event filter preference: ${filter}`);
+            return filter;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get event filter preference:', error);
+            return 'all'; // Default fallback
+        }
+    });
+
+    // Set event filter preference
+    ipcMain.handle('config:set-event-filter', async (event, filter: 'all' | 'local') => {
+        try {
+            const { setEventFilter } = await import('./modules/config-manager');
+            setEventFilter(filter);
+            logger.info(MODULE_NAME, `Set event filter preference to: ${filter}`);
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to set event filter preference:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // Get discovered event categories
+    ipcMain.handle('config:get-discovered-categories', async () => {
+        try {
+            const { getDiscoveredCategories } = await import('./modules/config-manager');
+            const categories = getDiscoveredCategories();
+            logger.debug(MODULE_NAME, `Retrieved ${Object.keys(categories).length} discovered categories`);
+            return categories;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get discovered categories:', error);
+            return {}; // Default fallback
+        }
+    });
+
+    // Get selected category filters
+    ipcMain.handle('config:get-selected-category-filters', async () => {
+        try {
+            const { getSelectedCategoryFilters } = await import('./modules/config-manager');
+            const filters = getSelectedCategoryFilters();
+            logger.debug(MODULE_NAME, `Retrieved ${filters.length} selected category filters`);
+            return filters;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get selected category filters:', error);
+            return []; // Default fallback
+        }
+    });
+
+    // Set selected category filters
+    ipcMain.handle('config:set-selected-category-filters', async (event, categoryIds: string[]) => {
+        try {
+            const { setSelectedCategoryFilters } = await import('./modules/config-manager');
+            setSelectedCategoryFilters(categoryIds);
+            logger.info(MODULE_NAME, `Set ${categoryIds.length} selected category filters`);
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to set selected category filters:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
+    // Toggle a category filter
+    ipcMain.handle('config:toggle-category-filter', async (event, categoryId: string) => {
+        try {
+            const { toggleCategoryFilter } = await import('./modules/config-manager');
+            toggleCategoryFilter(categoryId);
+            logger.info(MODULE_NAME, `Toggled category filter: ${categoryId}`);
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to toggle category filter:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+    });
+
     // --- Search API Handlers ---
 
     // Proxy search API calls through Electron main process (bypasses CORS)
@@ -1074,12 +1154,23 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
         logger.info(MODULE_NAME, 'WebContentsView finished loading');
         // Notify the host window that content is ready
         targetWindow.webContents.send('webcontents-view-loaded');
+        
+        // Also send a specific event for search state recovery with a slight delay
+        // to ensure the page's JavaScript framework is initialized
+        setTimeout(() => {
+            targetWindow.webContents.send('webcontents-view-search-recovery-needed');
+        }, 1000);
     });
 
     webContentView.webContents.on('did-navigate-in-page', (event, url) => {
         logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
         // For SPA navigation, also notify that the page changed (search state may need re-injection)
         targetWindow.webContents.send('webcontents-view-loaded');
+        
+        // Send search recovery event for SPA navigation
+        setTimeout(() => {
+            targetWindow.webContents.send('webcontents-view-search-recovery-needed');
+        }, 500); // Shorter delay for SPA navigation
     });
 
     webContentView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {

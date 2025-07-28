@@ -13,7 +13,54 @@ let isConnectedToFrontend = false;
 type FrontendConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 let currentFrontendStatus: FrontendConnectionStatus = 'disconnected';
 
+// Heartbeat configuration
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const HEARTBEAT_TIMEOUT = 10000; // 10 seconds to wait for pong
+let heartbeatInterval: NodeJS.Timeout | null = null;
+let lastPongTime = Date.now();
+
 const frontendEvents = new EventEmitter();
+
+// Heartbeat functions
+function startHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  
+  lastPongTime = Date.now();
+  
+  heartbeatInterval = setInterval(() => {
+    if (!frontendSocket || !frontendSocket.connected) {
+      stopHeartbeat();
+      return;
+    }
+    
+    // Check if we've received a pong recently
+    const timeSinceLastPong = Date.now() - lastPongTime;
+    if (timeSinceLastPong > HEARTBEAT_INTERVAL + HEARTBEAT_TIMEOUT) {
+      logger.warn(MODULE_NAME, `No pong received for ${timeSinceLastPong}ms, connection may be unhealthy`);
+      // Trigger reconnection
+      frontendSocket.disconnect();
+      frontendSocket.connect();
+      return;
+    }
+    
+    // Send ping
+    frontendSocket.emit('ping', {
+      timestamp: Date.now(),
+      clientId: getPersistedClientId(),
+    });
+    
+    logger.debug(MODULE_NAME, 'Heartbeat ping sent');
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
 
 // Helper function to send frontend connection status updates to renderer
 function sendFrontendConnectionStatus(status: FrontendConnectionStatus) {
@@ -70,10 +117,15 @@ export function connectToFrontend(): void {
     // Add production path prefix if server is in production mode
     path: socketPath,
     reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
+    reconnectionAttempts: Infinity, // Keep trying indefinitely
+    reconnectionDelay: 1000, // Start with 1 second delay
+    reconnectionDelayMax: 60000, // Max 60 seconds between attempts
+    timeout: 30000, // 30 second connection timeout
     transports: ['websocket'],
     auth: authData,
+    forceNew: false,
+    upgrade: true,
+    rememberUpgrade: true,
   });
 
   frontendSocket.on('connect', () => {
@@ -84,12 +136,14 @@ export function connectToFrontend(): void {
     logger.success(MODULE_NAME, '🟢 ═══════════════════════════════════════════════════════════════');
     isConnectedToFrontend = true;
     sendFrontendConnectionStatus('connected');
+    startHeartbeat(); // Start heartbeat when connected
     frontendEvents.emit('connected');
   });
 
   frontendSocket.on('disconnect', (reason) => {
     logger.warn(MODULE_NAME, `Disconnected from frontend namespace: ${reason}`);
     isConnectedToFrontend = false;
+    stopHeartbeat(); // Stop heartbeat when disconnected
     sendFrontendConnectionStatus('disconnected');
     frontendEvents.emit('disconnected', reason);
   });
@@ -105,54 +159,8 @@ export function connectToFrontend(): void {
     frontendEvents.emit('error', error);
   });
 
-  // Listen for role-filtered events from server - the ONLY source for external events
-  // Listen for both old and new event names for backward compatibility
-  frontendSocket.on('verified_event', (event: any) => {
-    logger.info(MODULE_NAME, `\n🟢 ═══════════════════════════════════════════════════════════════`);
-    logger.info(MODULE_NAME, `📥 SERVER EVENT RECEIVED FROM WEBSOCKET (verified_event - legacy)`);
-    logger.info(MODULE_NAME, `   Event ID: ${event.id}`);
-    logger.info(MODULE_NAME, `   Event Type: ${event.type}`);
-    logger.info(MODULE_NAME, `   Timestamp: ${event.timestamp}`);
-    logger.info(MODULE_NAME, `   Killers: ${event.data?.killers?.join(', ') || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Victims: ${event.data?.victims?.join(', ') || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Source Client: ${event.clientId || event.guestClientId || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Raw Event Data: ${JSON.stringify(event.data || {})}`);
-    logger.info(MODULE_NAME, `🔄 Processing server event...`);
-    
-    handleServerEvent(event);
-  });
-
-  frontendSocket.on('newEvent', (event: any) => {
-    logger.info(MODULE_NAME, `\n🟢 ═══════════════════════════════════════════════════════════════`);
-    logger.info(MODULE_NAME, `📥 SERVER EVENT RECEIVED FROM WEBSOCKET (newEvent)`);
-    logger.info(MODULE_NAME, `   Event ID: ${event.id}`);
-    logger.info(MODULE_NAME, `   Event Type: ${event.type}`);
-    logger.info(MODULE_NAME, `   Timestamp: ${event.timestamp}`);
-    logger.info(MODULE_NAME, `   Killers: ${event.data?.killers?.join(', ') || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Victims: ${event.data?.victims?.join(', ') || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Source Client: ${event.clientId || event.guestClientId || 'Unknown'}`);
-    logger.info(MODULE_NAME, `   Raw Event Data: ${JSON.stringify(event.data || {})}`);
-    logger.info(MODULE_NAME, `🔄 Processing server event...`);
-    
-    handleServerEvent(event);
-  });
-
-  // Listen for event batches (catch-up events for late joiners)
-  frontendSocket.on('eventBatch', (events: any[]) => {
-    logger.info(MODULE_NAME, `\n🟢 ═══════════════════════════════════════════════════════════════`);
-    logger.info(MODULE_NAME, `📥 EVENT BATCH RECEIVED FROM WEBSOCKET (${events?.length || 0} events)`);
-    logger.info(MODULE_NAME, `🔄 Processing batch of server events...`);
-    
-    if (events && Array.isArray(events)) {
-      events.forEach((event, index) => {
-        logger.debug(MODULE_NAME, `   Processing batch event ${index + 1}/${events.length}: ${event.id}`);
-        handleServerEvent(event);
-      });
-    }
-    
-    logger.info(MODULE_NAME, `✅ Completed processing event batch (${events?.length || 0} events)`);
-    logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
-  });
+  // Note: Event reception is handled by /client namespace
+  // /frontend is used for admin features, stats, and dashboard updates only
 
   // Listen for global stats updates
   frontendSocket.on('globalStatsUpdate', (stats: any) => {
@@ -165,132 +173,13 @@ export function connectToFrontend(): void {
     logger.debug(MODULE_NAME, 'Received dashboard stats update');
     getMainWindow()?.webContents.send('dashboard-stats-update', stats);
   });
-}
 
-/**
- * Handles events received from the server.
- * Server has already filtered events based on client's role - client just processes them.
- */
-function handleServerEvent(serverEvent: any) {
-  try {
-    logger.info(MODULE_NAME, `🔄 CONVERTING SERVER EVENT TO CLIENT FORMAT`);
-    logger.info(MODULE_NAME, `   Original server event type: ${serverEvent.type}`);
-    logger.info(MODULE_NAME, `   Original server event ID: ${serverEvent.id}`);
-    
-    // Convert server event format to client KillEvent format
-    const clientEvent: KillEvent = convertServerEventToClient(serverEvent);
-    
-    logger.info(MODULE_NAME, `✅ CONVERSION COMPLETE:`);
-    logger.info(MODULE_NAME, `   Client event ID: ${clientEvent.id}`);
-    logger.info(MODULE_NAME, `   Client death type: ${clientEvent.deathType}`);
-    logger.info(MODULE_NAME, `   Client killers: ${clientEvent.killers.join(', ')}`);
-    logger.info(MODULE_NAME, `   Client victims: ${clientEvent.victims.join(', ')}`);
-    logger.info(MODULE_NAME, `   Client description: ${clientEvent.eventDescription}`);
-    
-    // Add source metadata to indicate this is an external event
-    if (!clientEvent.metadata) {
-      clientEvent.metadata = {};
-    }
-    clientEvent.metadata.source = {
-      server: true,
-      local: false,
-      external: true // This is an external event from the server
-    };
-
-    logger.info(MODULE_NAME, `📤 SENDING TO RENDERER VIA IPC`);
-    logger.info(MODULE_NAME, `   IPC Channel: 'kill-feed-event'`);
-    logger.info(MODULE_NAME, `   Source: 'server'`);
-    logger.info(MODULE_NAME, `   Metadata: ${JSON.stringify(clientEvent.metadata)}`);
-
-    // Send to renderer via IPC
-    const win = getMainWindow();
-    if (!win) {
-      logger.error(MODULE_NAME, `❌ NO MAIN WINDOW AVAILABLE - Cannot send to renderer!`);
-      logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
-      return;
-    }
-
-    win.webContents.send('kill-feed-event', {
-      event: clientEvent,
-      source: 'server'
-    });
-
-    logger.success(MODULE_NAME, `🟢 ✅ SUCCESSFULLY FORWARDED SERVER EVENT TO RENDERER`);
-    logger.success(MODULE_NAME, `   Event: ${clientEvent.id}`);
-    logger.success(MODULE_NAME, `   Description: ${clientEvent.eventDescription}`);
-    logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
-  } catch (error) {
-    logger.error(MODULE_NAME, `❌ ERROR PROCESSING SERVER EVENT:`);
-    logger.error(MODULE_NAME, `   Error: ${error}`);
-    logger.error(MODULE_NAME, `   Server Event: ${JSON.stringify(serverEvent)}`);
-    logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
-  }
-}
-
-/**
- * Converts server GameEvent format to client KillEvent format
- */
-function convertServerEventToClient(serverEvent: any): KillEvent {
-  // Extract participants from server event data
-  const killers: string[] = [];
-  const victims: string[] = [];
-
-  if (serverEvent.data?.killers && Array.isArray(serverEvent.data.killers)) {
-    for (const killer of serverEvent.data.killers) {
-      if (typeof killer === 'string') {
-        killers.push(killer);
-      } else if (killer?.handle) {
-        killers.push(killer.handle);
-      }
-    }
-  }
-
-  if (serverEvent.data?.victims && Array.isArray(serverEvent.data.victims)) {
-    for (const victim of serverEvent.data.victims) {
-      if (typeof victim === 'string') {
-        victims.push(victim);
-      } else if (victim?.handle) {
-        victims.push(victim.handle);
-      }
-    }
-  }
-
-  // Map server event type to client death type
-  let deathType: KillEvent['deathType'] = 'Unknown';
-  switch (serverEvent.type) {
-    case 'PLAYER_KILL':
-      deathType = 'Combat';
-      break;
-    case 'VEHICLE_DESTRUCTION':
-      deathType = 'Hard';
-      break;
-    case 'ENVIRONMENTAL_DEATH':
-      deathType = 'Unknown';
-      break;
-    case 'DEATH':
-      deathType = 'Unknown';
-      break;
-  }
-
-  // Map server event to client format
-  const clientEvent: KillEvent = {
-    id: serverEvent.correlationId || serverEvent.id || `server_${Date.now()}`,
-    timestamp: serverEvent.timestamp ? new Date(serverEvent.timestamp).toISOString() : new Date().toISOString(),
-    killers: killers.length > 0 ? killers : ['Unknown'],
-    victims: victims.length > 0 ? victims : ['Unknown'],
-    deathType: deathType,
-    vehicleType: serverEvent.data?.vehicle || 'Unknown',
-    vehicleModel: serverEvent.data?.vehicle || 'Unknown',
-    location: serverEvent.data?.location || '',
-    weapon: serverEvent.data?.weapon || '',
-    damageType: serverEvent.data?.damageType || '',
-    gameMode: 'Unknown', // Server events don't specify game mode in current format
-    eventDescription: `External: ${killers.join(', ')} → ${victims.join(', ')}`,
-    isPlayerInvolved: false, // Server has already filtered - if we got it, we should see it
-    data: serverEvent.data // Preserve original server data
-  };
-
-  return clientEvent;
+  // Handle pong responses for heartbeat
+  frontendSocket.on('pong', (data: any) => {
+    lastPongTime = Date.now();
+    const roundTripTime = data.received ? lastPongTime - data.received : 0;
+    logger.debug(MODULE_NAME, `Heartbeat pong received (RTT: ${roundTripTime}ms)`);
+  });
 }
 
 /**
@@ -299,6 +188,7 @@ function convertServerEventToClient(serverEvent: any): KillEvent {
 export function disconnectFromFrontend(): void {
   if (frontendSocket) {
     logger.info(MODULE_NAME, 'Disconnecting from frontend namespace...');
+    stopHeartbeat(); // Stop heartbeat before disconnecting
     frontendSocket.disconnect();
     frontendSocket = null;
     isConnectedToFrontend = false;

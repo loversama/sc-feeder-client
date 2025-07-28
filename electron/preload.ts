@@ -208,6 +208,16 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   authRefreshToken: (): Promise<UserProfile | null> => ipcRenderer.invoke('auth:refreshToken'),
   authShowLogin: (): Promise<void> => ipcRenderer.invoke('auth:show-login'),
   
+  // Config Management API
+  getEventFilter: (): Promise<'all' | 'local'> => ipcRenderer.invoke('config:get-event-filter'),
+  setEventFilter: (filter: 'all' | 'local'): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('config:set-event-filter', filter),
+  
+  // Category Management API
+  getDiscoveredCategories: (): Promise<Record<string, any>> => ipcRenderer.invoke('config:get-discovered-categories'),
+  getSelectedCategoryFilters: (): Promise<string[]> => ipcRenderer.invoke('config:get-selected-category-filters'),
+  setSelectedCategoryFilters: (categoryIds: string[]): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('config:set-selected-category-filters', categoryIds),
+  toggleCategoryFilter: (categoryId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('config:toggle-category-filter', categoryId),
+  
   // Authentication Actions for Login Popup
   authLoginSuccess: (): Promise<void> => ipcRenderer.invoke('auth:loginSuccess'),
   authContinueAsGuest: (): Promise<void> => ipcRenderer.invoke('auth:continueAsGuest'),

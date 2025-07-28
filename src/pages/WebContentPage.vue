@@ -318,6 +318,7 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const selectedIndex = ref<number>(-1);
 const searchTimeout = ref<NodeJS.Timeout | null>(null);
 const lastSentSearchData = ref<string>(''); // Track last sent data to prevent spam
+const searchHealthCheckInterval = ref<NodeJS.Timeout | null>(null); // Health check for search state
 
 // Reset search state after page navigation
 const resetSearchState = async () => {
@@ -892,23 +893,27 @@ const getOrgInitials = (orgString: string): string => {
 };
 
 // Function to change active section with loading transitions
-const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => {
-  console.log(`[WebContentPage] Setting active section to: ${section}`);
+const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats', preserveSearch = false) => {
+  console.log(`[WebContentPage] Setting active section to: ${section}, preserveSearch: ${preserveSearch}`);
   
-  // Clear search when changing sections
-  console.log(`[WebContentPage] Clearing search before section change`);
-  searchQuery.value = '';
-  searchResults.value = { events: [], users: [], organizations: [] };
-  showSearchDropdown.value = false;
-  selectedIndex.value = -1;
-  lastSentSearchData.value = '';
-  
-  if (searchInput.value) {
-    searchInput.value.value = '';
+  // Optionally clear search when changing sections
+  if (!preserveSearch) {
+    console.log(`[WebContentPage] Clearing search before section change`);
+    searchQuery.value = '';
+    searchResults.value = { events: [], users: [], organizations: [] };
+    showSearchDropdown.value = false;
+    selectedIndex.value = -1;
+    lastSentSearchData.value = '';
+    
+    if (searchInput.value) {
+      searchInput.value.value = '';
+    }
+    
+    // Send clear signal to WebContentsView
+    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
+  } else {
+    console.log(`[WebContentPage] Preserving search state during section change`);
   }
-  
-  // Send clear signal to WebContentsView
-  await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
   
   // Don't show loading if it's the same section or if WebContentsView isn't attached yet
   if (section === activeSection.value || !isWebContentsViewAttached.value) {
@@ -1418,7 +1423,7 @@ onMounted(async () => {
       });
     });
     
-    window.electron.ipcRenderer.on('webcontents-view-loaded', () => {
+    window.electron.ipcRenderer.on('webcontents-view-loaded', async () => {
       console.log('[WebContentPage] 🟢 WebContentsView finished loading - starting search recovery');
       
       // Log navigation details
@@ -1439,6 +1444,31 @@ onMounted(async () => {
         setTimeout(() => {
           isLoading.value = false;
         }, 300);
+      }
+      
+      // SEARCH RECOVERY: Re-inject search state after navigation
+      if (searchQuery.value.trim()) {
+        console.log('[WebContentPage] 🔄 Recovering search state after navigation:', {
+          query: searchQuery.value,
+          hasResults: Object.keys(searchResults.value).some(key => searchResults.value[key].length > 0)
+        });
+        
+        // Wait a bit for the page to stabilize after navigation
+        setTimeout(async () => {
+          try {
+            // Re-inject the current search state
+            await sendSearchDataToWebContentsView(
+              searchQuery.value,
+              isSearching.value,
+              searchResults.value,
+              true // Force update
+            );
+            
+            console.log('[WebContentPage] ✅ Search state re-injected successfully');
+          } catch (error) {
+            console.error('[WebContentPage] ❌ Failed to re-inject search state:', error);
+          }
+        }, 500); // 500ms delay to ensure page is ready
       }
       
       // Enhanced page load recovery with dynamic timing
@@ -1518,6 +1548,35 @@ onMounted(async () => {
         }, 300);
       }
     });
+    
+    // Dedicated event for search state recovery after navigation
+    window.electron.ipcRenderer.on('webcontents-view-search-recovery-needed', async () => {
+      console.log('[WebContentPage] 🔍 Search recovery event received');
+      
+      // Only recover search if there's an active query
+      if (searchQuery.value.trim()) {
+        console.log('[WebContentPage] 🔄 Performing dedicated search recovery:', {
+          query: searchQuery.value,
+          hasResults: Object.keys(searchResults.value).some(key => searchResults.value[key].length > 0)
+        });
+        
+        try {
+          // Re-inject the current search state with force update
+          await sendSearchDataToWebContentsView(
+            searchQuery.value,
+            isSearching.value,
+            searchResults.value,
+            true // Force update to ensure injection
+          );
+          
+          console.log('[WebContentPage] ✅ Search state recovered successfully via dedicated event');
+        } catch (error) {
+          console.error('[WebContentPage] ❌ Failed to recover search state:', error);
+        }
+      } else {
+        console.log('[WebContentPage] 🔍 No search query to recover');
+      }
+    });
   }
 
   // Listen for centralized navigation state changes
@@ -1555,8 +1614,81 @@ onMounted(async () => {
   notifyMainProcessReady();
 });
 
+// Start search health check when search is active
+const startSearchHealthCheck = () => {
+  // Clear any existing interval
+  if (searchHealthCheckInterval.value) {
+    clearInterval(searchHealthCheckInterval.value);
+  }
+  
+  // Only start health check if there's an active search
+  if (!searchQuery.value.trim()) {
+    return;
+  }
+  
+  console.log('[WebContentPage] Starting search health check');
+  
+  // Check every 3 seconds if search state is still active
+  searchHealthCheckInterval.value = setInterval(async () => {
+    if (!searchQuery.value.trim() || !isWebContentsViewAttached.value) {
+      // Stop health check if no search or WebContentsView detached
+      clearInterval(searchHealthCheckInterval.value);
+      searchHealthCheckInterval.value = null;
+      return;
+    }
+    
+    // Check if search state exists in WebContentsView
+    if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
+      try {
+        const healthCheck = await window.logMonitorApi.executeInWebContentsView(`
+          const searchExists = !!window.electronSearchState && window.electronSearchState.query === '${searchQuery.value.replace(/'/g, "\\'")}';
+          console.log('[WebContentsView] Search health check:', { 
+            exists: searchExists, 
+            currentQuery: window.electronSearchState?.query,
+            expectedQuery: '${searchQuery.value.replace(/'/g, "\\'")}'
+          });
+          searchExists;
+        `);
+        
+        if (!healthCheck) {
+          console.log('[WebContentPage] ⚠️ Search state lost, re-injecting...');
+          await sendSearchDataToWebContentsView(
+            searchQuery.value,
+            isSearching.value,
+            searchResults.value,
+            true
+          );
+        }
+      } catch (error) {
+        console.debug('[WebContentPage] Health check failed (page might be loading):', error);
+      }
+    }
+  }, 3000); // Check every 3 seconds
+};
+
+// Stop search health check
+const stopSearchHealthCheck = () => {
+  if (searchHealthCheckInterval.value) {
+    clearInterval(searchHealthCheckInterval.value);
+    searchHealthCheckInterval.value = null;
+    console.log('[WebContentPage] Stopped search health check');
+  }
+};
+
+// Watch search query to manage health check
+watch(searchQuery, (newQuery) => {
+  if (newQuery.trim()) {
+    startSearchHealthCheck();
+  } else {
+    stopSearchHealthCheck();
+  }
+});
+
 onUnmounted(() => {
   console.log('[WebContentPage] Unmounted - WebContentsView will be cleaned up by main process');
+  
+  // Clean up health check interval
+  stopSearchHealthCheck();
 });
 
 </script>

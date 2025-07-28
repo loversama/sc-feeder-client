@@ -7,6 +7,7 @@ import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setG
 import { getMainWindow } from './window-manager'; // Import window manager to send messages
 import { getDetailedUserAgent } from './app-lifecycle';
 import type { KillEvent } from '../../shared/types';
+import { processKillEvent } from './event-processor';
 // Client ID logic moved to auth-manager
 
 const MODULE_NAME = 'ServerConnection';
@@ -28,6 +29,12 @@ let reconnectionTimeoutId: NodeJS.Timeout | null = null;
 // Authentication Retry Logic State
 let authRetryAttempt = 0;
 let authRetryTimeoutId: NodeJS.Timeout | null = null;
+
+// Heartbeat configuration for server connection health monitoring
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const HEARTBEAT_TIMEOUT = 10000; // 10 seconds to wait for pong
+let heartbeatInterval: NodeJS.Timeout | null = null;
+let lastPongTime = Date.now();
 let isRetryingAuth = false;
 const authRetryDelays = [2000, 5000, 10000, 30000, 60000]; // Authentication retry delays in ms
  
@@ -119,6 +126,47 @@ function resetAuthRetryState(): void {
   }
 }
 
+// Heartbeat functions for server connection health monitoring
+function startHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  
+  lastPongTime = Date.now();
+  
+  heartbeatInterval = setInterval(() => {
+    if (!socket || !socket.connected) {
+      stopHeartbeat();
+      return;
+    }
+    
+    // Check if we've received a pong recently
+    const timeSinceLastPong = Date.now() - lastPongTime;
+    if (timeSinceLastPong > HEARTBEAT_INTERVAL + HEARTBEAT_TIMEOUT) {
+      logger.warn(MODULE_NAME, `No pong received for ${timeSinceLastPong}ms, connection may be unhealthy`);
+      // Trigger reconnection through the existing manual reconnection system
+      socket.disconnect();
+      scheduleReconnection();
+      return;
+    }
+    
+    // Send ping
+    socket.emit('ping', {
+      timestamp: Date.now(),
+      clientId: getPersistedClientId(),
+    });
+    
+    logger.debug(MODULE_NAME, 'Heartbeat ping sent');
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
 export function connectToServer(): void {
   // Determine which token to use for auth handshake
   const accessToken = getAccessToken();
@@ -177,11 +225,14 @@ export function connectToServer(): void {
   socket = io(`${SERVER_URL}/client`, {
     // Add production path prefix if server is in production mode
     path: socketPath,
-    reconnection: false, // Disable automatic reconnection
-    // Removed reconnectionAttempts, reconnectionDelay, reconnectionDelayMax
+    reconnection: false, // Disable automatic reconnection (using manual logic)
+    timeout: 30000, // 30 second connection timeout
     transports: ['websocket'],
     auth: handshakeAuth,
     query: handshakeQuery,
+    forceNew: false,
+    upgrade: true,
+    rememberUpgrade: true,
   });
 
   socket.on('connect', () => {
@@ -439,7 +490,7 @@ export function ensureConnectedAndSendLogChunk(chunk: string): void {
  * These events have already been filtered by the server based on user roles.
  * This is similar to frontend-connection.ts but for the /logs namespace.
  */
-function handleProcessedServerEvent(serverEvent: any) {
+async function handleProcessedServerEvent(serverEvent: any) {
   try {
     logger.info(MODULE_NAME, `🔄 CONVERTING PROCESSED SERVER EVENT TO CLIENT FORMAT`);
     logger.info(MODULE_NAME, `   Original server event type: ${serverEvent.type}`);
@@ -465,25 +516,27 @@ function handleProcessedServerEvent(serverEvent: any) {
       external: true // This is an external event from the server (/logs namespace)
     };
 
-    logger.info(MODULE_NAME, `📤 SENDING TO RENDERER VIA IPC`);
-    logger.info(MODULE_NAME, `   IPC Channel: 'kill-feed-event'`);
+    logger.info(MODULE_NAME, `📤 PROCESSING SERVER EVENT THROUGH EVENT PROCESSOR`);
+    logger.info(MODULE_NAME, `   Event ID: ${clientEvent.id}`);
     logger.info(MODULE_NAME, `   Source: 'server'`);
     logger.info(MODULE_NAME, `   Metadata: ${JSON.stringify(clientEvent.metadata)}`);
 
-    // Send to renderer via IPC
-    const win = getMainWindow();
-    if (!win) {
-      logger.error(MODULE_NAME, `❌ NO MAIN WINDOW AVAILABLE - Cannot send to renderer!`);
-      logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
-      return;
+    // Discover and track event category if present
+    if (clientEvent.metadata?.category) {
+      const { addDiscoveredCategory } = await import('./modules/config-manager');
+      addDiscoveredCategory(clientEvent.metadata.category);
+      logger.info(MODULE_NAME, `Discovered new event category from server: ${clientEvent.metadata.category.id} - ${clientEvent.metadata.category.name}`);
     }
 
-    win.webContents.send('kill-feed-event', {
-      event: clientEvent,
-      source: 'server'
-    });
+    // Process the event through the event processor
+    // This will:
+    // 1. Save to SQLite database
+    // 2. Handle deduplication
+    // 3. Send to renderer with proper metadata
+    // 4. Trigger notifications if needed
+    await processKillEvent(clientEvent, false); // silentMode = false for server events
 
-    logger.success(MODULE_NAME, `🟢 ✅ SUCCESSFULLY FORWARDED PROCESSED SERVER EVENT TO RENDERER`);
+    logger.success(MODULE_NAME, `🟢 ✅ SUCCESSFULLY PROCESSED SERVER EVENT`);
     logger.success(MODULE_NAME, `   Event: ${clientEvent.id}`);
     logger.success(MODULE_NAME, `   Description: ${clientEvent.eventDescription}`);
     logger.info(MODULE_NAME, `═══════════════════════════════════════════════════════════════\n`);
@@ -568,8 +621,20 @@ function convertProcessedServerEventToClient(serverEvent: any): KillEvent {
     gameMode: 'Unknown', // Server events don't specify game mode in current format
     eventDescription: `Server: ${killers.join(', ')} → ${victims.join(', ')}`,
     isPlayerInvolved: false, // Server has already filtered - if we got it, we should see it
-    data: serverEvent.data // Preserve original server data
+    data: serverEvent.data, // Preserve original server data
+    metadata: {} // Initialize metadata
   };
+
+  // If server provided a category, include it in metadata
+  if (serverEvent.category) {
+    clientEvent.metadata!.category = {
+      id: serverEvent.category.id || 'unknown',
+      name: serverEvent.category.name || 'Unknown Category',
+      icon: serverEvent.category.icon,
+      color: serverEvent.category.color,
+      priority: serverEvent.category.priority
+    };
+  }
 
   return clientEvent;
 }

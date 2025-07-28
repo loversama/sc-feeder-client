@@ -51,6 +51,12 @@ export interface StoreSchema {
   feedMode?: 'player' | 'global'; // Added optional feedMode
   guestModePreference: boolean;
   hasShownInitialLogin: boolean;
+  // Event filter preference
+  eventFilter?: string; // Was added in config-manager.ts
+  // Discovered event categories
+  discoveredCategories?: Record<string, EventCategory>; // Key is category ID
+  // Selected category filters
+  selectedCategoryFilters?: string[]; // Array of selected category IDs
 }
 
 // Defines the structure for a processed kill/destruction event
@@ -106,7 +112,27 @@ export interface KillEvent {
     originalZone?: string; // Original zone string from log before cleanup
     cleanedZone?: string; // Zone string after cleanup patterns
     fallbackUsed?: boolean; // Whether fallback location was used
+    // Dynamic event category from server
+    category?: {
+      id: string;        // Unique category identifier (e.g., "org_event", "proximity_event")
+      name: string;      // Display name for the category
+      icon?: string;     // Icon identifier or emoji for the category
+      color?: string;    // Optional color for the category (hex or CSS color)
+      priority?: number; // Optional priority for sorting categories
+    };
   };
+}
+
+// Interface for tracking discovered event categories
+export interface EventCategory {
+  id: string;        // Unique category identifier
+  name: string;      // Display name
+  icon?: string;     // Icon identifier or emoji
+  color?: string;    // Optional color
+  priority?: number; // Optional priority for sorting
+  count?: number;    // Number of events in this category
+  firstSeen?: string; // ISO timestamp when first discovered
+  lastSeen?: string;  // ISO timestamp when last seen
 }
 
 // Interface for tracking pending vehicle destruction events (used internally by parser/processor)

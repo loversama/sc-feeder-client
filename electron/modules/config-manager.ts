@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import path from 'node:path';
 import { app } from 'electron';
-import { StoreSchema, ProfileData, SessionInfo } from '../../shared/types';
+import { StoreSchema, ProfileData, SessionInfo, EventCategory } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
 const MODULE_NAME = 'ConfigManager'; // Define module name for logger
@@ -47,6 +47,18 @@ const schema = {
   fetchProfileData: {
     type: 'boolean',
     default: true // Enable by default
+  },
+  eventFilter: {
+    type: 'string',
+    default: 'all' // 'all' or 'local'
+  },
+  discoveredCategories: {
+    type: 'object',
+    default: {} as Record<string, EventCategory> // Key is category ID
+  },
+  selectedCategoryFilters: {
+    type: 'array',
+    default: [] as string[] // Array of selected category IDs
   },
   profileCache: {
     type: 'object',
@@ -129,6 +141,71 @@ export function getHasShownInitialLogin(): boolean {
 
 export function setHasShownInitialLogin(value: boolean): void {
   store.set('hasShownInitialLogin', !!value);
+}
+
+// Event Filter Preference
+export function getEventFilter(): 'all' | 'local' {
+  const filter = store.get('eventFilter');
+  return (filter === 'local') ? 'local' : 'all'; // Ensure valid value
+}
+
+export function setEventFilter(value: 'all' | 'local'): void {
+  store.set('eventFilter', value);
+  logger.info(MODULE_NAME, `Event filter preference set to: ${value}`);
+}
+
+// Discovered Categories Management
+export function getDiscoveredCategories(): Record<string, EventCategory> {
+  return store.get('discoveredCategories') || {};
+}
+
+export function addDiscoveredCategory(category: EventCategory): void {
+  const categories = getDiscoveredCategories();
+  categories[category.id] = {
+    ...category,
+    firstSeen: category.firstSeen || new Date().toISOString(),
+    lastSeen: new Date().toISOString(),
+    count: (categories[category.id]?.count || 0) + 1
+  };
+  store.set('discoveredCategories', categories);
+  logger.info(MODULE_NAME, `Added/updated discovered category: ${category.id} - ${category.name}`);
+}
+
+export function updateCategoryCount(categoryId: string): void {
+  const categories = getDiscoveredCategories();
+  if (categories[categoryId]) {
+    categories[categoryId].count = (categories[categoryId].count || 0) + 1;
+    categories[categoryId].lastSeen = new Date().toISOString();
+    store.set('discoveredCategories', categories);
+  }
+}
+
+export function clearDiscoveredCategories(): void {
+  store.set('discoveredCategories', {});
+  logger.info(MODULE_NAME, 'Cleared all discovered categories');
+}
+
+// Selected Category Filters
+export function getSelectedCategoryFilters(): string[] {
+  return store.get('selectedCategoryFilters') || [];
+}
+
+export function setSelectedCategoryFilters(categoryIds: string[]): void {
+  store.set('selectedCategoryFilters', categoryIds);
+  logger.info(MODULE_NAME, `Selected category filters updated: ${categoryIds.join(', ')}`);
+}
+
+export function toggleCategoryFilter(categoryId: string): void {
+  const filters = getSelectedCategoryFilters();
+  const index = filters.indexOf(categoryId);
+  
+  if (index === -1) {
+    filters.push(categoryId);
+  } else {
+    filters.splice(index, 1);
+  }
+  
+  setSelectedCategoryFilters(filters);
 }
 
 // Getters and Setters for other settings (Example)

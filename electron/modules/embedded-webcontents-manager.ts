@@ -151,6 +151,10 @@ export class EmbeddedWebContentsManager {
         // Web content events
         this.webContentView.webContents.on('dom-ready', () => {
             this.sendAuthenticationData();
+            // Notify about DOM ready for search injection
+            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                this.separateWindow.webContents.send('webcontents-view-ready');
+            }
         });
 
         this.webContentView.webContents.on('did-navigate', (event, url) => {
@@ -158,6 +162,38 @@ export class EmbeddedWebContentsManager {
             // Re-inject cookies for new URL
             if (this.webContentView) {
                 this.injectAuthenticationCookies(this.webContentView.webContents.session);
+            }
+            // Notify about navigation for search state recovery
+            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                this.separateWindow.webContents.send('webcontents-view-loading');
+            }
+        });
+        
+        this.webContentView.webContents.on('did-finish-load', () => {
+            logger.info(MODULE_NAME, 'WebContentsView finished loading');
+            // Notify about load completion
+            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                this.separateWindow.webContents.send('webcontents-view-loaded');
+                // Send search recovery event with delay
+                setTimeout(() => {
+                    if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                        this.separateWindow.webContents.send('webcontents-view-search-recovery-needed');
+                    }
+                }, 1000);
+            }
+        });
+        
+        this.webContentView.webContents.on('did-navigate-in-page', (event, url) => {
+            logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
+            // For SPA navigation
+            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                this.separateWindow.webContents.send('webcontents-view-loaded');
+                // Send search recovery event for SPA navigation
+                setTimeout(() => {
+                    if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                        this.separateWindow.webContents.send('webcontents-view-search-recovery-needed');
+                    }
+                }, 500);
             }
         });
 

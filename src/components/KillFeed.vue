@@ -2,12 +2,12 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
-import { Setting, Tickets, User, MapLocation, Connection, Monitor } from '@element-plus/icons-vue'; // Import icons
+import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, QuestionFilled } from '@element-plus/icons-vue'; // Import icons
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
-import type { KillEvent } from '../../shared/types'; // Import from the new shared types file
+import type { KillEvent, EventCategory } from '../../shared/types'; // Import from the new shared types file
 
 // --- State Refs ---
 const MAX_EVENTS_DISPLAY = 100; // Local constant for display limit
@@ -25,6 +25,8 @@ const currentPlayerShip = ref<string>('');
 const killFeedListRef = ref<HTMLDivElement | null>(null); // Ref for the list container
 const recentlyUpdatedIds = ref<Set<string>>(new Set()); // Track updated event IDs for animation
 const eventFilter = ref<'all' | 'local'>('all'); // Filter for showing all events or local only
+const discoveredCategories = ref<Record<string, EventCategory>>({}); // Discovered event categories
+const selectedCategories = ref<string[]>([]); // Selected category filters
 
 // New infinite scroll and search state
 const isLoadingMore = ref<boolean>(false);
@@ -569,10 +571,21 @@ const currentEvents = computed(() => {
   // Apply event filter based on dropdown selection
   if (eventFilter.value === 'local') {
     // Hide server events, show only local events
-    return events.filter(event => !event.metadata?.source?.external && !event.metadata?.source?.server);
+    events = events.filter(event => !event.metadata?.source?.external && !event.metadata?.source?.server);
   }
   
-  // Show all events (default)
+  // Apply category filters if any are selected
+  if (selectedCategories.value.length > 0) {
+    events = events.filter(event => {
+      // If event has no category, only show if "uncategorized" is selected
+      if (!event.metadata?.category) {
+        return selectedCategories.value.includes('uncategorized');
+      }
+      // Otherwise check if event's category is selected
+      return selectedCategories.value.includes(event.metadata.category.id);
+    });
+  }
+  
   return events;
 });
 
@@ -587,6 +600,20 @@ const sortedFilteredEvents = computed(() => {
 watch(eventFilter, async (newFilter, oldFilter) => {
   if (newFilter !== oldFilter) {
     console.log(`[KillFeed] Event filter changed from '${oldFilter}' to '${newFilter}' - reloading events`);
+    
+    // Save the filter preference
+    if (window.logMonitorApi && window.logMonitorApi.setEventFilter) {
+      try {
+        const result = await window.logMonitorApi.setEventFilter(newFilter);
+        if (result.success) {
+          console.log(`[KillFeed] Event filter preference saved: ${newFilter}`);
+        } else {
+          console.error(`[KillFeed] Failed to save event filter preference:`, result.error);
+        }
+      } catch (error) {
+        console.error(`[KillFeed] Error saving event filter preference:`, error);
+      }
+    }
     
     // Clear search if active to avoid confusion
     if (isUsingSearch.value) {
@@ -1405,6 +1432,61 @@ const debouncedSearch = (query: string) => {
 // Initialize search watcher (will be set up in onMounted)
 let unwatchSearch: (() => void) | null = null;
 
+// Load discovered categories from config store
+const loadDiscoveredCategories = async () => {
+  if (window.logMonitorApi && window.logMonitorApi.getDiscoveredCategories) {
+    try {
+      const categories = await window.logMonitorApi.getDiscoveredCategories();
+      discoveredCategories.value = categories;
+      console.log(`[KillFeed] Loaded ${Object.keys(categories).length} discovered categories`);
+    } catch (error) {
+      console.error(`[KillFeed] Error loading discovered categories:`, error);
+    }
+  }
+};
+
+// Load selected category filters from config store
+const loadSelectedCategories = async () => {
+  if (window.logMonitorApi && window.logMonitorApi.getSelectedCategoryFilters) {
+    try {
+      const selected = await window.logMonitorApi.getSelectedCategoryFilters();
+      selectedCategories.value = selected;
+      console.log(`[KillFeed] Loaded ${selected.length} selected category filters`);
+    } catch (error) {
+      console.error(`[KillFeed] Error loading selected categories:`, error);
+    }
+  }
+};
+
+// Toggle a category filter
+const toggleCategoryFilter = async (categoryId: string) => {
+  if (window.logMonitorApi && window.logMonitorApi.toggleCategoryFilter) {
+    try {
+      await window.logMonitorApi.toggleCategoryFilter(categoryId);
+      // Reload selected filters
+      await loadSelectedCategories();
+      // Reload events to apply new filter
+      await loadInitialEvents();
+    } catch (error) {
+      console.error(`[KillFeed] Error toggling category filter:`, error);
+    }
+  }
+};
+
+// Clear all category filters
+const clearCategoryFilters = async () => {
+  if (window.logMonitorApi && window.logMonitorApi.setSelectedCategoryFilters) {
+    try {
+      await window.logMonitorApi.setSelectedCategoryFilters([]);
+      selectedCategories.value = [];
+      // Reload events
+      await loadInitialEvents();
+    } catch (error) {
+      console.error(`[KillFeed] Error clearing category filters:`, error);
+    }
+  }
+};
+
 // Scroll container validation function
 const validateScrollContainer = () => {
   if (!killFeedListRef.value) {
@@ -1647,6 +1729,22 @@ const scrollToTop = async () => {
 onMounted(async () => { // Make onMounted async
   // Get initial states synchronously FIRST
   await getInitialWindowStates();
+  
+  // Load saved event filter preference
+  if (window.logMonitorApi && window.logMonitorApi.getEventFilter) {
+    try {
+      const savedFilter = await window.logMonitorApi.getEventFilter();
+      eventFilter.value = savedFilter;
+      console.log(`[KillFeed] Loaded event filter preference: ${savedFilter}`);
+    } catch (error) {
+      console.error(`[KillFeed] Error loading event filter preference:`, error);
+      // Keep default 'all' if error
+    }
+  }
+  
+  // Load discovered categories and selected filters
+  await loadDiscoveredCategories();
+  await loadSelectedCategories();
   
   // 🔍 DEBUG: Test navigation system availability
   console.log('🔍 NAVIGATION SYSTEM DEBUG:', {
@@ -2098,6 +2196,80 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             </span>
           </el-option>
         </el-select>
+        
+        <!-- Category Filter Dropdown -->
+        <el-popover 
+          placement="bottom-start" 
+          :width="300"
+          trigger="click"
+          v-if="Object.keys(discoveredCategories).length > 0"
+        >
+          <template #reference>
+            <el-button 
+              size="small" 
+              class="category-filter-button"
+              :type="selectedCategories.length > 0 ? 'primary' : 'default'"
+            >
+              <el-icon style="margin-right: 4px;"><Filter /></el-icon>
+              Categories
+              <span v-if="selectedCategories.length > 0" class="category-count">
+                ({{ selectedCategories.length }})
+              </span>
+            </el-button>
+          </template>
+          
+          <div class="category-filter-content">
+            <div class="category-filter-header">
+              <h4>Filter by Category</h4>
+              <el-link 
+                v-if="selectedCategories.length > 0"
+                type="primary" 
+                @click="clearCategoryFilters"
+                :underline="false"
+              >
+                Clear All
+              </el-link>
+            </div>
+            
+            <div class="category-filter-list">
+              <!-- Uncategorized option -->
+              <div 
+                class="category-filter-item"
+                @click="toggleCategoryFilter('uncategorized')"
+              >
+                <el-checkbox 
+                  :model-value="selectedCategories.includes('uncategorized')"
+                  @click.stop
+                >
+                  <span class="category-name">
+                    <el-icon style="margin-right: 4px;"><QuestionFilled /></el-icon>
+                    Uncategorized
+                  </span>
+                </el-checkbox>
+              </div>
+              
+              <!-- Discovered categories -->
+              <div 
+                v-for="category in Object.values(discoveredCategories)" 
+                :key="category.id"
+                class="category-filter-item"
+                @click="toggleCategoryFilter(category.id)"
+              >
+                <el-checkbox 
+                  :model-value="selectedCategories.includes(category.id)"
+                  @click.stop
+                >
+                  <span class="category-name">
+                    <span v-if="category.icon" class="category-icon">{{ category.icon }}</span>
+                    {{ category.name }}
+                    <span v-if="category.count" class="category-count-badge">{{ category.count }}</span>
+                  </span>
+                </el-checkbox>
+              </div>
+            </div>
+          </div>
+        </el-popover>
+        
         <span :class="loginBadge.class">{{ loginBadge.text }}</span>
         <span :class="monitoringBadge.class">{{ monitoringBadge.text }}</span>
         <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
@@ -2170,6 +2342,17 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           @mousedown="console.log('KillFeed: mousedown on event', event.id)"
           @mouseup="console.log('KillFeed: mouseup on event', event.id)"
         >
+          <!-- Server Source Indicator (positioned at mid-height of event item) -->
+          <div v-if="(event.metadata?.source?.server || event.metadata?.source?.external) || (event.isPlayerInvolved && isAuthenticated)" 
+               class="server-source-pip-container">
+            <span class="server-source-pip" 
+                  :title="getServerSourceTooltip(event)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM6.838 12.434c.068 1.217.347 2.358.784 3.364l.952-.952c-.225-.627-.359-1.329-.41-2.102h-1.326zm1.326-1.668c.051-.773.185-1.475.41-2.102l-.952-.952c-.437 1.006-.716 2.147-.784 3.364h1.326zm1.979-4.515l.952.952c.627-.225 1.329-.359 2.102-.41V5.467c-1.217.068-2.358.347-3.364.784zm3.857.41c.773.051 1.475.185 2.102.41l.952-.952c-1.006-.437-2.147-.716-3.364-.784v1.326zm4.515 1.979l-.952.952c.225.627.359 1.329.41 2.102h1.326c-.068-1.217-.347-2.358-.784-3.364zm-.41 3.857c-.051.773-.185 1.475-.41 2.102l.952.952c.437-1.006.716-2.147.784-3.364h-1.326zm-1.979 4.515l-.952-.952c-.627.225-1.329.359-2.102.41v1.326c1.217-.068 2.358-.347 3.364-.784zm-3.857-.41c-.773-.051-1.475-.185-2.102-.41l-.952.952c1.006.437 2.147.716 3.364.784v-1.326zM12 8c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z"/>
+              </svg>
+            </span>
+          </div>
+          
           <div class="event-header">
           <!-- <span class="event-icon">{{ getEventIcon(event.deathType) }}</span> -->
           <span class="event-icon-blank"></span>
@@ -2191,16 +2374,6 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           <!-- Temporary debug: Show raw location -->
           <div class="event-time-container">
             <span class="event-time">{{ formatTime(event.timestamp) }}</span>
-            <!-- Server Source Indicator (world icon pip under timestamp) -->
-            <div v-if="(event.metadata?.source?.server || event.metadata?.source?.external) || (event.isPlayerInvolved && isAuthenticated)" 
-                 class="server-source-pip-container">
-              <span class="server-source-pip" 
-                    :title="getServerSourceTooltip(event)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM6.838 12.434c.068 1.217.347 2.358.784 3.364l.952-.952c-.225-.627-.359-1.329-.41-2.102h-1.326zm1.326-1.668c.051-.773.185-1.475.41-2.102l-.952-.952c-.437 1.006-.716 2.147-.784 3.364h1.326zm1.979-4.515l.952.952c.627-.225 1.329-.359 2.102-.41V5.467c-1.217.068-2.358.347-3.364.784zm3.857.41c.773.051 1.475.185 2.102.41l.952-.952c-1.006-.437-2.147-.716-3.364-.784v1.326zm4.515 1.979l-.952.952c.225.627.359 1.329.41 2.102h1.326c-.068-1.217-.347-2.358-.784-3.364zm-.41 3.857c-.051.773-.185 1.475-.41 2.102l.952.952c.437-1.006.716-2.147.784-3.364h-1.326zm-1.979 4.515l-.952-.952c-.627.225-1.329.359-2.102.41v1.326c1.217-.068 2.358-.347 3.364-.784zm-3.857-.41c-.773-.051-1.475-.185-2.102-.41l-.952.952c1.006.437 2.147.716 3.364.784v-1.326zM12 8c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z"/>
-                </svg>
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2349,11 +2522,119 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   color: rgba(163, 163, 163, 0.6);
 }
 
+/* Category Filter Button */
+.category-filter-button {
+  background-color: rgba(26, 26, 26, 0.8) !important;
+  border-color: rgba(163, 163, 163, 0.2) !important;
+  color: rgb(163, 163, 163) !important;
+  font-size: 0.75rem;
+  font-weight: 500;
+  height: 32px;
+  padding: 0 12px;
+}
+
+.category-filter-button:hover {
+  border-color: rgba(99, 99, 247, 0.5) !important;
+  background-color: rgba(26, 26, 26, 0.9) !important;
+}
+
+.category-filter-button.el-button--primary {
+  background-color: rgba(99, 99, 247, 0.15) !important;
+  border-color: rgba(99, 99, 247, 0.5) !important;
+  color: rgb(99, 99, 247) !important;
+}
+
+.category-filter-button .category-count {
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+/* Category Filter Popover Content */
+.category-filter-content {
+  background-color: #1a1a1a;
+  color: rgb(163, 163, 163);
+}
+
+.category-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(163, 163, 163, 0.1);
+}
+
+.category-filter-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(163, 163, 163);
+}
+
+.category-filter-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.category-filter-item {
+  padding: 6px 8px;
+  margin: 2px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.category-filter-item:hover {
+  background-color: rgba(163, 163, 163, 0.1);
+}
+
+.category-filter-item .el-checkbox {
+  width: 100%;
+}
+
+.category-filter-item .el-checkbox__label {
+  width: 100%;
+  color: rgb(163, 163, 163) !important;
+}
+
+.category-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.category-icon {
+  margin-right: 6px;
+  font-size: 16px;
+}
+
+.category-count-badge {
+  margin-left: auto;
+  padding: 2px 6px;
+  background-color: rgba(163, 163, 163, 0.2);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 /* Dark theme for dropdown menu matching app colors */
 :global(.el-select-dropdown) {
   background-color: #1a1a1a !important;
   border-color: rgba(163, 163, 163, 0.2) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Dark theme for popover */
+:global(.el-popover.el-popper) {
+  background-color: #1a1a1a !important;
+  border-color: rgba(163, 163, 163, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+:global(.el-popper__arrow::before) {
+  background-color: #1a1a1a !important;
+  border-color: rgba(163, 163, 163, 0.2) !important;
 }
 
 :global(.el-select-dropdown__item) {
@@ -2677,6 +2958,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   line-height: 1.4;
   margin-bottom: 5px; /* Reduced spacing between items from 8px to 5px */
   position: relative; /* For positioning the player-involved indicator */
+  min-height: 92px; /* Minimum height to match typical event item windows */
+  display: flex;
+  flex-direction: column;
 }
 
 /* Style for player-involved events in global view */
@@ -2710,11 +2994,15 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   padding-left: 10px; /* Ensure space from other elements */
 }
 
-/* Server source indicator pip container */
+/* Server source indicator pip container - positioned at mid-height of event item */
 .server-source-pip-container {
+  position: absolute;
+  top: 50%;
+  right: 12px; /* Match the padding of the event item */
+  transform: translateY(-50%); /* Center vertically */
   display: flex;
   justify-content: flex-end;
-  width: 100%;
+  z-index: 1; /* Ensure it appears above other content */
 }
 
 /* Server source indicator (world icon pip under timestamp) */
@@ -2856,6 +3144,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 
 .event-content {
   padding-left: 5px; /* Restore original padding */
+  flex: 1; /* Allow content to expand within the flex container */
 }
 
 .player-names {

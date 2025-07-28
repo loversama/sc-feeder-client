@@ -261,6 +261,19 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         destructionLevel // Pass destruction level for context
     );
 
+    // Discover and track event category if present
+    if (partialEvent.metadata?.category) {
+        const { addDiscoveredCategory } = await import('./config-manager');
+        addDiscoveredCategory(partialEvent.metadata.category);
+        logger.info(MODULE_NAME, `Discovered new event category: ${partialEvent.metadata.category.id} - ${partialEvent.metadata.category.name}`);
+        
+        // Preserve category in full event metadata
+        if (!fullEvent.metadata) {
+            fullEvent.metadata = {};
+        }
+        fullEvent.metadata.category = partialEvent.metadata.category;
+    }
+
     // 5. Add/Update Event in Lists & Send to Renderer
     const { isNew } = await addOrUpdateEvent(fullEvent, 'local'); // This also sends 'kill-feed-event' IPC
 
