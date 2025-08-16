@@ -523,7 +523,7 @@ async function handleProcessedServerEvent(serverEvent: any) {
 
     // Discover and track event category if present
     if (clientEvent.metadata?.category) {
-      const { addDiscoveredCategory } = await import('./modules/config-manager');
+      const { addDiscoveredCategory } = await import('./config-manager.ts');
       addDiscoveredCategory(clientEvent.metadata.category);
       logger.info(MODULE_NAME, `Discovered new event category from server: ${clientEvent.metadata.category.id} - ${clientEvent.metadata.category.name}`);
     }

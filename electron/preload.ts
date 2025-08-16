@@ -135,6 +135,13 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   setFetchProfileData: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-fetch-profile-data', value),
   getSoundEffects: (): Promise<boolean> => ipcRenderer.invoke('get-sound-effects'),
   setSoundEffects: (value: boolean): Promise<boolean> => ipcRenderer.invoke('set-sound-effects', value),
+  
+  // New Sound Preferences API
+  getSoundPreferences: (): Promise<any> => ipcRenderer.invoke('get-sound-preferences'),
+  setSoundPreferences: (preferences: any): Promise<boolean> => ipcRenderer.invoke('set-sound-preferences', preferences),
+  selectSoundFile: (): Promise<string | null> => ipcRenderer.invoke('select-sound-file'),
+  testSound: (soundPath: string, volume?: number): Promise<boolean> => ipcRenderer.invoke('test-sound', soundPath, volume),
+  getDefaultSounds: (): Promise<{ name: string; displayName: string }[]> => ipcRenderer.invoke('get-default-sounds'),
 
   // Launch on Startup
   getLaunchOnStartup: (): Promise<boolean> => ipcRenderer.invoke('get-launch-on-startup'),

@@ -56,6 +56,14 @@ export interface LogMonitorApi {
   setFetchProfileData: (value: boolean) => Promise<boolean>;
   getSoundEffects: () => Promise<boolean>;
   setSoundEffects: (value: boolean) => Promise<boolean>;
+  
+  // New Sound Preferences API
+  getSoundPreferences: () => Promise<import('../shared/types').SoundPreferences>;
+  setSoundPreferences: (preferences: import('../shared/types').SoundPreferences) => Promise<boolean>;
+  selectSoundFile: () => Promise<string | null>;
+  testSound: (soundPath: string, volume?: number) => Promise<boolean>;
+  getDefaultSounds: () => Promise<{ name: string; displayName: string }[]>;
+  
   getApiSettings: () => Promise<{ offlineMode: boolean }>;
   setApiSettings: (settings: { offlineMode: boolean }) => Promise<boolean>;
   getCsvLogPath: () => Promise<string>;

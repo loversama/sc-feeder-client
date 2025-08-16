@@ -8,53 +8,43 @@ const seen = {};
 const __vitePreload = function preload(baseModule, deps, importerUrl) {
   let promise = Promise.resolve();
   if (false) {
+    let allSettled = function(promises$2) {
+      return Promise.all(promises$2.map((p$1) => Promise.resolve(p$1).then((value$1) => ({
+        status: "fulfilled",
+        value: value$1
+      }), (reason) => ({
+        status: "rejected",
+        reason
+      }))));
+    };
     document.getElementsByTagName("link");
-    const cspNonceMeta = document.querySelector(
-      "meta[property=csp-nonce]"
-    );
-    const cspNonce = (cspNonceMeta == null ? void 0 : cspNonceMeta.nonce) || (cspNonceMeta == null ? void 0 : cspNonceMeta.getAttribute("nonce"));
-    promise = Promise.allSettled(
-      deps.map((dep) => {
-        dep = assetsURL(dep);
-        if (dep in seen) return;
-        seen[dep] = true;
-        const isCss = dep.endsWith(".css");
-        const cssSelector = isCss ? '[rel="stylesheet"]' : "";
-        if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) {
-          return;
-        }
-        const link = document.createElement("link");
-        link.rel = isCss ? "stylesheet" : scriptRel;
-        if (!isCss) {
-          link.as = "script";
-        }
-        link.crossOrigin = "";
-        link.href = dep;
-        if (cspNonce) {
-          link.setAttribute("nonce", cspNonce);
-        }
-        document.head.appendChild(link);
-        if (isCss) {
-          return new Promise((res, rej) => {
-            link.addEventListener("load", res);
-            link.addEventListener(
-              "error",
-              () => rej(new Error(`Unable to preload CSS for ${dep}`))
-            );
-          });
-        }
-      })
-    );
+    const cspNonceMeta = document.querySelector("meta[property=csp-nonce]");
+    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    promise = allSettled(deps.map((dep) => {
+      dep = assetsURL(dep);
+      if (dep in seen) return;
+      seen[dep] = true;
+      const isCss = dep.endsWith(".css");
+      const cssSelector = isCss ? '[rel="stylesheet"]' : "";
+      if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) return;
+      const link = document.createElement("link");
+      link.rel = isCss ? "stylesheet" : scriptRel;
+      if (!isCss) link.as = "script";
+      link.crossOrigin = "";
+      link.href = dep;
+      if (cspNonce) link.setAttribute("nonce", cspNonce);
+      document.head.appendChild(link);
+      if (isCss) return new Promise((res, rej) => {
+        link.addEventListener("load", res);
+        link.addEventListener("error", () => rej(/* @__PURE__ */ new Error(`Unable to preload CSS for ${dep}`)));
+      });
+    }));
   }
-  function handlePreloadError(err) {
-    const e = new Event("vite:preloadError", {
-      cancelable: true
-    });
-    e.payload = err;
-    window.dispatchEvent(e);
-    if (!e.defaultPrevented) {
-      throw err;
-    }
+  function handlePreloadError(err$2) {
+    const e$1 = new Event("vite:preloadError", { cancelable: true });
+    e$1.payload = err$2;
+    window.dispatchEvent(e$1);
+    if (!e$1.defaultPrevented) throw err$2;
   }
   return promise.then((res) => {
     for (const item of res || []) {
@@ -136,7 +126,7 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   getEventStoreStats: () => require$$0.ipcRenderer.invoke("get-event-store-stats"),
   // Event Details API
   openEventDetailsWindow: (eventData) => {
-    console.log("Preload: Calling openEventDetailsWindow with event ID:", eventData == null ? void 0 : eventData.id);
+    console.log("Preload: Calling openEventDetailsWindow with event ID:", eventData?.id);
     try {
       const jsonString = JSON.stringify(eventData);
       const serializedData = JSON.parse(jsonString);
@@ -145,9 +135,9 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
     } catch (error) {
       console.error("Preload: Error serializing event data:", error);
       const minimalData = {
-        id: (eventData == null ? void 0 : eventData.id) || "unknown-id",
-        timestamp: (eventData == null ? void 0 : eventData.timestamp) || (/* @__PURE__ */ new Date()).toISOString(),
-        deathType: (eventData == null ? void 0 : eventData.deathType) || "Unknown"
+        id: eventData?.id || "unknown-id",
+        timestamp: eventData?.timestamp || (/* @__PURE__ */ new Date()).toISOString(),
+        deathType: eventData?.deathType || "Unknown"
       };
       console.log("Preload: Trying with minimal data:", minimalData);
       return require$$0.ipcRenderer.invoke("open-event-details-window", minimalData);
@@ -171,6 +161,12 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   setFetchProfileData: (value) => require$$0.ipcRenderer.invoke("set-fetch-profile-data", value),
   getSoundEffects: () => require$$0.ipcRenderer.invoke("get-sound-effects"),
   setSoundEffects: (value) => require$$0.ipcRenderer.invoke("set-sound-effects", value),
+  // New Sound Preferences API
+  getSoundPreferences: () => require$$0.ipcRenderer.invoke("get-sound-preferences"),
+  setSoundPreferences: (preferences) => require$$0.ipcRenderer.invoke("set-sound-preferences", preferences),
+  selectSoundFile: () => require$$0.ipcRenderer.invoke("select-sound-file"),
+  testSound: (soundPath, volume) => require$$0.ipcRenderer.invoke("test-sound", soundPath, volume),
+  getDefaultSounds: () => require$$0.ipcRenderer.invoke("get-default-sounds"),
   // Launch on Startup
   getLaunchOnStartup: () => require$$0.ipcRenderer.invoke("get-launch-on-startup"),
   setLaunchOnStartup: (value) => require$$0.ipcRenderer.invoke("set-launch-on-startup", value),
@@ -211,6 +207,14 @@ require$$0.contextBridge.exposeInMainWorld("logMonitorApi", {
   authStoreTokens: (tokens) => require$$0.ipcRenderer.invoke("auth:store-tokens", tokens),
   authRefreshToken: () => require$$0.ipcRenderer.invoke("auth:refreshToken"),
   authShowLogin: () => require$$0.ipcRenderer.invoke("auth:show-login"),
+  // Config Management API
+  getEventFilter: () => require$$0.ipcRenderer.invoke("config:get-event-filter"),
+  setEventFilter: (filter) => require$$0.ipcRenderer.invoke("config:set-event-filter", filter),
+  // Category Management API
+  getDiscoveredCategories: () => require$$0.ipcRenderer.invoke("config:get-discovered-categories"),
+  getSelectedCategoryFilters: () => require$$0.ipcRenderer.invoke("config:get-selected-category-filters"),
+  setSelectedCategoryFilters: (categoryIds) => require$$0.ipcRenderer.invoke("config:set-selected-category-filters", categoryIds),
+  toggleCategoryFilter: (categoryId) => require$$0.ipcRenderer.invoke("config:toggle-category-filter", categoryId),
   // Authentication Actions for Login Popup
   authLoginSuccess: () => require$$0.ipcRenderer.invoke("auth:loginSuccess"),
   authContinueAsGuest: () => require$$0.ipcRenderer.invoke("auth:continueAsGuest"),

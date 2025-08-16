@@ -52,6 +52,12 @@ const MODULE_NAME = 'IPCHandlers'; // Define module name for logger
 
 export function registerIpcHandlers() {
     logger.info(MODULE_NAME, "Registering IPC handlers...");
+    
+    // Debug: Check if handlers are already registered
+    const registeredHandlers = (ipcMain as any)._invokeHandlers;
+    if (registeredHandlers) {
+        logger.debug(MODULE_NAME, 'Currently registered invoke handlers:', Object.keys(registeredHandlers));
+    }
 
     // --- Log Path Handlers ---
     ipcMain.handle('get-log-path', () => {
@@ -229,6 +235,114 @@ export function registerIpcHandlers() {
     ipcMain.handle('set-sound-effects', (event, value: boolean) => {
         ConfigManager.setPlaySoundEffects(!!value);
         return !!value;
+    });
+
+    // --- New Sound Preferences Handlers ---
+    console.log('!!! REACHING SOUND PREFERENCES HANDLERS SECTION !!!');
+    logger.info(MODULE_NAME, 'Registering sound preferences handlers...');
+    
+    try {
+        ipcMain.handle('get-sound-preferences', () => {
+            logger.debug(MODULE_NAME, 'get-sound-preferences handler called');
+            return ConfigManager.getSoundPreferences();
+        });
+        logger.info(MODULE_NAME, 'get-sound-preferences handler registered');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to register get-sound-preferences handler:', error);
+    }
+    
+    ipcMain.handle('set-sound-preferences', (event, preferences) => {
+        try {
+            logger.debug(MODULE_NAME, 'Received sound preferences:', JSON.stringify(preferences));
+            ConfigManager.setSoundPreferences(preferences);
+            return true;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error saving sound preferences:', error);
+            return false; // Return false instead of throwing
+        }
+    });
+    
+    try {
+        logger.info(MODULE_NAME, 'Registering select-sound-file handler...');
+        ipcMain.handle('select-sound-file', async () => {
+        try {
+            logger.debug(MODULE_NAME, 'Opening file dialog for sound selection');
+            
+            const mainWindow = getMainWindow();
+            const result = await dialog.showOpenDialog(mainWindow, {
+                properties: ['openFile'],
+                filters: [
+                    { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg'] },
+                    { name: 'All Files', extensions: ['*'] }
+                ],
+                title: 'Select Sound File'
+            });
+            
+            logger.debug(MODULE_NAME, 'File dialog result:', result);
+            
+            if (result.canceled || !result.filePaths.length) {
+                return null;
+            }
+            
+            return result.filePaths[0];
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error showing file dialog:', error);
+            return null;
+        }
+        });
+        logger.info(MODULE_NAME, 'select-sound-file handler registered');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to register select-sound-file handler:', error);
+    }
+    
+    ipcMain.handle('test-sound', async (event, soundPath: string, volume?: number) => {
+        try {
+            logger.debug(MODULE_NAME, `Testing sound: ${soundPath}`);
+            
+            // For custom sounds, read the file and return as data URL
+            if (soundPath.includes(':') || soundPath.startsWith('/')) {
+                // Absolute path - custom sound
+                if (!fs.existsSync(soundPath)) {
+                    logger.warn(MODULE_NAME, `Sound file not found: ${soundPath}`);
+                    return { success: false, error: 'File not found' };
+                }
+                
+                try {
+                    // Read the file and convert to base64 data URL
+                    const data = fs.readFileSync(soundPath);
+                    const base64 = data.toString('base64');
+                    const ext = path.extname(soundPath).toLowerCase().slice(1);
+                    const mimeType = ext === 'mp3' ? 'audio/mpeg' : 
+                                   ext === 'm4a' ? 'audio/mp4' :
+                                   ext === 'wav' ? 'audio/wav' :
+                                   ext === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
+                    
+                    const dataUrl = `data:${mimeType};base64,${base64}`;
+                    return { success: true, dataUrl };
+                } catch (readError) {
+                    logger.error(MODULE_NAME, `Error reading sound file: ${readError}`);
+                    return { success: false, error: 'Failed to read file' };
+                }
+            }
+            
+            // For built-in sounds, just validate
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, `Error testing sound: ${error}`);
+            return { success: false, error: error.message };
+        }
+    });
+    
+    ipcMain.handle('get-default-sounds', () => {
+        // Return list of available default sounds
+        // For now we only have one sound file, but we can suggest different configurations
+        return [
+            { name: 'kill-event', displayName: 'Default Kill Sound' },
+            { name: 'kill-event-low', displayName: 'Subtle Kill Sound (Low Volume)' },
+            { name: 'kill-event-high', displayName: 'Intense Kill Sound (High Volume)' },
+            // These would use the same sound file but with different volume/pitch settings
+            // In the future, more sound files can be added here
+        ];
     });
 
     // --- Enhanced Launch on Startup Handlers ---
@@ -1138,8 +1252,14 @@ ipcMain.handle('auth:show-login', () => {
     });
 
     // --- Enhanced WebContentsView IPC Handlers ---
-    logger.info(MODULE_NAME, "Registering enhanced WebContentsView IPC handlers...");
-    registerEnhancedIPCHandlers();
+    try {
+        logger.info(MODULE_NAME, "Registering enhanced WebContentsView IPC handlers...");
+        registerEnhancedIPCHandlers();
+        logger.success(MODULE_NAME, "Enhanced WebContentsView handlers registered successfully.");
+    } catch (error) {
+        logger.error(MODULE_NAME, "Failed to register enhanced WebContentsView handlers:", error);
+        // Don't throw - continue with other handlers
+    }
 
-    logger.success(MODULE_NAME, "IPC handlers registered (including enhanced WebContentsView handlers).");
+    logger.success(MODULE_NAME, "All IPC handlers registered successfully.");
 }

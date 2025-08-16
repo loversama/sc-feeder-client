@@ -1,7 +1,7 @@
 import Store from 'electron-store';
 import path from 'node:path';
 import { app } from 'electron';
-import { StoreSchema, ProfileData, SessionInfo, EventCategory } from '../../shared/types';
+import { StoreSchema, ProfileData, SessionInfo, EventCategory, SoundPreferences } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
 const MODULE_NAME = 'ConfigManager'; // Define module name for logger
@@ -67,6 +67,39 @@ const schema = {
   playSoundEffects: {
     type: 'boolean',
     default: true // Enable by default
+  },
+  soundPreferences: {
+    type: 'object',
+    default: {
+      enabled: true,
+      eventSounds: {
+        vehicleDestruction: {
+          type: 'default',
+          path: 'clean_pop',  // Clean pop sound for vehicle destruction
+          volume: 0.6
+        },
+        crash: {
+          type: 'default',
+          path: 'kill-event-high',  // Intense sound for crashes
+          volume: 0.7
+        },
+        playerKill: {
+          type: 'default',
+          path: 'metallic_din_1',  // Metallic ding for player kills
+          volume: 0.5
+        },
+        npcKill: {
+          type: 'default',
+          path: 'metallic_din_npc',  // Best metallic ding for NPC kills
+          volume: 0.4
+        },
+        playerDeath: {
+          type: 'default',
+          path: 'kill-event-high',  // Intense sound for player death
+          volume: 0.8
+        }
+      }
+    } as SoundPreferences
   },
   feedMode: {
     type: 'string', // Storing as string, validation in getter/setter
@@ -267,6 +300,55 @@ export function getPlaySoundEffects(): boolean {
 
 export function setPlaySoundEffects(value: boolean): void {
     store.set('playSoundEffects', value);
+}
+
+// Sound Preferences - New system
+export function getSoundPreferences(): SoundPreferences {
+    let prefs = store.get('soundPreferences');
+    
+    // Handle migration from old playSoundEffects boolean
+    if (!prefs) {
+        const oldPlaySounds = store.get('playSoundEffects');
+        prefs = {
+            enabled: oldPlaySounds ?? true,
+            eventSounds: {
+                vehicleDestruction: {
+                    type: 'default',
+                    path: 'clean_pop',
+                    volume: 0.6
+                },
+                crash: {
+                    type: 'default',
+                    path: 'kill-event-high',
+                    volume: 0.7
+                },
+                playerKill: {
+                    type: 'default',
+                    path: 'metallic_din_1',
+                    volume: 0.5
+                },
+                npcKill: {
+                    type: 'default',
+                    path: 'metallic_din_npc',
+                    volume: 0.4
+                },
+                playerDeath: {
+                    type: 'default',
+                    path: 'kill-event-high',
+                    volume: 0.8
+                }
+            }
+        };
+        store.set('soundPreferences', prefs);
+        logger.info(MODULE_NAME, 'Migrated sound settings from playSoundEffects to soundPreferences');
+    }
+    
+    return prefs;
+}
+
+export function setSoundPreferences(preferences: SoundPreferences): void {
+    store.set('soundPreferences', preferences);
+    logger.info(MODULE_NAME, 'Sound preferences updated');
 }
 
 export function getLastLoggedInUser(): string {

@@ -360,8 +360,21 @@ async function onReady() {
   }
 
   // Register IPC handlers first
-  registerIpcHandlers();
-  registerAuthIpcHandlers();
+  try {
+    registerIpcHandlers();
+    logger.success(MODULE_NAME, 'IPC handlers registered successfully');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to register IPC handlers:', error);
+    throw error; // Re-throw to prevent app from starting with broken handlers
+  }
+  
+  try {
+    registerAuthIpcHandlers();
+    logger.success(MODULE_NAME, 'Auth IPC handlers registered successfully');
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to register auth IPC handlers:', error);
+    throw error;
+  }
 
   // Initialize EventProcessor with persistent storage
   try {

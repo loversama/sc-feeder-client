@@ -3,7 +3,9 @@ console.log('[SettingsWindow.vue] <script setup> executing...');
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElNotification } from 'element-plus';
 import DebugActions from './DebugActions.vue';
+import SoundPreferences from './SoundPreferences.vue';
 import { useUserState } from '../composables/useUserState';
+import type { SoundPreferences as SoundPreferencesType } from '../../shared/types';
 
 // State for the active category
 const activeCategory = ref<string>('general');
@@ -388,6 +390,14 @@ const toggleSoundEffects = async () => {
   }
 }
 
+// Handle sound preferences update from the SoundPreferences component
+const handleSoundPreferencesUpdate = (preferences: SoundPreferencesType) => {
+  // The preferences are already saved by the component
+  // This is just for any additional handling we might need
+  playSoundEffects.value = preferences.enabled;
+  setStatus('Sound preferences updated');
+}
+
 // Helper to set status message and clear after delay
 const setStatus = (msg: string, duration = 3000) => {
   ElNotification({
@@ -527,17 +537,11 @@ const toggleLaunchOnStartup = async () => {
               <p class="text-gray-400 text-sm">Retrieves player enlistment dates, organization, etc., from the RSI website. Requires internet connection.</p>
             </div>
 
-            <!-- Play Sound Effects -->
-            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <div class="flex items-center justify-between mb-2">
-                <h4 class="text-lg font-semibold text-theme-text-white">Play Event Sounds</h4>
-                <el-switch
-                  v-model="playSoundEffects"
-                  @change="toggleSoundEffects"
-                />
-              </div>
-              <p class="text-gray-400 text-sm">Plays a sound effect when a new event appears in the kill feed.</p>
-            </div>
+            <!-- Sound Preferences -->
+            <SoundPreferences 
+              v-model="playSoundEffects"
+              @preferences-updated="handleSoundPreferencesUpdate"
+            />
           </div>
         </section>
 

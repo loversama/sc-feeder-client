@@ -920,25 +920,182 @@ const getSeparator = (deathType: KillEvent['deathType']): string => {
 };
 
 // Function to play sound effect for new kill events
-const playKillSound = () => {
-  if (playSoundEffects.value && resourcePath.value) { // Check if path is loaded
-    try {
-      const soundFilePath = `file://${resourcePath.value}/sounds/kill-event.m4a`; // Construct full file path
-      console.debug(`Attempting to play sound: ${soundFilePath}`); // Use console.debug in renderer
-
-      // Create a new Audio instance each time
-      const sound = new Audio(soundFilePath);
-
-      // Play with error handling
-      sound.play().catch(err => {
-        console.warn(`Sound play failed for ${soundFilePath}:`, err);
-        // Common reasons: User hasn't interacted, file not found, format unsupported
-      });
-    } catch (err) {
-      console.error(`Error initializing or playing sound from ${resourcePath.value}:`, err);
+const playKillSound = async (killEvent?: KillEvent) => {
+  // Get sound preferences
+  let soundPrefs: any;
+  try {
+    if (window.logMonitorApi?.getSoundPreferences) {
+      soundPrefs = await window.logMonitorApi.getSoundPreferences();
     }
-  } else if (!resourcePath.value) {
-      console.warn("Cannot play sound: Resource path not yet loaded.");
+  } catch (error) {
+    console.error('Failed to get sound preferences:', error);
+  }
+  
+  // Fall back to old system if no preferences
+  if (!soundPrefs) {
+    if (!playSoundEffects.value) return;
+    soundPrefs = {
+      enabled: playSoundEffects.value,
+      eventSounds: {
+        vehicleDestruction: { type: 'default', path: 'clean_pop', volume: 0.5 },
+        crash: { type: 'default', path: 'kill-event-high', volume: 0.5 },
+        playerKill: { type: 'default', path: 'metallic_din_1', volume: 0.5 },
+        npcKill: { type: 'default', path: 'metallic_din_npc', volume: 0.3 },
+        playerDeath: { type: 'default', path: 'kill-event-high', volume: 0.6 }
+      }
+    };
+  }
+  
+  if (!soundPrefs.enabled) return;
+  
+  // Determine event type
+  let eventType: keyof typeof soundPrefs.eventSounds = 'playerKill'; // default
+  
+  if (killEvent) {
+    const currentUser = await window.logMonitorApi?.getLastLoggedInUser() || '';
+    const isPlayerDeath = killEvent.victims?.includes(currentUser);
+    const isPlayerKill = killEvent.killers?.includes(currentUser);
+    
+    // Check if NPC is involved
+    let hasNpc = false;
+    if (window.logMonitorApi?.filterNpcs) {
+      const allEntities = [...(killEvent.killers || []), ...(killEvent.victims || [])];
+      const npcs = await window.logMonitorApi.filterNpcs(allEntities);
+      hasNpc = npcs.length > 0;
+    }
+    
+    // Determine event type based on death type and involvement
+    if (killEvent.deathType === 'Crash' || killEvent.damageType === 'Crash') {
+      eventType = 'crash';
+    } else if (isPlayerDeath) {
+      eventType = 'playerDeath';
+    } else if (killEvent.vehicleType && killEvent.vehicleType !== 'Player') {
+      eventType = 'vehicleDestruction';
+    } else if (hasNpc && isPlayerKill) {
+      eventType = 'npcKill';
+    } else if (isPlayerKill) {
+      eventType = 'playerKill';
+    } else if (killEvent.isPlayerInvolved) {
+      // For assists or other player-involved events, use player kill sound
+      eventType = 'playerKill';
+    }
+  }
+  
+  // Get sound configuration for this event type
+  const soundConfig = soundPrefs.eventSounds[eventType];
+  if (!soundConfig || soundConfig.type === 'none') return;
+  
+  try {
+    let audioPlayed = false;
+    
+    if (soundConfig.type === 'custom' && soundConfig.path) {
+      // Play custom sound
+      try {
+        const soundUrl = `file://${soundConfig.path}`;
+        console.debug(`Playing custom sound: ${soundUrl}`);
+        
+        const audio = new Audio(soundUrl);
+        audio.volume = soundConfig.volume || 0.5;
+        
+        // Test if the audio file exists by trying to load it
+        await new Promise((resolve, reject) => {
+          audio.addEventListener('canplaythrough', resolve, { once: true });
+          audio.addEventListener('error', reject, { once: true });
+          audio.load();
+        });
+        
+        // Try to play the sound
+        try {
+          await audio.play();
+          console.debug(`Sound played successfully: ${soundConfig.path}.${format}`);
+          audioPlayed = true;
+        } catch (playError) {
+          console.error('Failed to play custom sound:', playError);
+        }
+      } catch (error) {
+        console.error('Error loading custom sound:', error);
+      }
+    }
+    
+    // If custom sound failed or using default sound
+    if (!audioPlayed && soundConfig.type === 'default') {
+      // Try multiple sound formats in order of preference
+      const soundFormats = ['mp3', 'm4a', 'wav'];
+      
+      for (const format of soundFormats) {
+        if (audioPlayed) break;
+        
+        try {
+          // Handle sound variations
+          let soundPath = soundConfig.path;
+          let volumeMultiplier = 1.0;
+          
+          // Map sound variations to the base sound file
+          if (soundPath.endsWith('-low')) {
+            soundPath = soundPath.replace('-low', '');
+            volumeMultiplier = 0.5; // Reduce volume for subtle effect
+          } else if (soundPath.endsWith('-high')) {
+            soundPath = soundPath.replace('-high', '');
+            volumeMultiplier = 1.5; // Increase volume for intense effect
+          }
+          
+          const soundUrl = new URL(`/sounds/${soundPath}.${format}`, window.location.href).href;
+          console.debug(`Attempting to play sound from: ${soundUrl}`);
+          
+          const audio = new Audio(soundUrl);
+          audio.volume = Math.min(1.0, (soundConfig.volume || 0.5) * volumeMultiplier);
+          
+          // Test if the audio file exists by trying to load it
+          await new Promise((resolve, reject) => {
+            audio.addEventListener('canplaythrough', resolve, { once: true });
+            audio.addEventListener('error', reject, { once: true });
+            audio.load();
+          });
+          
+          // Try to play the sound
+          try {
+            await audio.play();
+            console.debug(`Sound played successfully: ${soundConfig.path}.${format}`);
+            audioPlayed = true;
+          } catch (playError) {
+            // If play fails due to autoplay policy, try playing on next user interaction
+            console.warn(`Sound play failed for ${format}:`, playError);
+            
+            // Common reasons:
+            // 1. Autoplay blocked - user hasn't interacted with the page yet
+            // 2. File not found - check if the sound file exists
+            // 3. Format not supported
+            
+            // Try to play on next user interaction if autoplay was blocked
+            if (playError.name === 'NotAllowedError') {
+              const playOnInteraction = async () => {
+                try {
+                  await audio.play();
+                  console.debug(`Sound played after user interaction: ${soundConfig.path}.${format}`);
+                  document.removeEventListener('click', playOnInteraction);
+                  document.removeEventListener('keydown', playOnInteraction);
+                } catch (e) {
+                  console.error(`Failed to play ${format} sound even after user interaction:`, e);
+                }
+              };
+              
+              document.addEventListener('click', playOnInteraction, { once: true });
+              document.addEventListener('keydown', playOnInteraction, { once: true });
+              audioPlayed = true; // Mark as handled even if delayed
+            }
+          }
+        } catch (loadError) {
+          console.debug(`Sound file not found or failed to load: ${soundPath}.${format}`);
+          // Continue to next format
+        }
+      }
+    }
+    
+    if (!audioPlayed) {
+      console.error('No sound file could be played. Ensure sound files exist in /public/sounds/');
+    }
+  } catch (err) {
+    console.error('Error initializing sound system:', err);
   }
 };
 
@@ -2014,7 +2171,7 @@ onMounted(async () => { // Make onMounted async
           wasNewEvent = true;
 
           // Play sound effect for new events
-          playKillSound();
+          playKillSound(killEvent);
         }
 
         if (source !== 'server') {

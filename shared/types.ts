@@ -57,6 +57,35 @@ export interface StoreSchema {
   discoveredCategories?: Record<string, EventCategory>; // Key is category ID
   // Selected category filters
   selectedCategoryFilters?: string[]; // Array of selected category IDs
+  // Sound preferences (replaces playSoundEffects)
+  soundPreferences?: SoundPreferences;
+}
+
+// Sound preferences configuration
+export interface SoundPreferences {
+  // Whether sound effects are enabled globally
+  enabled: boolean;
+  
+  // Per-event-type sound configuration
+  eventSounds: {
+    vehicleDestruction: SoundConfig;
+    crash: SoundConfig;
+    playerKill: SoundConfig;
+    npcKill: SoundConfig;
+    playerDeath: SoundConfig;
+  };
+}
+
+export interface SoundConfig {
+  // Type of sound: 'default', 'custom', or 'none'
+  type: 'default' | 'custom' | 'none';
+  
+  // For 'default': name of the built-in sound (e.g., 'kill-event')
+  // For 'custom': absolute path to the custom sound file
+  path: string;
+  
+  // Volume level (0-1)
+  volume?: number;
 }
 
 // Defines the structure for a processed kill/destruction event

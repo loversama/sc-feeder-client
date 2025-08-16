@@ -94,6 +94,58 @@ const handleCheckForUpdate = () => {
   setTimeout(() => { statusMessage.value = ''; }, 3000);
 }
 
+// --- Sound Test Handler ---
+const handleTestSound = async () => {
+  statusMessage.value = 'Testing sound playback...';
+  try {
+    // Try multiple sound formats in order of preference
+    const soundFormats = ['mp3', 'm4a', 'wav'];
+    let audioPlayed = false;
+    
+    for (const format of soundFormats) {
+      if (audioPlayed) break;
+      
+      try {
+        const soundUrl = new URL(`/sounds/kill-event.${format}`, window.location.href).href;
+        console.debug(`[Sound Test] Attempting to play: ${soundUrl}`);
+        
+        // Create a new Audio instance
+        const audio = new Audio(soundUrl);
+        audio.volume = 0.5;
+        
+        // Test if the audio file exists
+        await new Promise((resolve, reject) => {
+          audio.addEventListener('canplaythrough', resolve, { once: true });
+          audio.addEventListener('error', reject, { once: true });
+          audio.load();
+        });
+        
+        // Try to play the sound
+        await audio.play();
+        console.debug(`[Sound Test] Successfully played: kill-event.${format}`);
+        statusMessage.value = `✅ Sound test successful! Playing: kill-event.${format}`;
+        audioPlayed = true;
+      } catch (error: any) {
+        console.debug(`[Sound Test] Failed to play ${format}:`, error.message);
+        
+        if (error.name === 'NotAllowedError') {
+          statusMessage.value = '⚠️ Sound blocked by browser. Click anywhere then try again.';
+          audioPlayed = true; // Don't try other formats
+        }
+      }
+    }
+    
+    if (!audioPlayed) {
+      statusMessage.value = '❌ No sound file found. Add kill-event.mp3/m4a/wav to /public/sounds/';
+    }
+  } catch (err: any) {
+    console.error('[Sound Test] Error:', err);
+    statusMessage.value = `❌ Sound test error: ${err.message}`;
+  } finally {
+    setTimeout(() => { statusMessage.value = ''; }, 5000);
+  }
+};
+
 // --- Definitions Refresh Handlers ---
 const handleRefreshDefinitions = async () => {
   isLoading.value = true;
@@ -837,11 +889,49 @@ const handleRunAllDiagnostics = async () => {
             </p>
           </div>
           
+          <!-- Sound Testing -->
+          <div class="section">
+            <h4 class="section-title">
+              <div class="section-indicator blue"></div>
+              Sound System Testing
+            </h4>
+            
+            <div class="button-grid button-grid-1">
+              <el-button 
+                @click="handleTestSound" 
+                :disabled="isLoading" 
+                type="primary"
+                class="debug-button"
+                size="large"
+              >
+                <template #icon>
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                  </svg>
+                </template>
+                🔊 Test Kill Event Sound
+              </el-button>
+            </div>
+            
+            <div class="guide-box">
+              <h5 class="guide-title">Sound Testing Guide:</h5>
+              <ul class="guide-list">
+                <li><strong>Supported formats:</strong> MP3, M4A, WAV</li>
+                <li><strong>File location:</strong> /public/sounds/kill-event.[mp3|m4a|wav]</li>
+                <li><strong>Volume:</strong> Set to 50% for testing</li>
+              </ul>
+              <p class="guide-note">
+                If sound is blocked, click anywhere in the window first, then try again.
+                The same sound will play when kill events occur in the feed.
+              </p>
+            </div>
+          </div>
+          
           <!-- Reserved for future advanced features -->
           <div class="placeholder-section">
-            <h5 class="placeholder-title">🚧 Coming Soon</h5>
+            <h5 class="placeholder-title">🚧 More Coming Soon</h5>
             <p class="placeholder-text">
-              Advanced debugging features, performance monitoring, and developer tools will be added here.
+              Additional debugging features will be added here:
             </p>
             <ul class="placeholder-list">
               <li>Log level configuration</li>
