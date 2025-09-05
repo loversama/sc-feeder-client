@@ -15,13 +15,20 @@
       <!-- Disconnected State -->
       <div v-else-if="status === 'disconnected'" class="banner-content">
         <div class="banner-info">
-          <el-icon class="banner-icon error"><Connection /></el-icon>
+          <el-icon v-if="connectionAttempts === 0" class="banner-icon spinning"><Loading /></el-icon>
+          <el-icon v-else class="banner-icon error"><Connection /></el-icon>
           <div class="banner-text">
-            <span class="banner-title">{{ disconnectedTitle }}</span>
-            <span class="banner-subtitle">{{ nextAttemptMessage }}</span>
+            <span class="banner-title">{{ connectionAttempts === 0 ? 'Connecting to Server' : disconnectedTitle }}</span>
+            <span class="banner-subtitle">{{ connectionAttempts === 0 ? 'Please wait...' : nextAttemptMessage }}</span>
           </div>
         </div>
-        <el-button @click="reconnectNow" type="primary" plain class="banner-action">
+        <el-button 
+          v-if="connectionAttempts > 0"
+          @click="reconnectNow" 
+          type="primary" 
+          plain 
+          class="banner-action"
+        >
           Reconnect Now
         </el-button>
       </div>
@@ -193,12 +200,14 @@ watch(() => props.status, (newStatus, oldStatus) => {
   
   // Handle reconnection attempt
   if (newStatus === 'connecting') {
-    if (oldStatus === 'disconnected') {
+    if (!oldStatus) {
+      // Initial connection on app startup
+      connectionAttempts.value = 0;
+      reconnectAttempt.value = 0;
+    } else if (oldStatus === 'disconnected') {
+      // Reconnection after disconnect
       reconnectAttempt.value++;
       connectionAttempts.value++;
-    } else if (!oldStatus || oldStatus === 'disconnected') {
-      // Initial connection
-      connectionAttempts.value = 0;
     }
   }
   
