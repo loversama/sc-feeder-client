@@ -115,9 +115,8 @@ function processLocationDataEnhanced(
     let zoneResolution: ZoneResolution | undefined;
     
     if (rawLocation && rawLocation.trim() !== '') {
-        // Clean up the location name
-        const locationCleanup = rawLocation.match(cleanupPattern);
-        const cleanLocation = locationCleanup?.[1] || rawLocation;
+        // Keep raw location without cleanup
+        const cleanLocation = rawLocation;
         
         // Enhanced zone processing
         if (zoneHistoryManager && isZoneSystemInitialized) {

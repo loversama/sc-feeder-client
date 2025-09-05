@@ -788,7 +788,7 @@ const toggleLaunchOnStartup = async () => {
                 <h5 class="text-theme-text-white text-sm mb-2">Recent Location Changes:</h5>
                 <div class="max-h-48 overflow-y-auto bg-theme-bg-dark rounded border p-3 space-y-1">
                   <div 
-                    v-for="(entry, index) in locationState.locationHistory.slice(-10)" 
+                    v-for="(entry, index) in locationState.locationHistory.slice(-10).reverse()" 
                     :key="index"
                     class="text-xs"
                   >
