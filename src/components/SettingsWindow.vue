@@ -784,33 +784,59 @@ const toggleLaunchOnStartup = async () => {
               </div>
               
               <!-- Recent Location History -->
-              <div v-if="locationState.locationHistory?.length > 0" class="mt-4">
-                <h5 class="text-theme-text-white text-sm mb-2">Recent Location Changes:</h5>
-                <div class="max-h-48 overflow-y-auto bg-theme-bg-dark rounded border p-3 space-y-1">
+              <div v-if="locationState.locationHistory?.length > 0" class="mt-6">
+                <h5 class="text-theme-text-white font-semibold text-sm mb-3">Recent Location Changes</h5>
+                <div class="max-h-64 overflow-y-auto bg-theme-bg-dark/50 rounded-lg border border-theme-border/50">
                   <div 
                     v-for="(entry, index) in locationState.locationHistory.slice(-10).reverse()" 
                     :key="index"
-                    class="text-xs"
+                    class="group hover:bg-white/5 transition-colors duration-150"
                   >
-                    <div class="flex justify-between items-center">
-                      <span class="text-green-400">{{ locationHistoryDisplayNames.get(entry.location) || entry.location }}</span>
-                      <span class="text-gray-500">{{ entry.source }}</span>
+                    <div class="px-4 py-3 border-b border-theme-border/20 last:border-b-0">
+                      <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm font-medium text-theme-text-white">
+                          {{ locationHistoryDisplayNames.get(entry.location) || entry.location }}
+                        </span>
+                        <span class="text-xs text-theme-text-light/70 px-2 py-1 bg-theme-bg-panel/50 rounded">
+                          {{ entry.source }}
+                        </span>
+                      </div>
+                      <div class="flex justify-between items-center">
+                        <div class="text-xs text-theme-text-light/50 flex items-center gap-1">
+                          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {{ formatTimestamp(entry.timestamp) }}
+                        </div>
+                        <div class="text-xs text-theme-text-light/30 font-mono">{{ entry.location }}</div>
+                      </div>
                     </div>
-                    <div class="flex justify-between items-center">
-                      <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
-                      <div class="text-gray-500 text-xs opacity-75">{{ entry.location }}</div>
-                    </div>
+                  </div>
+                  <div v-if="locationState.locationHistory.length === 0" class="px-4 py-8 text-center text-theme-text-light/50 text-sm">
+                    No location changes recorded
                   </div>
                 </div>
               </div>
               
-              <div class="flex gap-2 mt-4">
-                <el-button @click="refreshLocationState" size="small" type="primary">
+              <div class="flex gap-3 mt-4">
+                <button 
+                  @click="refreshLocationState" 
+                  class="px-4 py-2 bg-theme-accent text-white rounded-md hover:bg-theme-accent/80 transition-colors duration-150 text-sm font-medium flex items-center gap-2"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
                   Refresh
-                </el-button>
-                <el-button @click="clearLocationHistory" size="small" type="warning">
+                </button>
+                <button 
+                  @click="clearLocationHistory" 
+                  class="px-4 py-2 bg-yellow-600/80 text-white rounded-md hover:bg-yellow-600 transition-colors duration-150 text-sm font-medium flex items-center gap-2"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
                   Clear History
-                </el-button>
+                </button>
               </div>
             </div>
           </div>
