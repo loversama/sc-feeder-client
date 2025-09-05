@@ -13,12 +13,12 @@
       </div>
 
       <!-- Disconnected State -->
-      <div v-else-if="status === 'disconnected'" class="banner-content">
+      <div v-else-if="status === 'disconnected' && connectionAttempts < 5" class="banner-content">
         <div class="banner-info">
           <el-icon v-if="connectionAttempts === 0" class="banner-icon spinning"><Loading /></el-icon>
           <el-icon v-else class="banner-icon error"><Connection /></el-icon>
           <div class="banner-text">
-            <span class="banner-title">{{ connectionAttempts === 0 ? 'Connecting to Server' : disconnectedTitle }}</span>
+            <span class="banner-title">{{ connectionAttempts === 0 ? 'Connecting to Server' : 'Reconnecting to Server' }}</span>
             <span class="banner-subtitle">{{ connectionAttempts === 0 ? 'Please wait...' : nextAttemptMessage }}</span>
           </div>
         </div>
@@ -33,8 +33,8 @@
         </el-button>
       </div>
 
-      <!-- Error State -->
-      <div v-else-if="status === 'error'" class="banner-content">
+      <!-- Error State (shows after 5 failed attempts) -->
+      <div v-else-if="(status === 'error' || status === 'disconnected') && connectionAttempts >= 5" class="banner-content">
         <div class="banner-info">
           <el-icon class="banner-icon error"><Warning /></el-icon>
           <div class="banner-text">
@@ -100,7 +100,7 @@ const shouldShowBanner = computed(() => {
     return false;
   }
   
-  // Show for error states
+  // Always show when not connected (disconnected, connecting, error states)
   if (props.status === 'disconnected' || props.status === 'connecting' || props.status === 'error') {
     return true;
   }
@@ -115,8 +115,8 @@ const shouldShowBanner = computed(() => {
 
 const bannerClass = computed(() => ({
   'connecting': props.status === 'connecting',
-  'disconnected': props.status === 'disconnected',
-  'error': props.status === 'error',
+  'disconnected': props.status === 'disconnected' && connectionAttempts.value < 5,
+  'error': props.status === 'error' || (props.status === 'disconnected' && connectionAttempts.value >= 5),
   'connected': props.status === 'connected',
   'success': props.status === 'connected' && showSuccessMessage.value
 }));
@@ -124,14 +124,6 @@ const bannerClass = computed(() => ({
 const connectingTitle = computed(() => {
   if (connectionAttempts.value === 0) {
     return 'Connecting to Server';
-  }
-  return 'Reconnecting to Server';
-});
-
-const disconnectedTitle = computed(() => {
-  // Show "Connection Lost" only after 5 failed attempts
-  if (connectionAttempts.value >= 5) {
-    return 'Connection Lost';
   }
   return 'Reconnecting to Server';
 });
@@ -192,8 +184,8 @@ watch(() => props.status, (newStatus, oldStatus) => {
     }, 3000);
   }
   
-  // Handle disconnection - start countdown
-  if (newStatus === 'disconnected') {
+  // Handle disconnection - start countdown only if under 5 attempts
+  if (newStatus === 'disconnected' && connectionAttempts.value < 5) {
     const delay = getReconnectDelay(reconnectAttempt.value);
     startCountdown(delay);
   }
