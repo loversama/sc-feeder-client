@@ -97,7 +97,8 @@ function initializeZoneSystem(): void {
 function processLocationDataEnhanced(
     rawLocation: string | undefined, 
     coordinates?: {x: number, y: number, z: number}, 
-    source: string = 'unknown'
+    source: string = 'unknown',
+    timestamp?: string
 ): {
     location: string;
     coordinates?: {x: number, y: number, z: number};
@@ -121,7 +122,7 @@ function processLocationDataEnhanced(
         // Enhanced zone processing
         if (zoneHistoryManager && isZoneSystemInitialized) {
             try {
-                zoneResolution = zoneHistoryManager.addZoneToHistory(cleanLocation, source, coordinates);
+                zoneResolution = zoneHistoryManager.addZoneToHistory(cleanLocation, source, coordinates, timestamp);
                 zoneInfo = createEnhancedZoneInfo(zoneResolution);
                 processedLocation = zoneInfo.displayLocation;
                 locationSource = 'event';
@@ -228,12 +229,12 @@ function createEnhancedZoneInfo(zoneResolution: ZoneResolution): EnhancedEventZo
 }
 
 // Legacy location processing function for compatibility
-function processLocationData(rawLocation: string | undefined, coordinates?: {x: number, y: number, z: number}, source: string = 'unknown'): {
+function processLocationData(rawLocation: string | undefined, coordinates?: {x: number, y: number, z: number}, source: string = 'unknown', timestamp?: string): {
     location: string;
     coordinates?: {x: number, y: number, z: number};
     locationSource: 'event' | 'fallback' | 'unknown';
 } {
-    const result = processLocationDataEnhanced(rawLocation, coordinates, source);
+    const result = processLocationDataEnhanced(rawLocation, coordinates, source, timestamp);
     return {
         location: result.location,
         coordinates: result.coordinates,
@@ -379,7 +380,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                 const locationData = processLocationDataEnhanced(
                     vehicle_zone, 
                     { x: parseFloat(pos_x || '0'), y: parseFloat(pos_y || '0'), z: parseFloat(pos_z || '0') },
-                    'vehicle_destruction'
+                    'vehicle_destruction',
+                    timestamp
                 );
 
                 if (destructionLevel >= 1) { // Process soft death (level 1) or hard death (level >= 2)
@@ -477,7 +479,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                 logger.info(MODULE_NAME, 'Detailed kill:', { attacker: Killer }, '->', { victim: Victim }, '(in zone', { zone: Zone }, ') with', { weapon: Weapon }, `(${DamageType})`);
                 
                 // Process location data with enhanced zone hierarchy (no coordinates from combat deaths)
-                const locationData = processLocationDataEnhanced(Zone, undefined, 'combat_death');
+                const locationData = processLocationDataEnhanced(Zone, undefined, 'combat_death', timestamp);
                 logger.info(MODULE_NAME, 'DEBUG - Enhanced zone details:', { 
                     originalZone: killMatch.groups.Zone, 
                     cleanedZone: Zone, 
@@ -580,7 +582,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                 const victimDisplayName = victimResolution.displayName;
                 
                 // Process location data for environmental deaths with enhanced zone system
-                const locationData = processLocationDataEnhanced(undefined, undefined, 'environmental_death');
+                const locationData = processLocationDataEnhanced(undefined, undefined, 'environmental_death', timestamp);
 
                 const partialEvent: Partial<KillEvent> = {
                     id: eventId,
@@ -750,7 +752,8 @@ export function getZoneHistory(filter?: {
 export function addZoneToHistory(
     zoneId: string, 
     source: string, 
-    coordinates?: {x: number, y: number, z: number}
+    coordinates?: {x: number, y: number, z: number},
+    timestamp?: string
 ): ZoneResolution | null {
     initializeZoneSystem();
     
@@ -760,7 +763,7 @@ export function addZoneToHistory(
     }
     
     try {
-        return zoneHistoryManager.addZoneToHistory(zoneId, source, coordinates);
+        return zoneHistoryManager.addZoneToHistory(zoneId, source, coordinates, timestamp);
     } catch (error) {
         logger.error(MODULE_NAME, 'Error adding zone to history:', error);
         return null;

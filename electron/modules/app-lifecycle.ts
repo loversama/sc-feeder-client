@@ -396,6 +396,20 @@ async function onReady() {
   if (authState.requiresLoginPopup) {
     const loginResult = await showLoginPopup();
     authAlreadyInitialized = loginResult.authAlreadyInitialized;
+    
+    // IMPORTANT: After login popup completes, ensure auth state is properly initialized
+    // This handles the case where tokens were just stored by the popup
+    if (authAlreadyInitialized && !hasActiveAuthSession()) {
+      logger.info(MODULE_NAME, 'Login popup completed but session not active, initializing auth...');
+      try {
+        const canConnect = await initializeAuth();
+        if (!canConnect) {
+          logger.warn(MODULE_NAME, 'Failed to initialize auth after login popup');
+        }
+      } catch (error) {
+        logger.error(MODULE_NAME, 'Error initializing auth after login popup:', error);
+      }
+    }
   } else {
     // Handle stored authentication or guest mode
     if (authState.authMode === 'guest') {

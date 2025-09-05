@@ -382,6 +382,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     ipcRenderer.on('connection-status-changed', callback);
     return () => ipcRenderer.removeListener('connection-status-changed', callback);
   },
+  reconnectToServer: (): Promise<void> => ipcRenderer.invoke('server:reconnect'),
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void): (() => void) => {
     ipcRenderer.on('game-mode-update', callback);
     return () => ipcRenderer.removeListener('game-mode-update', callback);

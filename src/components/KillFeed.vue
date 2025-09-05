@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
+import ConnectionBanner from './ConnectionBanner.vue'; // Import the connection status banner
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, QuestionFilled } from '@element-plus/icons-vue'; // Import icons
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
@@ -1882,6 +1883,14 @@ const scrollToTop = async () => {
   }
 };
 
+// Handle manual reconnection request from ConnectionBanner
+const handleManualReconnect = () => {
+  console.log('[KillFeed] Manual reconnect requested');
+  // Send reconnect request to main process
+  if (window.logMonitorApi?.reconnectToServer) {
+    window.logMonitorApi.reconnectToServer();
+  }
+};
 
 onMounted(async () => { // Make onMounted async
   // Get initial states synchronously FIRST
@@ -2311,6 +2320,15 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     <!-- Update Banner Container with matching background -->
     <div class="update-banner-container">
       <UpdateBanner />
+    </div>
+    
+    <!-- Connection Status Banner -->
+    <div class="connection-banner-container">
+      <ConnectionBanner 
+        :status="connectionStatus"
+        :hide-when-update-active="true"
+        @reconnect="handleManualReconnect"
+      />
     </div>
     
     <!-- Controls bar -->
@@ -2925,6 +2943,11 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .update-banner-container {
+  background-color: #171717;
+  flex-shrink: 0;
+}
+
+.connection-banner-container {
   background-color: #171717;
   flex-shrink: 0;
 }

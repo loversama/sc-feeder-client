@@ -473,8 +473,12 @@ export function getGuestToken(): string | null {
 }
 
 export function getAuthStatus(): { isAuthenticated: boolean; username: string | null; userId: string | null } {
+    // Consider user authenticated if they have an active session
+    // This handles cases where server is offline but user has valid refresh token
+    const isAuthenticated = hasActiveSession && !!loggedInUser;
+    
     return {
-        isAuthenticated: !!accessToken && !!loggedInUser,
+        isAuthenticated,
         username: loggedInUser?.username ?? null,
         userId: loggedInUser?.userId ?? null,
     };
@@ -550,6 +554,18 @@ export async function login(identifier: string, password: string): Promise<{ suc
             setHasShownInitialLogin(true);
 
             logger.info(MODULE_NAME, `Login successful for ${userProfile.username} (ID: ${userProfile.userId}).`);
+            
+            // Add a small delay to ensure token is fully persisted to disk
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Verify the token was stored properly
+            const storedToken = getRefreshTokenFromStore();
+            if (!storedToken) {
+                logger.error(MODULE_NAME, 'Refresh token not found after storage - possible persistence issue');
+            } else {
+                logger.info(MODULE_NAME, 'Refresh token verified in persistent storage');
+            }
+            
             disconnectFromServer();
             connectToServer();
             broadcastAuthStatusChange();
@@ -634,8 +650,16 @@ export async function refreshToken(): Promise<{ userId: string; username: string
          if (!response.ok) {
              const errorData = await response.json().catch(() => ({ message: 'Refresh failed with status: ' + response.status }));
              logger.error(MODULE_NAME, `Token refresh API request failed (${response.status}):`, errorData.message || response.statusText);
-             await clearAllTokensAndUser();
-             broadcastAuthStatusChange(); // Broadcast after clearing tokens on failed refresh
+             
+             // Only clear tokens for auth errors (401, 403), not server errors (500+)
+             if (response.status === 401 || response.status === 403) {
+                 logger.info(MODULE_NAME, 'Auth error - clearing tokens');
+                 await clearAllTokensAndUser();
+                 broadcastAuthStatusChange(); // Broadcast after clearing tokens on failed refresh
+             } else {
+                 logger.warn(MODULE_NAME, `Server error ${response.status} - preserving tokens`);
+                 // Don't clear tokens for server errors - user remains logged in
+             }
              return null;
          }
 
@@ -678,10 +702,28 @@ export async function refreshToken(): Promise<{ userId: string; username: string
          }
 
      } catch (error: any) {
-         logger.error(MODULE_NAME, 'Error during token refresh API call:', error);
-         await clearAllTokensAndUser();
-         broadcastAuthStatusChange();
-         return null;
+         // Check if this is a network error (server offline) vs an actual authentication error
+         const isNetworkError = error.message?.includes('fetch failed') || 
+                               error.message?.includes('ECONNREFUSED') ||
+                               error.message?.includes('ENOTFOUND') ||
+                               error.message?.includes('ETIMEDOUT') ||
+                               error.code === 'ECONNREFUSED' ||
+                               error.code === 'ENOTFOUND' ||
+                               error.code === 'ETIMEDOUT' ||
+                               error.code === 'ENETUNREACH';
+                               
+         if (isNetworkError) {
+             logger.warn(MODULE_NAME, 'Network error during token refresh (server may be offline):', error.message);
+             // Don't clear tokens on network errors - user remains logged in
+             // Return null to indicate refresh failed, but tokens are preserved
+             return null;
+         } else {
+             logger.error(MODULE_NAME, 'Error during token refresh API call:', error);
+             // Only clear tokens for non-network errors
+             await clearAllTokensAndUser();
+             broadcastAuthStatusChange();
+             return null;
+         }
      }
 }
 
@@ -879,6 +921,13 @@ export async function initializeAuth(): Promise<boolean> {
     // Initialize secure client ID storage first
     await initializeSecureClientId();
     
+    // Check if we already have an active session (e.g., from recent login)
+    if (hasActiveSession && accessToken) {
+        logger.info(MODULE_NAME, 'Active session already exists, skipping re-initialization');
+        broadcastAuthStatusChange();
+        return true;
+    }
+    
     let connectionReady = false;
     const existingRefreshToken = getRefreshTokenFromStore();
 
@@ -890,12 +939,24 @@ export async function initializeAuth(): Promise<boolean> {
             hasActiveSession = true; // Set active session flag on successful refresh
             connectionReady = true;
         } else {
-            logger.warn(MODULE_NAME, 'Failed to refresh token during initialization. User remains logged out.');
-            hasActiveSession = false; // Clear active session flag
-            // clearAllTokensAndUser() is called within refreshToken() on failure.
-            // Attempt to get a guest token if refresh failed and user is effectively logged out.
-            const guestTokenObtained = await requestAndStoreGuestToken();
-            connectionReady = guestTokenObtained;
+            // Check if we still have tokens (network error case)
+            const currentRefreshToken = getRefreshTokenFromStore();
+            const currentUser = getLoggedInUser();
+            
+            if (currentRefreshToken && currentUser) {
+                // Network error - maintain logged-in state
+                logger.info(MODULE_NAME, `Token refresh failed but user ${currentUser.username} remains logged in (server may be offline)`);
+                hasActiveSession = true; // Maintain active session
+                connectionReady = false; // Can't connect to server right now
+                // Don't request guest token - keep user logged in
+            } else {
+                // Auth error - tokens were cleared
+                logger.warn(MODULE_NAME, 'Failed to refresh token during initialization. User logged out.');
+                hasActiveSession = false; // Clear active session flag
+                // Attempt to get a guest token since user is logged out
+                const guestTokenObtained = await requestAndStoreGuestToken();
+                connectionReady = guestTokenObtained;
+            }
         }
     } else {
         logger.info(MODULE_NAME, 'No existing refresh token found. User is logged out.');

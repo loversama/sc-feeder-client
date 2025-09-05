@@ -84,10 +84,11 @@ export class ZoneHistoryManager {
   addZoneToHistory(
     zoneId: string,
     source: string,
-    coordinates?: {x: number, y: number, z: number}
+    coordinates?: {x: number, y: number, z: number},
+    timestamp?: string
   ): ZoneResolution {
     const resolution = ZoneResolver.resolveZone(zoneId, coordinates);
-    const timestamp = new Date().toISOString();
+    const eventTimestamp = timestamp || new Date().toISOString();
     
     // Check if this is actually a zone change
     const lastEntry = this.getLastHistoryEntry();
@@ -100,7 +101,7 @@ export class ZoneHistoryManager {
     
     // Calculate dwell time for previous zone
     if (lastEntry) {
-      const dwellTime = new Date(timestamp).getTime() - new Date(lastEntry.timestamp).getTime();
+      const dwellTime = new Date(eventTimestamp).getTime() - new Date(lastEntry.timestamp).getTime();
       lastEntry.dwellTime = dwellTime;
       
       // Update event count (this would be incremented elsewhere when events occur)
@@ -109,7 +110,7 @@ export class ZoneHistoryManager {
     
     // Create history entry
     const historyEntry: ZoneHistoryEntry = {
-      timestamp,
+      timestamp: eventTimestamp,
       zoneId: resolution.zone.id,
       zoneName: resolution.zone.displayName,
       classification: resolution.zone.classification,
@@ -125,7 +126,7 @@ export class ZoneHistoryManager {
       fromZone: lastEntry,
       toZone: historyEntry,
       transitionTime: lastEntry ? 
-        new Date(timestamp).getTime() - new Date(lastEntry.timestamp).getTime() : 0,
+        new Date(eventTimestamp).getTime() - new Date(lastEntry.timestamp).getTime() : 0,
       distance: this.calculateDistance(lastEntry?.coordinates, coordinates),
       wasSignificant: this.isSignificantTransition(lastEntry, historyEntry)
     };

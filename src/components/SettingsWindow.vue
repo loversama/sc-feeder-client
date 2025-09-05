@@ -2,6 +2,7 @@
 console.log('[SettingsWindow.vue] <script setup> executing...');
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElNotification } from 'element-plus';
+import { User, Tools } from '@element-plus/icons-vue';
 import DebugActions from './DebugActions.vue';
 import SoundPreferences from './SoundPreferences.vue';
 import { useUserState } from '../composables/useUserState';
@@ -9,6 +10,9 @@ import type { SoundPreferences as SoundPreferencesType } from '../../shared/type
 
 // State for the active category
 const activeCategory = ref<string>('general');
+
+// State for debug tabs
+const activeDebugTab = ref<string>('state');
 
 // Define categories for the sidebar
 const categories = ref([
@@ -631,109 +635,6 @@ const toggleLaunchOnStartup = async () => {
               <p class="text-gray-400 text-sm">Shows whether the application is currently running in guest mode.</p>
             </div>
 
-            <!-- User State Debug Section -->
-            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <h4 class="text-lg font-semibold text-theme-text-white mb-4">User State Debug</h4>
-              <div class="space-y-3 text-sm font-mono">
-                <div class="grid grid-cols-1 gap-2">
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">Username:</span>
-                    <span class="text-theme-text-light">{{ userState.username || 'null' }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">RSI Handle:</span>
-                    <span class="text-theme-text-light">{{ userState.rsiHandle || 'null' }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">RSI Moniker:</span>
-                    <span class="text-theme-text-light">{{ userState.rsiMoniker || 'null' }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">Authenticated:</span>
-                    <span class="text-theme-text-light">{{ userState.isAuthenticated }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">Roles:</span>
-                    <span class="text-theme-text-light">{{ userState.roles?.join(', ') || 'none' }}</span>
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="text-gray-400 w-32 mb-1">Avatar URL:</span>
-                    <div class="pl-4">
-                      <div class="break-all text-xs text-theme-text-light bg-theme-bg-dark p-2 rounded border">
-                        {{ userState.avatar || 'null' }}
-                      </div>
-                      <div v-if="userState.avatar" class="mt-2">
-                        <span class="text-gray-400 text-xs">Avatar Preview:</span>
-                        <div class="mt-1">
-                          <img 
-                            :src="userState.avatar" 
-                            alt="Avatar" 
-                            class="w-12 h-12 rounded border-2 border-theme-border"
-                            @error="(e: Event) => { 
-                              console.error('Settings avatar preview FAILED to load:', userState.avatar); 
-                              console.error('Error event:', e);
-                              console.error('Image element:', e.target);
-                            }"
-                            @load="() => console.log('Settings avatar preview loaded successfully:', userState.avatar)"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Location Debug Section -->
-            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Location Debug</h4>
-              <div class="space-y-3 text-sm font-mono">
-                <div class="grid grid-cols-1 gap-2">
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">Current Location:</span>
-                    <span class="text-theme-text-light">{{ currentLocationDisplayName || 'Loading...' }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">Raw Location ID:</span>
-                    <span class="text-theme-text-light text-xs opacity-75">{{ locationState.currentLocation || 'Unknown' }}</span>
-                  </div>
-                  <div class="flex">
-                    <span class="text-gray-400 w-32">History Count:</span>
-                    <span class="text-theme-text-light">{{ locationState.historyCount || 0 }} changes</span>
-                  </div>
-                </div>
-                
-                <!-- Recent Location History -->
-                <div v-if="locationState.locationHistory?.length > 0" class="mt-4">
-                  <h5 class="text-theme-text-white text-sm mb-2">Recent Location Changes:</h5>
-                  <div class="max-h-48 overflow-y-auto bg-theme-bg-dark rounded border p-3 space-y-1">
-                    <div 
-                      v-for="(entry, index) in locationState.locationHistory.slice(-10)" 
-                      :key="index"
-                      class="text-xs"
-                    >
-                      <div class="flex justify-between items-center">
-                        <span class="text-green-400">{{ locationHistoryDisplayNames.get(entry.location) || entry.location }}</span>
-                        <span class="text-gray-500">{{ entry.source }}</span>
-                      </div>
-                      <div class="flex justify-between items-center">
-                        <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
-                        <div class="text-gray-500 text-xs opacity-75">{{ entry.location }}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div class="flex gap-2 mt-4">
-                  <el-button @click="refreshLocationState" size="small" type="primary">
-                    Refresh
-                  </el-button>
-                  <el-button @click="clearLocationHistory" size="small" type="warning">
-                    Clear History
-                  </el-button>
-                </div>
-              </div>
-            </div>
 
             <el-button @click="handleLogout" type="danger" class="px-6">
               Logout
@@ -772,11 +673,145 @@ const toggleLaunchOnStartup = async () => {
         <!-- Debug Section -->
         <section v-if="activeCategory === 'debug'" class="space-y-6">
           <div class="mb-8">
-            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Debug Actions</h3>
+            <h3 class="text-2xl font-bold text-theme-text-white mb-2">Debug Tools</h3>
             <p class="text-gray-400">Development and testing utilities</p>
           </div>
 
-          <DebugActions />
+          <!-- Debug Tab Navigation -->
+          <div class="debug-tab-navigation mb-6">
+            <div class="flex space-x-1 p-1 bg-theme-bg-panel/50 rounded-lg">
+              <button 
+                @click="activeDebugTab = 'state'"
+                :class="['tab-button', { 'tab-active': activeDebugTab === 'state' }]"
+              >
+                <el-icon><User /></el-icon>
+                <span>State & Location</span>
+              </button>
+              <button 
+                @click="activeDebugTab = 'actions'"
+                :class="['tab-button', { 'tab-active': activeDebugTab === 'actions' }]"
+              >
+                <el-icon><Tools /></el-icon>
+                <span>System Actions</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tab Content -->
+          <div class="debug-tab-content">
+            <!-- State & Location Tab -->
+            <div v-show="activeDebugTab === 'state'" class="space-y-6">
+              <!-- User State Debug Section -->
+              <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+            <h4 class="text-lg font-semibold text-theme-text-white mb-4">User State Debug</h4>
+            <div class="space-y-3 text-sm font-mono">
+              <div class="grid grid-cols-1 gap-2">
+                <div class="flex">
+                  <span class="text-gray-400 w-32">Username:</span>
+                  <span class="text-theme-text-light">{{ userState.username || 'null' }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">RSI Handle:</span>
+                  <span class="text-theme-text-light">{{ userState.rsiHandle || 'null' }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">RSI Moniker:</span>
+                  <span class="text-theme-text-light">{{ userState.rsiMoniker || 'null' }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">Authenticated:</span>
+                  <span class="text-theme-text-light">{{ userState.isAuthenticated }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">Roles:</span>
+                  <span class="text-theme-text-light">{{ userState.roles?.join(', ') || 'none' }}</span>
+                </div>
+                <div class="flex flex-col">
+                  <span class="text-gray-400 w-32 mb-1">Avatar URL:</span>
+                  <div class="pl-4">
+                    <div class="break-all text-xs text-theme-text-light bg-theme-bg-dark p-2 rounded border">
+                      {{ userState.avatar || 'null' }}
+                    </div>
+                    <div v-if="userState.avatar" class="mt-2">
+                      <span class="text-gray-400 text-xs">Avatar Preview:</span>
+                      <div class="mt-1">
+                        <img 
+                          :src="userState.avatar" 
+                          alt="Avatar" 
+                          class="w-12 h-12 rounded border-2 border-theme-border"
+                          @error="(e: Event) => { 
+                            console.error('Settings avatar preview FAILED to load:', userState.avatar); 
+                            console.error('Error event:', e);
+                            console.error('Image element:', e.target);
+                          }"
+                          @load="() => console.log('Settings avatar preview loaded successfully:', userState.avatar)"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Location Debug Section -->
+          <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border mb-6">
+            <h4 class="text-lg font-semibold text-theme-text-white mb-4">Location Debug</h4>
+            <div class="space-y-3 text-sm font-mono">
+              <div class="grid grid-cols-1 gap-2">
+                <div class="flex">
+                  <span class="text-gray-400 w-32">Current Location:</span>
+                  <span class="text-theme-text-light">{{ currentLocationDisplayName || 'Loading...' }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">Raw Location ID:</span>
+                  <span class="text-theme-text-light text-xs opacity-75">{{ locationState.currentLocation || 'Unknown' }}</span>
+                </div>
+                <div class="flex">
+                  <span class="text-gray-400 w-32">History Count:</span>
+                  <span class="text-theme-text-light">{{ locationState.historyCount || 0 }} changes</span>
+                </div>
+              </div>
+              
+              <!-- Recent Location History -->
+              <div v-if="locationState.locationHistory?.length > 0" class="mt-4">
+                <h5 class="text-theme-text-white text-sm mb-2">Recent Location Changes:</h5>
+                <div class="max-h-48 overflow-y-auto bg-theme-bg-dark rounded border p-3 space-y-1">
+                  <div 
+                    v-for="(entry, index) in locationState.locationHistory.slice(-10)" 
+                    :key="index"
+                    class="text-xs"
+                  >
+                    <div class="flex justify-between items-center">
+                      <span class="text-green-400">{{ locationHistoryDisplayNames.get(entry.location) || entry.location }}</span>
+                      <span class="text-gray-500">{{ entry.source }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                      <div class="text-gray-400">{{ formatTimestamp(entry.timestamp) }}</div>
+                      <div class="text-gray-500 text-xs opacity-75">{{ entry.location }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="flex gap-2 mt-4">
+                <el-button @click="refreshLocationState" size="small" type="primary">
+                  Refresh
+                </el-button>
+                <el-button @click="clearLocationHistory" size="small" type="warning">
+                  Clear History
+                </el-button>
+              </div>
+            </div>
+          </div>
+
+            </div>
+
+            <!-- System Actions Tab -->
+            <div v-show="activeDebugTab === 'actions'">
+              <DebugActions />
+            </div>
+          </div>
         </section>
 
         <!-- About Section -->
@@ -886,5 +921,55 @@ const toggleLaunchOnStartup = async () => {
 
 :deep(.el-notification .el-notification__content) {
   color: var(--color-theme-text-light) !important;
+}
+</style>
+
+<style scoped>
+/* Debug Tab Styles */
+.debug-tab-navigation .tab-button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.debug-tab-navigation .tab-button:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #e5e7eb;
+}
+
+.debug-tab-navigation .tab-button.tab-active {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: rgb(99, 102, 241);
+  font-weight: 600;
+}
+
+.debug-tab-navigation .el-icon {
+  font-size: 16px;
+}
+
+.debug-tab-content {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

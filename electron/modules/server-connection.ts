@@ -167,6 +167,37 @@ function stopHeartbeat() {
   }
 }
 
+// Function to schedule reconnection with exponential backoff
+function scheduleReconnection(): void {
+  if (reconnectionTimeoutId) {
+    clearTimeout(reconnectionTimeoutId);
+  }
+
+  const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1];
+  logger.warn(MODULE_NAME, `Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s`);
+
+  reconnectionTimeoutId = setTimeout(async () => {
+    logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+    
+    // Before reconnecting, check if we need to refresh tokens
+    const accessToken = getAccessToken();
+    const refreshTokenAvailable = !!getRefreshToken();
+    
+    if (accessToken || refreshTokenAvailable) {
+      logger.info(MODULE_NAME, 'Attempting token refresh before reconnection...');
+      const refreshedUserInfo = await refreshToken();
+      
+      if (!refreshedUserInfo) {
+        logger.warn(MODULE_NAME, 'Token refresh failed during reconnection attempt');
+      }
+    }
+    
+    // Reconnect with fresh tokens (or guest token if refresh failed)
+    connectToServer();
+    reconnectionAttempt++;
+  }, nextDelay);
+}
+
 export function connectToServer(): void {
   // Determine which token to use for auth handshake
   const accessToken = getAccessToken();
@@ -270,6 +301,7 @@ export function connectToServer(): void {
       isAuthenticated = true;
       resetAuthRetryState(); // Reset authentication retry state on successful auth
       sendConnectionStatus('connected'); // Update status: Connected (after auth confirmation)
+      startHeartbeat(); // Start heartbeat monitoring when authenticated
       flushLogBuffer(); // Attempt to send any buffered logs
   });
 
@@ -277,55 +309,56 @@ export function connectToServer(): void {
     logger.warn(MODULE_NAME, `Disconnected from server: ${reason}`);
     isAuthenticated = false; // Reset auth status on disconnect
     resetAuthRetryState(); // Reset authentication retry state on disconnect
+    stopHeartbeat(); // Stop heartbeat when disconnected
     sendConnectionStatus('disconnected'); // Update status: Disconnected
  
-    // Custom reconnection logic
-    if (reconnectionTimeoutId) {
-        clearTimeout(reconnectionTimeoutId); // Clear any existing timeout
+    // Don't attempt to reconnect if manually disconnected
+    if (!socket) {
+      logger.info(MODULE_NAME, 'Socket manually disconnected, skipping auto-reconnection');
+      return;
     }
  
-    const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1]; // Get next delay or max
-    logger.warn(MODULE_NAME, `Disconnected. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s. Reason: ${reason}`);
- 
-    reconnectionTimeoutId = setTimeout(() => {
-      logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
-      // Don't call connectToServer() as it creates a new socket instance.
-      // Instead, call connect() on the existing socket instance.
-      // If the socket was manually disconnected (socket = null), this won't run, which is correct.
-      socket?.connect();
-    }, nextDelay);
- 
-    reconnectionAttempt++;
+    // Use the scheduleReconnection function which handles token refresh
+    scheduleReconnection();
   });
  
   socket.on('connect_error', (error: Error) => {
     logger.error(MODULE_NAME, `Connection error: ${error.message}`);
     sendConnectionStatus('error');
 
-    if (reconnectionTimeoutId) { // Add this check
-      clearTimeout(reconnectionTimeoutId); // Clear any pending retry
-    }
-
     // If the error is an authentication failure, clear guest token and retry as new guest
     if (
       error.message &&
       (error.message.includes('invalid signature') ||
-        error.message.toLowerCase().includes('auth'))
+        error.message.toLowerCase().includes('auth') ||
+        error.message.includes('jwt expired'))
     ) {
-      logger.warn(MODULE_NAME, 'Clearing guest token and retrying as new guest...');
-      clearGuestToken();
-      setTimeout(connectToServer, 200); // Small delay to avoid rapid reconnect loop
+      logger.warn(MODULE_NAME, 'Authentication error detected. Attempting to refresh tokens...');
+      
+      // Clear any pending reconnection
+      if (reconnectionTimeoutId) {
+        clearTimeout(reconnectionTimeoutId);
+        reconnectionTimeoutId = null;
+      }
+      
+      // Try to refresh tokens first
+      refreshToken().then((refreshedUserInfo) => {
+        if (refreshedUserInfo) {
+          logger.info(MODULE_NAME, 'Token refresh successful. Reconnecting with new tokens...');
+          setTimeout(connectToServer, 500);
+        } else {
+          logger.warn(MODULE_NAME, 'Token refresh failed. Clearing tokens and retrying as guest...');
+          clearGuestToken();
+          setTimeout(connectToServer, 1000);
+        }
+      }).catch((err) => {
+        logger.error(MODULE_NAME, 'Error during token refresh:', err);
+        clearGuestToken();
+        setTimeout(connectToServer, 1000);
+      });
     } else {
-      // Custom reconnection logic for other errors
-      const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1]; // Get next delay or max
-      logger.error(MODULE_NAME, `Connection error. Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s. Error: ${error.message}`);
-
-      reconnectionTimeoutId = setTimeout(() => {
-        logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
-        socket?.connect();
-      }, nextDelay);
-
-      reconnectionAttempt++;
+      // Use scheduleReconnection for other errors
+      scheduleReconnection();
     }
   });
 
@@ -360,6 +393,13 @@ export function connectToServer(): void {
           logger.info(MODULE_NAME, 'Attempting to reconnect after retry_auth event and refresh attempt...');
           connectToServer(); // Re-initiate the connection process
       }, 2000); // 2-second delay
+  });
+
+  // Listen for pong response from server
+  socket.on('pong', (data: { timestamp: number }) => {
+    lastPongTime = Date.now();
+    const latency = lastPongTime - (data?.timestamp || lastPongTime);
+    logger.debug(MODULE_NAME, `Received pong from server, latency: ${latency}ms`);
   });
 
   // Listen for processed events from server (/logs namespace with role-based filtering)
