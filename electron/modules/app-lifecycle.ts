@@ -46,6 +46,7 @@ const MODULE_NAME = 'AppLifecycle'; // Define module name for logger
 // --- Module State ---
 
 export let isQuitting = false; // Export flag
+let isInitializing = false; // Prevent quit during auth initialization
 
 // --- Event Handlers ---
 
@@ -314,6 +315,7 @@ function shouldStartMinimized(): boolean {
 // This is the new, correct onReady function
 async function onReady() {
   logger.startup(MODULE_NAME, 'Application ready - starting initialization sequence...');
+  isInitializing = true; // Set flag to prevent quit during initialization
   
   // Environment setup
   process.env.APP_ROOT = app.getAppPath();
@@ -492,11 +494,20 @@ async function onReady() {
         });
   }, 10000); // 10-second delay
 
+  // Clear initialization flag now that main window is created
+  isInitializing = false;
   logger.startup(MODULE_NAME, '✅ Application initialization completed successfully!');
 }
 
 async function onWindowAllClosed() {
     logger.info(MODULE_NAME, "WindowAllClosed event.");
+    
+    // Don't quit if we're still initializing (e.g., login window closed before main window created)
+    if (isInitializing) {
+        logger.info(MODULE_NAME, "Still initializing, not quitting despite all windows closed.");
+        return;
+    }
+    
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     // On Windows/Linux, closing all windows usually quits the app.
