@@ -99,16 +99,21 @@ async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
     }
     
     logger.info(MODULE_NAME, 'Login window created successfully');
+    
+    // Track if authentication was successful
+    let authCompleted = false;
 
     // Listen for login completion
     const handleLoginComplete = () => {
       logger.info(MODULE_NAME, 'Login popup completed with authentication');
+      authCompleted = true;
       closeLoginWindow();
       resolve({ authAlreadyInitialized: true }); // Auth was initialized by login popup
     };
 
     const handleGuestModeSelected = () => {
       logger.info(MODULE_NAME, 'Login popup completed with guest mode');
+      authCompleted = true;
       closeLoginWindow();
       resolve({ authAlreadyInitialized: true }); // Guest mode was set by popup
     };
@@ -119,12 +124,17 @@ async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
     
     // Handle window close (temporary guest mode, don't save preference)
     loginWindow.on('closed', async () => {
-      logger.info(MODULE_NAME, 'Login window closed, using temporary guest mode without saving preference');
-      // Set guest mode for this session only, without saving the preference
-      await setGuestMode(); // This sets guest mode temporarily without remembering the choice
+      // Only set guest mode if auth wasn't completed successfully
+      if (!authCompleted) {
+        logger.info(MODULE_NAME, 'Login window closed without authentication, using temporary guest mode');
+        // Set guest mode for this session only, without saving the preference
+        await setGuestMode(); // This sets guest mode temporarily without remembering the choice
+      } else {
+        logger.info(MODULE_NAME, 'Login window closed after successful authentication');
+      }
       ipcMain.removeListener('login-completed', handleLoginComplete);
       ipcMain.removeListener('guest-mode-selected', handleGuestModeSelected);
-      resolve({ authAlreadyInitialized: true }); // Guest mode was set temporarily
+      resolve({ authAlreadyInitialized: true });
     });
   });
 }
