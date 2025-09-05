@@ -528,6 +528,11 @@ export class ZoneHistoryManager {
     this.totalZoneChanges = 0;
     this.sessionStartTime = new Date().toISOString();
     
+    // Clear persisted storage as well
+    if (this.config.persistToStorage) {
+      this.persistHistory();
+    }
+    
     logger.info(MODULE_NAME, 'Zone history cleared');
   }
   

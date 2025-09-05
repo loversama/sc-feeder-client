@@ -144,7 +144,7 @@ function processLocationDataEnhanced(
         if (processedLocation !== currentLocation) {
             currentLocation = processedLocation;
             locationHistory.push({
-                timestamp: new Date().toISOString(),
+                timestamp: timestamp || new Date().toISOString(),
                 location: processedLocation,
                 source: source
             });
@@ -777,6 +777,11 @@ export function isZoneSystemAvailable(): boolean {
 
 // Export function to clear zone history
 export function clearZoneHistory(): void {
+    // Clear legacy location history
+    locationHistory = [];
+    currentLocation = 'Unknown';
+    
+    // Clear enhanced zone history
     if (!zoneHistoryManager || !isZoneSystemInitialized) {
         logger.warn(MODULE_NAME, 'Zone system not available for clearing history');
         return;
