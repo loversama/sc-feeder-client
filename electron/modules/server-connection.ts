@@ -22,7 +22,15 @@ let currentStatus: ConnectionStatus = 'disconnected';
 
 const connectionEvents = new EventEmitter();
 // Custom Reconnection Logic State
-const delays = [5000, 10000, 30000, 60000, 120000]; // Delays in ms
+// Progressive delays: 3s, 5s, 10s, 15s, then 15-30s randomly
+function getReconnectDelay(attempt: number): number {
+  const progressiveDelays = [3000, 5000, 10000, 15000];
+  if (attempt < progressiveDelays.length) {
+    return progressiveDelays[attempt];
+  }
+  // After 4 attempts, use random delay between 15-30 seconds
+  return Math.floor(Math.random() * 15000) + 15000; // 15000-30000ms
+}
 let reconnectionAttempt = 0;
 let reconnectionTimeoutId: NodeJS.Timeout | null = null;
 
@@ -39,11 +47,11 @@ let isRetryingAuth = false;
 const authRetryDelays = [2000, 5000, 10000, 30000, 60000]; // Authentication retry delays in ms
  
 // Helper function to send status updates to renderer
-function sendConnectionStatus(status: ConnectionStatus) {
+function sendConnectionStatus(status: ConnectionStatus, attempts?: number) {
     if (status !== currentStatus) {
-        logger.info(MODULE_NAME, `Connection status changed: ${currentStatus} -> ${status}`);
+        logger.info(MODULE_NAME, `Connection status changed: ${currentStatus} -> ${status} (attempts: ${attempts ?? reconnectionAttempt})`);
         currentStatus = status;
-        getMainWindow()?.webContents.send('connection-status-changed', status);
+        getMainWindow()?.webContents.send('connection-status-changed', status, attempts ?? reconnectionAttempt);
     }
 }
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
@@ -167,13 +175,13 @@ function stopHeartbeat() {
   }
 }
 
-// Function to schedule reconnection with exponential backoff
+// Function to schedule reconnection with progressive delays
 function scheduleReconnection(): void {
   if (reconnectionTimeoutId) {
     clearTimeout(reconnectionTimeoutId);
   }
 
-  const nextDelay = delays[reconnectionAttempt] ?? delays[delays.length - 1];
+  const nextDelay = getReconnectDelay(reconnectionAttempt);
   logger.warn(MODULE_NAME, `Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s`);
 
   reconnectionTimeoutId = setTimeout(async () => {

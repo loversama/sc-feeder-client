@@ -18,6 +18,7 @@ const playSoundEffects = ref<boolean>(true); // Sound effects enabled by default
 const isOffline = ref<boolean>(false); // Track offline mode setting
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 const connectionStatus = ref<ConnectionStatus>('disconnected'); // Track server connection status
+const connectionAttempts = ref<number>(0); // Track connection attempts for progressive messaging
 const resourcePath = ref<string>(''); // To store the path provided by main process
 const currentGameMode = ref<'PU' | 'AC' | 'Unknown'>('Unknown'); // Added for stable game mode
 const searchQuery = ref<string>(''); // Explicitly type and initialize
@@ -1955,9 +1956,12 @@ onMounted(async () => { // Make onMounted async
     // Add listener for connection status changes
     (() => {
       if (window.logMonitorApi?.onConnectionStatusChanged) {
-        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status) => {
-          console.log('[KillFeed] Received connection status update:', status);
+        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status, attempts?) => {
+          console.log('[KillFeed] Received connection status update:', status, 'attempts:', attempts);
           connectionStatus.value = status;
+          if (attempts !== undefined) {
+            connectionAttempts.value = attempts;
+          }
         });
         cleanupFunctions.push(cleanup);
       } else {

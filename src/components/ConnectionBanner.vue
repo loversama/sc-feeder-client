@@ -6,7 +6,7 @@
         <div class="banner-info">
           <el-icon class="banner-icon spinning"><Loading /></el-icon>
           <div class="banner-text">
-            <span class="banner-title">Reconnecting to Server</span>
+            <span class="banner-title">{{ connectingTitle }}</span>
             <span class="banner-subtitle">{{ reconnectMessage }}</span>
           </div>
         </div>
@@ -17,7 +17,7 @@
         <div class="banner-info">
           <el-icon class="banner-icon error"><Connection /></el-icon>
           <div class="banner-text">
-            <span class="banner-title">Connection Lost</span>
+            <span class="banner-title">{{ disconnectedTitle }}</span>
             <span class="banner-subtitle">{{ nextAttemptMessage }}</span>
           </div>
         </div>
@@ -74,9 +74,17 @@ const showSuccessMessage = ref(false);
 const reconnectAttempt = ref(0);
 const nextReconnectTime = ref(0);
 const countdownInterval = ref<NodeJS.Timeout | null>(null);
+const connectionAttempts = ref(0); // Track total connection attempts
 
-// Reconnection delays matching server-connection.ts
-const delays = [5000, 10000, 30000, 60000, 120000];
+// Progressive reconnection delays: 3s, 5s, 10s, 15s, then 15-30s randomly
+const getReconnectDelay = (attempt: number): number => {
+  const progressiveDelays = [3000, 5000, 10000, 15000];
+  if (attempt < progressiveDelays.length) {
+    return progressiveDelays[attempt];
+  }
+  // After 4 attempts, use random delay between 15-30 seconds
+  return Math.floor(Math.random() * 15000) + 15000; // 15000-30000ms
+};
 
 // Computed
 const shouldShowBanner = computed(() => {
@@ -106,17 +114,37 @@ const bannerClass = computed(() => ({
   'success': props.status === 'connected' && showSuccessMessage.value
 }));
 
-const reconnectMessage = computed(() => {
-  if (reconnectAttempt.value === 0) {
-    return 'Attempting to reconnect...';
+const connectingTitle = computed(() => {
+  if (connectionAttempts.value === 0) {
+    return 'Connecting to Server';
   }
-  return `Reconnect attempt ${reconnectAttempt.value}`;
+  return 'Reconnecting to Server';
+});
+
+const disconnectedTitle = computed(() => {
+  // Show "Connection Lost" only after 5 failed attempts
+  if (connectionAttempts.value >= 5) {
+    return 'Connection Lost';
+  }
+  return 'Reconnecting to Server';
+});
+
+const reconnectMessage = computed(() => {
+  if (connectionAttempts.value === 0) {
+    return 'Please wait...';
+  } else if (connectionAttempts.value === 1) {
+    return 'First connection attempt...';
+  }
+  return `Attempt ${connectionAttempts.value}`;
 });
 
 const nextAttemptMessage = computed(() => {
   if (nextReconnectTime.value > 0) {
     const seconds = Math.ceil(nextReconnectTime.value / 1000);
-    return `Reconnecting in ${seconds}s...`;
+    if (connectionAttempts.value >= 5) {
+      return `Retrying in ${seconds}s...`;
+    }
+    return `Next attempt in ${seconds}s...`;
   }
   return 'Will attempt to reconnect shortly';
 });
@@ -147,6 +175,7 @@ watch(() => props.status, (newStatus, oldStatus) => {
   // Handle successful connection
   if (newStatus === 'connected' && (oldStatus === 'connecting' || oldStatus === 'disconnected')) {
     showSuccessMessage.value = true;
+    connectionAttempts.value = 0; // Reset connection attempts on successful connection
     reconnectAttempt.value = 0;
     nextReconnectTime.value = 0;
     
@@ -158,13 +187,19 @@ watch(() => props.status, (newStatus, oldStatus) => {
   
   // Handle disconnection - start countdown
   if (newStatus === 'disconnected') {
-    const delay = delays[Math.min(reconnectAttempt.value, delays.length - 1)];
+    const delay = getReconnectDelay(reconnectAttempt.value);
     startCountdown(delay);
   }
   
   // Handle reconnection attempt
-  if (newStatus === 'connecting' && oldStatus === 'disconnected') {
-    reconnectAttempt.value++;
+  if (newStatus === 'connecting') {
+    if (oldStatus === 'disconnected') {
+      reconnectAttempt.value++;
+      connectionAttempts.value++;
+    } else if (!oldStatus || oldStatus === 'disconnected') {
+      // Initial connection
+      connectionAttempts.value = 0;
+    }
   }
   
   // Clear countdown when connecting or connected
