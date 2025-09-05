@@ -132,8 +132,8 @@ async function showLoginPopup(): Promise<{ authAlreadyInitialized: boolean }> {
 async function connectToLogServer(mainWindow: BrowserWindow, authAlreadyInitialized: boolean = false) {
   // Initialize authentication based on final state
   if (!getOfflineMode()) {
-    if (authAlreadyInitialized) {
-      logger.info(MODULE_NAME, "Auth already initialized, connecting to server...");
+    if (authAlreadyInitialized && hasActiveAuthSession()) {
+      logger.info(MODULE_NAME, "Auth already initialized and session is active, connecting to server...");
       connectToServer();
     } else {
       logger.info(MODULE_NAME, "Online mode: Initializing authentication...");
@@ -399,15 +399,23 @@ async function onReady() {
     
     // IMPORTANT: After login popup completes, ensure auth state is properly initialized
     // This handles the case where tokens were just stored by the popup
-    if (authAlreadyInitialized && !hasActiveAuthSession()) {
-      logger.info(MODULE_NAME, 'Login popup completed but session not active, initializing auth...');
-      try {
-        const canConnect = await initializeAuth();
-        if (!canConnect) {
-          logger.warn(MODULE_NAME, 'Failed to initialize auth after login popup');
+    if (authAlreadyInitialized) {
+      // Add a delay to ensure auth tokens are fully stored before checking
+      logger.info(MODULE_NAME, 'Login popup completed, waiting for auth state to settle...');
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+      
+      if (!hasActiveAuthSession()) {
+        logger.info(MODULE_NAME, 'Session not active after delay, initializing auth...');
+        try {
+          const canConnect = await initializeAuth();
+          if (!canConnect) {
+            logger.warn(MODULE_NAME, 'Failed to initialize auth after login popup');
+          }
+        } catch (error) {
+          logger.error(MODULE_NAME, 'Error initializing auth after login popup:', error);
         }
-      } catch (error) {
-        logger.error(MODULE_NAME, 'Error initializing auth after login popup:', error);
+      } else {
+        logger.info(MODULE_NAME, 'Session is active after login popup, proceeding...');
       }
     }
   } else {
