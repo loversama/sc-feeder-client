@@ -31,7 +31,7 @@ let authRetryAttempt = 0;
 let authRetryTimeoutId: NodeJS.Timeout | null = null;
 
 // Heartbeat configuration for server connection health monitoring
-const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const HEARTBEAT_INTERVAL = 20000; // 20 seconds - more frequent to prevent timeouts
 const HEARTBEAT_TIMEOUT = 10000; // 10 seconds to wait for pong
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let lastPongTime = Date.now();
@@ -264,6 +264,9 @@ export function connectToServer(): void {
     forceNew: false,
     upgrade: true,
     rememberUpgrade: true,
+    // Configure ping/pong timeouts to prevent disconnections
+    pingInterval: 25000, // Send ping every 25 seconds
+    pingTimeout: 60000,  // Wait 60 seconds for pong response
   });
 
   socket.on('connect', () => {
@@ -272,6 +275,8 @@ export function connectToServer(): void {
       MODULE_NAME,
       `${isReconnection ? 'Reconnected' : 'Successfully connected'} to server: ${socket?.id}. Authentication handshake sent.`,
     );
+    // Initialize lastPongTime on connect to prevent false timeouts
+    lastPongTime = Date.now();
     // Reset reconnection logic on successful connection
     if (reconnectionTimeoutId) {
         clearTimeout(reconnectionTimeoutId);
