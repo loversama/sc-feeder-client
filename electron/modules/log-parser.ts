@@ -774,3 +774,18 @@ export function addZoneToHistory(
 export function isZoneSystemAvailable(): boolean {
     return isZoneSystemInitialized && zoneHistoryManager !== null;
 }
+
+// Export function to clear zone history
+export function clearZoneHistory(): void {
+    if (!zoneHistoryManager || !isZoneSystemInitialized) {
+        logger.warn(MODULE_NAME, 'Zone system not available for clearing history');
+        return;
+    }
+    
+    try {
+        zoneHistoryManager.clearHistory();
+        logger.info(MODULE_NAME, 'Zone history cleared successfully');
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Error clearing zone history:', error);
+    }
+}

@@ -42,7 +42,7 @@ import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
 import * as RsiScraper from './rsi-scraper.ts'; // Added .ts
 import * as CsvLogger from './csv-logger.ts'; // Added .ts
-import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState, getZoneServiceState, getZoneStatistics, getCurrentZoneInfo, getZoneHistory, addZoneToHistory, isZoneSystemAvailable } from './log-parser.ts'; // Needed for event details window and enhanced zone data - Added .ts
+import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState, getZoneServiceState, getZoneStatistics, getCurrentZoneInfo, getZoneHistory, addZoneToHistory, isZoneSystemAvailable, clearZoneHistory } from './log-parser.ts'; // Needed for event details window and enhanced zone data - Added .ts
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
@@ -1053,6 +1053,17 @@ ipcMain.handle('auth:show-login', () => {
         } catch (error) {
             logger.error(MODULE_NAME, 'Error getting recent zones:', error);
             return [];
+        }
+    });
+    
+    ipcMain.handle('zone:clear-history', () => {
+        try {
+            logger.info(MODULE_NAME, 'Clearing zone history');
+            clearZoneHistory();
+            return { success: true };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error clearing zone history:', error);
+            return { success: false, error: error.message };
         }
     });
 

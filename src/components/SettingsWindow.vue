@@ -124,10 +124,20 @@ const refreshLocationState = async () => {
 
 const clearLocationHistory = async () => {
   try {
-    // Clear cached display names and refresh
-    locationHistoryDisplayNames.value.clear();
-    await refreshLocationState();
-    setStatus('Location history display refreshed.');
+    if (window.logMonitorApi?.clearZoneHistory) {
+      const result = await window.logMonitorApi.clearZoneHistory();
+      if (result.success) {
+        // Clear cached display names
+        locationHistoryDisplayNames.value.clear();
+        // Refresh to show empty history
+        await refreshLocationState();
+        setStatus('Location history cleared successfully.');
+      } else {
+        setStatus(`Error clearing location history: ${result.error || 'Unknown error'}`);
+      }
+    } else {
+      setStatus('Clear history API not available.');
+    }
   } catch (error) {
     console.error('Failed to clear location history:', error);
     setStatus('Error clearing location history.');

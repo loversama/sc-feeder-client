@@ -234,6 +234,7 @@ export interface LogMonitorApi {
   getCurrentLocation: () => Promise<string>;
   getLocationHistory: () => Promise<Array<{timestamp: string, location: string, source: string}>>;
   getLocationState: () => Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}>;
+  clearZoneHistory: () => Promise<{success: boolean, error?: string}>;
 
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;

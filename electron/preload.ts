@@ -337,6 +337,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getCurrentLocation: (): Promise<string> => ipcRenderer.invoke('get-current-location'),
   getLocationHistory: (): Promise<Array<{timestamp: string, location: string, source: string}>> => ipcRenderer.invoke('get-location-history'),
   getLocationState: (): Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}> => ipcRenderer.invoke('get-location-state'),
+  clearZoneHistory: (): Promise<{success: boolean, error?: string}> => ipcRenderer.invoke('zone:clear-history'),
 
   // --- Generic IPC Message Listener ---
   onIpcMessage: (channel: string, callback: (...args: any[]) => void) => {
