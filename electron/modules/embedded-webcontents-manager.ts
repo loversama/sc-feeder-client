@@ -16,7 +16,7 @@ interface AuthTokens {
 export class EmbeddedWebContentsManager {
     private separateWindow: BrowserWindow | null = null;
     private webContentView: WebContentsView | null = null;
-    private currentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' = 'profile';
+    private currentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' = 'profile';
     private isVisible: boolean = false;
     private authenticationEnabled: boolean = true;
     private sessionPartition: string = 'persist:embedded-webcontent';
@@ -151,7 +151,7 @@ export class EmbeddedWebContentsManager {
         // Web content events
         this.webContentView.webContents.on('dom-ready', () => {
             this.sendAuthenticationData();
-            // Notify about DOM ready for search injection
+            // Notify about DOM ready
             if (this.separateWindow && !this.separateWindow.isDestroyed()) {
                 this.separateWindow.webContents.send('webcontents-view-ready');
             }
@@ -163,7 +163,7 @@ export class EmbeddedWebContentsManager {
             if (this.webContentView) {
                 this.injectAuthenticationCookies(this.webContentView.webContents.session);
             }
-            // Notify about navigation for search state recovery
+            // Notify about navigation
             if (this.separateWindow && !this.separateWindow.isDestroyed()) {
                 this.separateWindow.webContents.send('webcontents-view-loading');
             }
@@ -174,12 +174,6 @@ export class EmbeddedWebContentsManager {
             // Notify about load completion
             if (this.separateWindow && !this.separateWindow.isDestroyed()) {
                 this.separateWindow.webContents.send('webcontents-view-loaded');
-                // Send search recovery event with delay
-                setTimeout(() => {
-                    if (this.separateWindow && !this.separateWindow.isDestroyed()) {
-                        this.separateWindow.webContents.send('webcontents-view-search-recovery-needed');
-                    }
-                }, 1000);
             }
         });
         
@@ -188,12 +182,6 @@ export class EmbeddedWebContentsManager {
             // For SPA navigation
             if (this.separateWindow && !this.separateWindow.isDestroyed()) {
                 this.separateWindow.webContents.send('webcontents-view-loaded');
-                // Send search recovery event for SPA navigation
-                setTimeout(() => {
-                    if (this.separateWindow && !this.separateWindow.isDestroyed()) {
-                        this.separateWindow.webContents.send('webcontents-view-search-recovery-needed');
-                    }
-                }, 500);
             }
         });
 
@@ -373,7 +361,13 @@ export class EmbeddedWebContentsManager {
         logger.info(MODULE_NAME, 'Separate WebContentsView window hidden');
     }
 
-    public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<void> {
+    public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<void> {
+        // Prevent crashes from destroyed WebContentsView
+        if (!this.webContentView || !this.webContentView.webContents || this.webContentView.webContents.isDestroyed()) {
+            logger.error(MODULE_NAME, `WebContentsView is destroyed or not available, cannot navigate to ${section}`);
+            return;
+        }
+        
         this.currentSection = section;
         
         // Build URL with same pattern as current WebContentPage.vue
@@ -400,6 +394,9 @@ export class EmbeddedWebContentsManager {
             case 'stats':
                 url += '/stats';
                 break;
+            case 'profile-settings':
+                url += '/settings';
+                break;
         }
         
         url += '?source=electron&embedded=true';
@@ -409,12 +406,15 @@ export class EmbeddedWebContentsManager {
 
         logger.info(MODULE_NAME, `Navigating separate WebContentsView to section: ${section} - ${url}`);
         
-        if (this.webContentView) {
+        try {
             await this.webContentView.webContents.loadURL(url);
+        } catch (error) {
+            logger.error(MODULE_NAME, `Failed to load URL in WebContentsView:`, error);
+            // Don't throw - just log the error to prevent crashes
         }
     }
 
-    public getCurrentSection(): 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' {
+    public getCurrentSection(): 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' {
         return this.currentSection;
     }
 

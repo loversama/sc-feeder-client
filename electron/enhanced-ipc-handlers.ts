@@ -267,7 +267,7 @@ export function registerEnhancedIPCHandlers(): void {
     // --- Enhanced Window Management ---
 
     // Attach WebContentsView to existing WebContentPage.vue window
-    ipcMain.handle('enhanced-window:attach-to-existing', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' = 'profile') => {
+    ipcMain.handle('enhanced-window:attach-to-existing', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' = 'profile') => {
         try {
             logger.info(MODULE_NAME, `Attaching WebContentsView to web content window for section: ${section}`);
             
@@ -339,7 +339,7 @@ export function registerEnhancedIPCHandlers(): void {
     });
 
     // Create embedded WebContentsView overlay (replaces old webview system)
-    ipcMain.handle('enhanced-window:create', async (_, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' = 'profile') => {
+    ipcMain.handle('enhanced-window:create', async (_, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' = 'profile') => {
         try {
             logger.info(MODULE_NAME, `Creating embedded WebContentsView overlay for section: ${section}`);
             
@@ -568,12 +568,9 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
-                await webContentView.webContents.executeJavaScript(jsCode);
-                // Only log JavaScript execution if it's not search-related to reduce spam
-                if (!jsCode.includes('electronSearchState')) {
-                    logger.debug(MODULE_NAME, 'JavaScript executed in WebContentsView successfully');
-                }
-                return { success: true };
+                const result = await webContentView.webContents.executeJavaScript(jsCode);
+                logger.debug(MODULE_NAME, 'JavaScript executed in WebContentsView successfully');
+                return { success: true, result };
             } else {
                 logger.warn(MODULE_NAME, 'No WebContentsView found for JavaScript execution');
                 return { success: false, error: 'WebContentsView not found' };
@@ -587,41 +584,11 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
-    // Navigate to search page with query parameters
+    // Navigate to search page with query parameters (Deprecated - use search overlay instead)
     ipcMain.handle('enhanced-webcontents:navigate-to-search', async (event, query: string) => {
         try {
-            logger.info(MODULE_NAME, `Navigating to search page with query: "${query}"`);
-            
-            const senderWindow = BrowserWindow.fromWebContents(event.sender);
-            if (!senderWindow) {
-                logger.error(MODULE_NAME, 'Could not find sender window for search navigation');
-                return { success: false, error: 'Sender window not found' };
-            }
-            
-            const windowId = senderWindow.id;
-            const webContentView = windowWebContentsViews.get(windowId);
-            
-            if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
-                // Navigate to the search page with query parameters - default to production
-                const isDevelopment = process.env.NODE_ENV === 'development';
-                const baseUrl = isDevelopment ? 'http://localhost:5173' : 'https://voidlog.gg';
-                const searchUrl = `${baseUrl}/search?q=${encodeURIComponent(query)}`;
-                
-                logger.info(MODULE_NAME, `Navigating WebContentsView to search URL: ${searchUrl}`);
-                await webContentView.webContents.loadURL(searchUrl);
-                
-                // Wait for page load and re-inject CSS to hide navbar
-                webContentView.webContents.once('dom-ready', () => {
-                    logger.info(MODULE_NAME, 'Search page loaded, re-injecting navbar hiding CSS');
-                    injectNavbarHidingCSS(webContentView);
-                });
-                
-                logger.info(MODULE_NAME, 'Successfully navigated to search page');
-                return { success: true };
-            } else {
-                logger.warn(MODULE_NAME, 'No WebContentsView found for search navigation');
-                return { success: false, error: 'WebContentsView not found' };
-            }
+            logger.warn(MODULE_NAME, 'navigateToSearchPage is deprecated - use search overlay instead');
+            return { success: false, error: 'Direct search navigation is no longer supported - use the search overlay' };
         } catch (error) {
             logger.error(MODULE_NAME, 'Failed to navigate to search page:', error);
             return { 
@@ -698,7 +665,7 @@ export function registerEnhancedIPCHandlers(): void {
     // --- WebContentsView Navigation Handlers ---
     
     // Handle section navigation for WebContentsView windows
-    ipcMain.on('web-content-navigate-to-section', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => {
+    ipcMain.on('web-content-navigate-to-section', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings') => {
         try {
             logger.info(MODULE_NAME, `Received WebContentsView navigation request for section: ${section}`);
             
@@ -713,8 +680,15 @@ export function registerEnhancedIPCHandlers(): void {
             
             if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
                 logger.info(MODULE_NAME, `Navigating existing WebContentsView to section: ${section}`);
-                await navigateWebContentsViewToSection(webContentView, section);
-                logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${section}`);
+                try {
+                    await navigateWebContentsViewToSection(webContentView, section);
+                    logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${section}`);
+                } catch (navError) {
+                    logger.error(MODULE_NAME, `Error during WebContentsView navigation:`, navError);
+                    // Try to recreate the WebContentsView if navigation failed
+                    logger.warn(MODULE_NAME, `Attempting to recreate WebContentsView after navigation failure`);
+                    await createWebContentsViewForWindow(senderWindow, section);
+                }
             } else {
                 logger.warn(MODULE_NAME, `No WebContentsView found for window ${windowId}, creating new one`);
                 // Create new WebContentsView if one doesn't exist
@@ -723,6 +697,36 @@ export function registerEnhancedIPCHandlers(): void {
             }
         } catch (error) {
             logger.error(MODULE_NAME, `Failed to navigate WebContentsView to section ${section}:`, error);
+        }
+    });
+
+    // Handle URL navigation for WebContentsView windows (for search results)
+    ipcMain.on('enhanced-window:navigate-to-url', async (event, url: string) => {
+        try {
+            logger.info(MODULE_NAME, `Received WebContentsView navigation request for URL: ${url}`);
+            
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (!senderWindow) {
+                logger.error(MODULE_NAME, 'Could not find sender window for WebContentsView navigation');
+                return;
+            }
+            
+            const windowId = senderWindow.id;
+            const webContentView = windowWebContentsViews.get(windowId);
+            
+            if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+                const isDevelopment = process.env.NODE_ENV === 'development';
+                const baseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
+                const fullUrl = baseUrl + url;
+                
+                logger.info(MODULE_NAME, `Navigating WebContentsView to URL: ${fullUrl}`);
+                await webContentView.webContents.loadURL(fullUrl);
+                logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${fullUrl}`);
+            } else {
+                logger.warn(MODULE_NAME, `No WebContentsView found for window ${windowId}`);
+            }
+        } catch (error) {
+            logger.error(MODULE_NAME, `Failed to navigate WebContentsView to URL ${url}:`, error);
         }
     });
 
@@ -763,7 +767,7 @@ const windowWebContentsViews = new Map<number, WebContentsView>();
 // Export function to navigate WebContentsView for a specific window
 export async function navigateWebContentsViewForWindow(
     windowId: number, 
-    section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'
+    section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'
 ): Promise<boolean> {
     try {
         const webContentView = windowWebContentsViews.get(windowId);
@@ -784,7 +788,7 @@ export async function navigateWebContentsViewForWindow(
 }
 
 // Helper function to create WebContentsView for an existing window
-async function createWebContentsViewForWindow(targetWindow: BrowserWindow, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<WebContentsView> {
+async function createWebContentsViewForWindow(targetWindow: BrowserWindow, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<WebContentsView> {
     try {
         const windowId = targetWindow.id;
         
@@ -850,13 +854,27 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         
         // Position the WebContentsView immediately with fallback bounds
         const windowBounds = targetWindow.getContentBounds();
-        webContentView.setBounds({
+        const bounds = {
             x: 0,
             y: 80, // Account for header height
             width: windowBounds.width,
             height: windowBounds.height - 80
-        });
-        logger.info(MODULE_NAME, 'WebContentsView positioned with initial bounds');
+        };
+        webContentView.setBounds(bounds);
+        logger.info(MODULE_NAME, 'WebContentsView positioned with initial bounds:', bounds);
+        
+        // Debug: Check if WebContentsView is visible
+        const viewBounds = webContentView.getBounds();
+        logger.info(MODULE_NAME, 'WebContentsView actual bounds after setting:', viewBounds);
+        
+        // Set background color to ensure visibility
+        webContentView.setBackgroundColor('#1a1a1a');
+        
+        // Open DevTools for debugging in development
+        if (!app.isPackaged) {
+            webContentView.webContents.openDevTools({ mode: 'detach' });
+            logger.info(MODULE_NAME, 'Opened DevTools for WebContentsView debugging');
+        }
         
         // Then try to get exact container bounds without delay
         targetWindow.webContents.executeJavaScript(`
@@ -1155,23 +1173,12 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
         logger.info(MODULE_NAME, 'WebContentsView finished loading');
         // Notify the host window that content is ready
         targetWindow.webContents.send('webcontents-view-loaded');
-        
-        // Also send a specific event for search state recovery with a slight delay
-        // to ensure the page's JavaScript framework is initialized
-        setTimeout(() => {
-            targetWindow.webContents.send('webcontents-view-search-recovery-needed');
-        }, 1000);
     });
 
     webContentView.webContents.on('did-navigate-in-page', (event, url) => {
         logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
-        // For SPA navigation, also notify that the page changed (search state may need re-injection)
+        // For SPA navigation, also notify that the page changed
         targetWindow.webContents.send('webcontents-view-loaded');
-        
-        // Send search recovery event for SPA navigation
-        setTimeout(() => {
-            targetWindow.webContents.send('webcontents-view-search-recovery-needed');
-        }, 500); // Shorter delay for SPA navigation
     });
 
     webContentView.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -1182,8 +1189,14 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
 }
 
 // Helper function to navigate WebContentsView to a section
-async function navigateWebContentsViewToSection(webContentView: WebContentsView, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<void> {
+async function navigateWebContentsViewToSection(webContentView: WebContentsView, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<void> {
     try {
+        // Prevent crashes from destroyed WebContentsView
+        if (!webContentView || !webContentView.webContents || webContentView.webContents.isDestroyed()) {
+            logger.error(MODULE_NAME, `WebContentsView is destroyed or invalid, cannot navigate to ${section}`);
+            return;
+        }
+        
         const isDevelopment = process.env.NODE_ENV === 'development';
         const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
         
@@ -1216,6 +1229,9 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
             case 'stats':
                 url += '/stats';
                 break;
+            case 'profile-settings':
+                url += '/settings';
+                break;
         }
         
         url += '?source=electron&embedded=true';
@@ -1225,6 +1241,25 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
 
         logger.info(MODULE_NAME, `Navigating WebContentsView to section: ${section} - ${url}`);
         await webContentView.webContents.loadURL(url);
+        
+        // Add debugging to check if content loads
+        webContentView.webContents.once('dom-ready', () => {
+            logger.info(MODULE_NAME, `WebContentsView DOM ready for ${url}`);
+            
+            // Check if the page has content
+            webContentView.webContents.executeJavaScript(`
+                const body = document.body;
+                const hasContent = body && body.innerHTML.trim().length > 0;
+                console.log('[WebContentsView] Page has content:', hasContent);
+                console.log('[WebContentsView] Body innerHTML length:', body ? body.innerHTML.length : 0);
+                console.log('[WebContentsView] Document title:', document.title);
+                hasContent;
+            `).then(hasContent => {
+                logger.info(MODULE_NAME, `WebContentsView content check - Has content: ${hasContent}`);
+            }).catch(err => {
+                logger.error(MODULE_NAME, `Failed to check WebContentsView content:`, err);
+            });
+        });
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to navigate WebContentsView to section ${section}:`, error);
     }

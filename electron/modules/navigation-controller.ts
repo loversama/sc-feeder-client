@@ -174,11 +174,22 @@ async function handleSwitchRequest(
       try {
         const webContentWindow = getWebContentWindow();
         if (webContentWindow && !webContentWindow.isDestroyed()) {
-          // Update state to show we're loading the new section
-          updateWebContentWindow({
-            isLoading: true,
-            currentSection: section,
-          });
+          // Add a guard to prevent crashes from destroyed windows
+          try {
+            if (webContentWindow.isDestroyed()) {
+              logger.warn(MODULE_NAME, `Window was destroyed during navigation check, aborting switch to ${section}`);
+              return { success: false, error: 'Window was destroyed' };
+            }
+            
+            // Update state to show we're loading the new section
+            updateWebContentWindow({
+              isLoading: true,
+              currentSection: section,
+            });
+          } catch (destroyedError) {
+            logger.error(MODULE_NAME, `Window check failed, likely destroyed:`, destroyedError);
+            return { success: false, error: 'Window no longer available' };
+          }
 
           // Load the new URL in the existing window using WebContentsView URL pattern
           const isDevelopment = process.env.NODE_ENV === 'development';

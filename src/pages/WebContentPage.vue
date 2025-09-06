@@ -65,9 +65,9 @@
           </button>
         </div>
         
-        <!-- Advanced Search Bar -->
-        <div class="flex-[0.9] ml-12 mr-6 relative">
-          <div class="relative">
+        <!-- Advanced Search Bar with Settings Button -->
+        <div class="flex-[0.9] ml-12 mr-6 flex items-center gap-2">
+          <div class="relative flex-1 search-container">
             <input
               ref="searchInput"
               v-model="searchQuery"
@@ -86,16 +86,22 @@
               </svg>
             </div>
           </div>
+          
+          <!-- Website Settings Button (Spanner) - Only show when authenticated -->
+          <button
+            v-if="isAuthenticated"
+            @click="setActiveSection('profile-settings')"
+            class="h-[38px] w-[38px] flex items-center justify-center bg-transparent rounded-md transition-all duration-200 text-gray-400 hover:text-white focus:outline-none"
+            :class="{ 'text-[rgb(99,99,247)] shadow-[0_0_0_1px_rgba(99,99,247,0.2)]': activeSection === 'profile-settings' }"
+            :style="activeSection === 'profile-settings' ? { border: '1px solid rgb(99,99,247)' } : { border: '1px solid #4a4a4a' }"
+            title="Website Settings"
+          >
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 20 20">
+              <!-- Spanner/Wrench icon -->
+              <path fill-rule="evenodd" d="M19 5.5a4.5 4.5 0 01-4.791 4.49c-.873-.055-1.808.128-2.368.8l-6.024 7.23a2.724 2.724 0 11-3.837-3.837l7.23-6.024c.672-.56.855-1.495.8-2.368a4.5 4.5 0 015.873-4.575c.324.105.39.51.15.752L13.34 4.66a.455.455 0 00-.11.494 3.01 3.01 0 001.617 1.617c.17.07.363.02.493-.111l2.692-2.692c.241-.241.647-.174.752.15.14.435.216.9.216 1.382zM4.139 15.861a.706.706 0 00.03 1.036.933.933 0 001.151-.114.706.706 0 00-.115-1.091.933.933 0 00-1.066.17z" clip-rule="evenodd"></path>
+            </svg>
+          </button>
         </div>
-        
-        <!-- WebContentsView Toggle Button (for testing) -->
-        <button
-          @click="toggleWebContentsView"
-          class="ml-4 px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors duration-200"
-          :class="{ 'bg-red-600 hover:bg-red-700': !isWebContentsViewVisible }"
-        >
-          {{ isWebContentsViewVisible ? 'Hide' : 'Show' }} WebView
-        </button>
       </nav>
     </header>
 
@@ -106,39 +112,99 @@
         <div 
           v-if="showSearchDropdown"
           class="absolute inset-0 bg-[#1a1a1a] overflow-y-auto"
+          @mousedown="isClickingSearchResult = true"
+          data-search-overlay
         >
           <!-- Search Results Container -->
           <div class="h-full flex flex-col p-6">
-            <!-- Filter Pills -->
-            <div class="flex justify-center gap-4 mb-6">
-              <button 
-                @click="filterType = 'all'"
-                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'all', 'bg-gray-700': filterType !== 'all' }"
-                class="px-4 py-2 rounded-lg text-white transition-colors"
-              >
-                All
-              </button>
-              <button 
-                @click="filterType = 'events'"
-                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'events', 'bg-gray-700': filterType !== 'events' }"
-                class="px-4 py-2 rounded-lg text-white transition-colors"
-              >
-                Events
-              </button>
-              <button 
-                @click="filterType = 'users'"
-                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'users', 'bg-gray-700': filterType !== 'users' }"
-                class="px-4 py-2 rounded-lg text-white transition-colors"
-              >
-                Users
-              </button>
-              <button 
-                @click="filterType = 'organizations'"
-                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'organizations', 'bg-gray-700': filterType !== 'organizations' }"
-                class="px-4 py-2 rounded-lg text-white transition-colors"
-              >
-                Organizations
-              </button>
+            <!-- Tab Navigation -->
+            <div class="border-b border-[#404040] mb-6">
+              <div class="flex justify-center -mb-px">
+                <button 
+                  @click="filterType = 'all'; searchInput?.focus()"
+                  @mousedown.prevent="isClickingSearchResult = true"
+                  @keydown.arrow-right="focusNextTab"
+                  @keydown.arrow-left="focusPrevTab"
+                  :class="{ 
+                    'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'all', 
+                    'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'all' 
+                  }"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  ref="allTab"
+                  tabindex="0"
+                >
+                  <span class="flex items-center">
+                    All
+                    <span v-if="totalResultsCount > 0" class="ml-2 text-sm opacity-75">
+                      ({{ totalResultsCount }})
+                    </span>
+                    <span class="ml-auto text-xs opacity-50 font-mono">1</span>
+                  </span>
+                </button>
+                <button 
+                  @click="filterType = 'events'; searchInput?.focus()"
+                  @mousedown.prevent="isClickingSearchResult = true"
+                  @keydown.arrow-right="focusNextTab"
+                  @keydown.arrow-left="focusPrevTab"
+                  :class="{ 
+                    'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'events', 
+                    'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'events' 
+                  }"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  ref="eventsTab"
+                  tabindex="0"
+                >
+                  <span class="flex items-center">
+                    Events
+                    <span v-if="searchResults.events.length > 0" class="ml-2 text-sm opacity-75">
+                      ({{ searchResults.events.length }})
+                    </span>
+                    <span class="ml-auto text-xs opacity-50 font-mono">2</span>
+                  </span>
+                </button>
+                <button 
+                  @click="filterType = 'users'; searchInput?.focus()"
+                  @mousedown.prevent="isClickingSearchResult = true"
+                  @keydown.arrow-right="focusNextTab"
+                  @keydown.arrow-left="focusPrevTab"
+                  :class="{ 
+                    'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'users', 
+                    'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'users' 
+                  }"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  ref="usersTab"
+                  tabindex="0"
+                >
+                  <span class="flex items-center">
+                    Users
+                    <span v-if="searchResults.users.length > 0" class="ml-2 text-sm opacity-75">
+                      ({{ searchResults.users.length }})
+                    </span>
+                    <span class="ml-auto text-xs opacity-50 font-mono">3</span>
+                  </span>
+                </button>
+                <button 
+                  @click="filterType = 'organizations'; searchInput?.focus()"
+                  @mousedown.prevent="isClickingSearchResult = true"
+                  @keydown.arrow-right="focusNextTab"
+                  @keydown.arrow-left="focusPrevTab"
+                  :class="{ 
+                    'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'organizations', 
+                    'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'organizations' 
+                  }"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  ref="organizationsTab"
+                  tabindex="0"
+                >
+                  <span class="flex items-center">
+                    Organizations
+                    <span v-if="searchResults.organizations.length > 0" class="ml-2 text-sm opacity-75">
+                      ({{ searchResults.organizations.length }})
+                    </span>
+                    <span class="ml-auto text-xs opacity-50 font-mono">4</span>
+                  </span>
+                </button>
+              </div>
             </div>
             
             <!-- Results Container -->
@@ -309,6 +375,18 @@
                 <div class="text-lg text-gray-500">Search across events, users, and organizations</div>
               </div>
             </div>
+            
+            <!-- Keyboard Shortcuts Help -->
+            <div v-if="showSearchDropdown && hasResults" class="mt-auto pt-4 border-t border-[#404040] text-center">
+              <div class="text-xs text-gray-500 pb-4">
+                <span class="inline-flex items-center gap-6 flex-wrap justify-center">
+                  <span><kbd class="px-2 py-0.5 bg-[#333333] rounded text-gray-400 font-mono text-xs">1-4</kbd> Switch tabs</span>
+                  <span><kbd class="px-2 py-0.5 bg-[#333333] rounded text-gray-400 font-mono text-xs">↑↓</kbd> Navigate</span>
+                  <span><kbd class="px-2 py-0.5 bg-[#333333] rounded text-gray-400 font-mono text-xs">Enter</kbd> Select</span>
+                  <span><kbd class="px-2 py-0.5 bg-[#333333] rounded text-gray-400 font-mono text-xs">Esc</kbd> Close</span>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </Transition>
@@ -342,7 +420,22 @@
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(99,99,247)]"></div>
           </div>
           <div class="text-lg mb-2">Loading {{ activeSection }}...</div>
-          <div class="text-sm text-gray-400">Please wait...</div>
+          <div class="text-sm text-gray-400 mb-4">{{ loadingMessage }}</div>
+          
+          <!-- Progress bar -->
+          <div class="w-64 mx-auto">
+            <div class="bg-gray-700 rounded-full h-1.5 overflow-hidden">
+              <div 
+                class="bg-[rgb(99,99,247)] h-full rounded-full transition-all duration-500 ease-out"
+                :style="{ width: `${loadingProgress}%` }"
+              ></div>
+            </div>
+          </div>
+          
+          <!-- Fast loading indicator -->
+          <div v-if="loadingProgress > 0" class="text-xs text-gray-500 mt-2">
+            {{ Math.round(loadingProgress) }}%
+          </div>
         </div>
       </div>
     </div>
@@ -365,7 +458,7 @@ declare global {
 }
 
 const webcontentsContainer = ref<HTMLDivElement | null>(null);
-const activeSection = ref<'profile' | 'leaderboard' | 'map' | 'events' | 'stats'>('profile'); // Current active section
+const activeSection = ref<'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'>('profile'); // Current active section
 
 // State for authentication
 const isAuthenticated = ref(false);
@@ -376,6 +469,8 @@ const isLoading = ref(false);
 const showLoadingOverlay = ref(false);
 const isWebContentsViewAttached = ref(false);
 const isWebContentsViewVisible = ref(true);
+const loadingProgress = ref(0);
+const loadingMessage = ref('Connecting with authentication...');
 
 // Search state management
 const searchQuery = ref<string>('');
@@ -388,164 +483,18 @@ const lastSentSearchData = ref<string>(''); // Track last sent data to prevent s
 const searchHealthCheckInterval = ref<NodeJS.Timeout | null>(null); // Health check for search state
 const filterType = ref<'all' | 'events' | 'users' | 'organizations'>('all');
 
+// Tab references for keyboard navigation
+const allTab = ref<HTMLButtonElement | null>(null);
+const eventsTab = ref<HTMLButtonElement | null>(null);
+const usersTab = ref<HTMLButtonElement | null>(null);
+const organizationsTab = ref<HTMLButtonElement | null>(null);
+
 // Reset search state after page navigation
 const resetSearchState = async () => {
   console.log('[Search] Resetting search state after navigation');
   lastSentSearchData.value = '';
-  // Clear any existing search if there's text in the box
-  if (searchQuery.value.trim()) {
-    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-  }
 };
 
-// Enhanced DOM injection with handshake protocol and verification
-const sendSearchDataToWebContentsView = async (query: string, loading: boolean, results: any, forceUpdate = false) => {
-  // Create a hash of the current data to avoid sending duplicate data
-  const currentDataHash = `${query}-${loading}-${JSON.stringify(results)}`;
-  
-  // Only send if data has actually changed (unless forcing update)
-  if (!forceUpdate && currentDataHash === lastSentSearchData.value) {
-    return; // Skip if data hasn't changed
-  }
-  
-  lastSentSearchData.value = currentDataHash;
-  
-  // Only log if it's a significant change (not just loading state changes)
-  if (!loading || query.length === 0) {
-    console.log(`[Search] Sending to WebContentsView:`, { query, loading, results });
-  }
-  
-  // Use IPC to execute JavaScript in the WebContentsView with enhanced retry logic
-  if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
-    const searchData = {
-      query: query,
-      isActive: query.length > 0,
-      isLoading: loading,
-      results: results,
-      timestamp: Date.now(),
-      injectionId: Math.random().toString(36).substr(2, 9) // Unique injection ID
-    };
-    
-    const jsCode = `
-      (function() {
-        // Enhanced injection with handshake protocol
-        const injectSearchData = () => {
-          try {
-            console.log('[ElectronSearch] Injecting search data with ID: ${searchData.injectionId}');
-            
-            // Set search data on window object
-            window.electronSearchState = ${JSON.stringify(searchData)};
-            
-            // Create acknowledgment mechanism
-            window.electronSearchAck = {
-              injectionId: '${searchData.injectionId}',
-              received: true,
-              timestamp: Date.now()
-            };
-            
-            // Dispatch custom event for web app to listen
-            window.dispatchEvent(new CustomEvent('electron-search-changed', {
-              detail: window.electronSearchState
-            }));
-            
-            // Set up heartbeat response
-            window.electronSearchHeartbeat = () => {
-              return {
-                alive: true,
-                lastUpdate: window.electronSearchState?.timestamp,
-                injectionId: window.electronSearchState?.injectionId
-              };
-            };
-            
-            // Only log in web app if query changed (not just loading state)
-            if (!${loading} || '${query}'.length === 0) {
-              console.log('[ElectronSearch] Data updated successfully:', window.electronSearchState);
-            }
-            
-            return { success: true, injectionId: '${searchData.injectionId}' };
-          } catch (error) {
-            console.error('[ElectronSearch] Failed to inject search data:', error);
-            return { success: false, error: error.message };
-          }
-        };
-        
-        // Smart DOM readiness detection
-        const attemptInjection = () => {
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', injectSearchData);
-          } else {
-            // Additional check for framework readiness (Vue, React, etc.)
-            if (window.Vue || window.React || document.querySelector('#app, #root, [data-app]')) {
-              injectSearchData();
-            } else {
-              // Wait a bit more for framework to initialize
-              setTimeout(injectSearchData, 100);
-            }
-          }
-        };
-        
-        attemptInjection();
-      })();
-    `;
-    
-    // Enhanced retry logic with verification
-    const maxRetries = forceUpdate ? 5 : 2;
-    const baseRetryDelay = 200;
-    let success = false;
-    
-    for (let attempt = 0; attempt < maxRetries && !success; attempt++) {
-      try {
-        await window.logMonitorApi.executeInWebContentsView(jsCode);
-        
-        // Verify injection worked - simplified approach
-        await new Promise(resolve => setTimeout(resolve, 300)); // Give more time for injection
-        
-        // For now, assume injection worked if execution succeeded
-        // The real test is whether search functionality actually works
-        if (attempt === 0) {
-          console.log(`[Search] ✅ Injection executed successfully on attempt ${attempt + 1} - assuming success`);
-          success = true;
-          break;
-        } else {
-          // On retries, do a simple verification
-          try {
-            const simpleCheck = await window.logMonitorApi.executeInWebContentsView(`
-              console.log('[ElectronSearch] Simple verification - electronSearchState exists:', !!window.electronSearchState);
-              console.log('[ElectronSearch] Simple verification - heartbeat function exists:', typeof window.electronSearchHeartbeat === 'function');
-              !!window.electronSearchState;
-            `);
-            
-            if (simpleCheck) {
-              console.log(`[Search] ✅ Simple verification passed on attempt ${attempt + 1}`);
-              success = true;
-              break;
-            } else {
-              console.warn(`[Search] ❌ Simple verification failed on attempt ${attempt + 1}`);
-            }
-          } catch (verifyError) {
-            console.warn(`[Search] ❌ Verification check failed on attempt ${attempt + 1}:`, verifyError);
-          }
-        }
-        
-      } catch (error) {
-        console.warn(`[Search] Injection attempt ${attempt + 1} failed:`, error);
-      }
-      
-      if (attempt < maxRetries - 1) {
-        // Exponential backoff
-        const delay = baseRetryDelay * Math.pow(1.5, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    if (!success) {
-      console.error('[Search] All injection attempts failed - search may not work on this page');
-    }
-    
-  } else {
-    console.warn('[Search] executeInWebContentsView API not available');
-  }
-};
 
 // Search results structure
 const searchResults = ref<{
@@ -565,27 +514,50 @@ const hasResults = computed(() => {
          searchResults.value.organizations.length > 0;
 });
 
+const totalResultsCount = computed(() => {
+  return searchResults.value.events.length + 
+         searchResults.value.users.length + 
+         searchResults.value.organizations.length;
+});
+
 // Search functionality
 const handleSearchInput = () => {
   if (searchTimeout.value) {
     clearTimeout(searchTimeout.value);
   }
   
-  // Auto-show search overlay and hide WebContentsView after 3 characters
-  if (searchQuery.value.length >= 3 && !showSearchDropdown.value) {
-    showSearchDropdown.value = true;
-    isWebContentsViewVisible.value = false;
-    
-    // Hide WebContentsView
-    if (window.ipcRenderer) {
-      window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+  // Auto-show search overlay and hide WebContentsView at 3 characters
+  if (searchQuery.value.length >= 3) {
+    if (!showSearchDropdown.value || isWebContentsViewVisible.value) {
+      showSearchDropdown.value = true;
+      isWebContentsViewVisible.value = false;
+      
+      // Hide WebContentsView
+      if (window.ipcRenderer) {
+        window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+      }
     }
-    
   }
   
-  // Hide overlay if search is cleared
-  if (!searchQuery.value.trim() && showSearchDropdown.value) {
-    closeSearch();
+  // Hide overlay if search is cleared or below 3 characters
+  if (searchQuery.value.trim().length < 3 && showSearchDropdown.value) {
+    console.log('[Search] Query below 3 chars, hiding overlay and showing WebContentsView');
+    showSearchDropdown.value = false;
+    searchResults.value = { events: [], users: [], organizations: [] };
+    selectedIndex.value = -1;
+    
+    // Show WebContentsView again
+    if (!isWebContentsViewVisible.value) {
+      isWebContentsViewVisible.value = true;
+      if (window.ipcRenderer) {
+        window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+      }
+    }
+    
+    // Clear any pending search
+    if (searchTimeout.value) {
+      clearTimeout(searchTimeout.value);
+    }
     return;
   }
   
@@ -603,8 +575,6 @@ const performSearch = async (query: string) => {
     console.log('[Search Debug] Empty query, clearing results');
     searchResults.value = { events: [], users: [], organizations: [] };
     showSearchDropdown.value = false;
-    // Send empty search to WebContentsView
-    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] });
     return;
   }
   
@@ -612,9 +582,6 @@ const performSearch = async (query: string) => {
   isSearching.value = true;
   showSearchDropdown.value = true;
   selectedIndex.value = -1;
-  
-  // Send loading state to WebContentsView
-  await sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
   
   try {
     console.log(`[Search] Performing real API search for: "${query}"`);
@@ -626,9 +593,6 @@ const performSearch = async (query: string) => {
     const transformedResults = transformSearchResults(apiResults);
     searchResults.value = transformedResults;
     
-    // Send results to WebContentsView
-    await sendSearchDataToWebContentsView(query, false, transformedResults);
-    
     console.log(`[Search] Found ${transformedResults.events.length} events, ${transformedResults.users.length} users, ${transformedResults.organizations.length} organizations`);
   } catch (error) {
     console.error('[Search] API call failed:', error);
@@ -637,7 +601,6 @@ const performSearch = async (query: string) => {
     console.log('[Search] Falling back to mock data due to API error');
     const mockResults = generateMockSearchResults(query);
     searchResults.value = mockResults;
-    await sendSearchDataToWebContentsView(query, false, mockResults);
   } finally {
     isSearching.value = false;
   }
@@ -774,6 +737,24 @@ const generateMockSearchResults = (query: string) => {
 const handleKeyNavigation = (event: KeyboardEvent) => {
   if (!showSearchDropdown.value) return;
   
+  // Number key shortcuts for tabs (1-4)
+  if (event.key >= '1' && event.key <= '4' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    event.preventDefault();
+    const tabIndex = parseInt(event.key) - 1;
+    const tabTypes: ('all' | 'events' | 'users' | 'organizations')[] = ['all', 'events', 'users', 'organizations'];
+    if (tabIndex < tabTypes.length) {
+      filterType.value = tabTypes[tabIndex];
+      // Reset selection when switching tabs
+      selectedIndex.value = -1;
+      // Focus the corresponding tab
+      const tabs = [allTab.value, eventsTab.value, usersTab.value, organizationsTab.value];
+      nextTick(() => {
+        tabs[tabIndex]?.focus();
+      });
+    }
+    return;
+  }
+  
   const totalResults = getTotalVisibleResults();
   
   switch (event.key) {
@@ -810,8 +791,17 @@ let webContentsVisibilityTimer: NodeJS.Timeout | null = null;
 const handleSearchFocus = () => {
   console.log('[Search Debug] handleSearchFocus called, query:', searchQuery.value);
   
-  // Always perform search on focus if there's a query
-  if (searchQuery.value.trim()) {
+  // Check if we have 3+ characters when focusing
+  if (searchQuery.value.length >= 3) {
+    // Show search dropdown and hide WebContentsView
+    showSearchDropdown.value = true;
+    isWebContentsViewVisible.value = false;
+    
+    // Hide WebContentsView
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+    }
+    
     // Cancel any pending show operation
     if (webContentsVisibilityTimer) {
       clearTimeout(webContentsVisibilityTimer);
@@ -826,21 +816,39 @@ const handleSearchFocus = () => {
 // Track if we're clicking on search results
 let isClickingSearchResult = false;
 
-const handleSearchBlur = () => {
+const handleSearchBlur = (event: FocusEvent) => {
   // Cancel any pending visibility timer
   if (webContentsVisibilityTimer) {
     clearTimeout(webContentsVisibilityTimer);
   }
   
-  // Use a shorter delay and check if we're clicking on results
+  // Use a longer delay to allow for tab clicks and focus changes
   webContentsVisibilityTimer = setTimeout(() => {
-    if (!isClickingSearchResult) {
+    // Check if the focus is still within the search area (including tabs)
+    const activeElement = document.activeElement;
+    const isSearchInput = activeElement === searchInput.value;
+    const isTab = [allTab.value, eventsTab.value, usersTab.value, organizationsTab.value].includes(activeElement as HTMLButtonElement);
+    const isWithinSearchOverlay = activeElement?.closest('[data-search-overlay]');
+    
+    if (!isClickingSearchResult && !isSearchInput && !isTab && !isWithinSearchOverlay) {
+      console.log('[Search] Blur detected outside search area, closing dropdown');
       showSearchDropdown.value = false;
       selectedIndex.value = -1;
+      
+      // When search dropdown is hidden on blur, always show WebContentsView
+      if (!showSearchDropdown.value && !isWebContentsViewVisible.value) {
+        console.log('[Search] Blur hiding dropdown, showing WebContentsView');
+        isWebContentsViewVisible.value = true;
+        
+        // Send IPC to show WebContentsView
+        if (window.ipcRenderer) {
+          window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+        }
+      }
     }
     isClickingSearchResult = false;
     webContentsVisibilityTimer = null;
-  }, 100);
+  }, 200); // Increased delay to handle focus transitions
 };
 
 // Test function to force show dropdown
@@ -887,24 +895,6 @@ const closeSearch = () => {
   });
 };
 
-// Toggle WebContentsView visibility
-const toggleWebContentsView = () => {
-  console.log('[WebContentsView] Toggling visibility, current state:', isWebContentsViewVisible.value);
-  isWebContentsViewVisible.value = !isWebContentsViewVisible.value;
-  
-  // Use the ipcRenderer directly exposed by preload
-  if (window.ipcRenderer) {
-    if (isWebContentsViewVisible.value) {
-      console.log('[WebContentsView] Showing WebContentsView');
-      window.ipcRenderer.send('enhanced-window:show-webcontentsview');
-    } else {
-      console.log('[WebContentsView] Hiding WebContentsView');
-      window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
-    }
-  } else {
-    console.error('[WebContentsView] ipcRenderer not available');
-  }
-};
 
 // Helper functions for search results
 const getTotalVisibleResults = (): number => {
@@ -936,26 +926,77 @@ const executeSelectedResult = () => {
   }
 };
 
-const handleResultClick = (type: 'event' | 'user' | 'organization', item: any) => {
+const handleResultClick = async (type: 'event' | 'user' | 'organization', item: any) => {
   console.log(`[Search] *** RESULT CLICKED *** Type: ${type}, Item:`, item);
   
-  // Hide dropdown immediately
+  // Hide dropdown and clear search immediately
   showSearchDropdown.value = false;
+  searchQuery.value = '';
+  searchResults.value = { events: [], users: [], organizations: [] };
+  selectedIndex.value = -1;
   
-  // Navigate to appropriate section - setActiveSection will handle search clearing
-  switch (type) {
-    case 'event':
-      setActiveSection('events');
-      // TODO: Navigate to specific event
-      break;
-    case 'user':
-      setActiveSection('profile');
-      // TODO: Navigate to user profile
-      break;
-    case 'organization':
-      // TODO: Navigate to organization page
-      console.log('Organization search not implemented yet');
-      break;
+  // Ensure WebContentsView is visible
+  if (!isWebContentsViewVisible.value) {
+    isWebContentsViewVisible.value = true;
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+    }
+  }
+  
+  // Navigate to the specific URL based on type
+  try {
+    let navigationUrl = '';
+    
+    switch (type) {
+      case 'event':
+        // Navigate to event detail page
+        if (item.id || item.value) {
+          navigationUrl = `/event/${item.id || item.value}`;
+        } else {
+          navigationUrl = '/events';
+        }
+        break;
+        
+      case 'user':
+        // Navigate to user profile page
+        if (item.username || item.value) {
+          navigationUrl = `/user/${item.username || item.value}`;
+        } else {
+          navigationUrl = '/profile';
+        }
+        break;
+        
+      case 'organization':
+        // Navigate to organization page
+        if (item.tag || item.value) {
+          navigationUrl = `/orgs/${item.tag || item.value}`;
+        } else {
+          navigationUrl = '/orgs';
+        }
+        break;
+    }
+    
+    console.log(`[Search] Navigating WebContentsView to: ${navigationUrl}`);
+    
+    // Use IPC to navigate the WebContentsView
+    if (window.ipcRenderer && navigationUrl) {
+      // Send navigation request to main process
+      window.ipcRenderer.send('enhanced-window:navigate-to-url', navigationUrl);
+      console.log('[Search] Sent navigation request to main process');
+      
+      // Clear search input
+      searchQuery.value = '';
+      showSearchDropdown.value = false;
+      selectedIndex.value = -1;
+      searchResults.value = { events: [], users: [], organizations: [] };
+      
+      // Blur the search input
+      if (searchInput.value) {
+        searchInput.value.blur();
+      }
+    }
+  } catch (error) {
+    console.error('[Search] Failed to navigate to result:', error);
   }
 };
 
@@ -1020,6 +1061,29 @@ const handleImageError = (event: Event, user?: any) => {
   }
 };
 
+// Tab keyboard navigation
+const focusNextTab = (event: KeyboardEvent) => {
+  event.preventDefault();
+  const tabs = [allTab.value, eventsTab.value, usersTab.value, organizationsTab.value];
+  const currentIndex = tabs.findIndex(tab => tab === event.target);
+  const nextIndex = (currentIndex + 1) % tabs.length;
+  tabs[nextIndex]?.focus();
+  tabs[nextIndex]?.click();
+  // Keep the dropdown open
+  isClickingSearchResult = true;
+};
+
+const focusPrevTab = (event: KeyboardEvent) => {
+  event.preventDefault();
+  const tabs = [allTab.value, eventsTab.value, usersTab.value, organizationsTab.value];
+  const currentIndex = tabs.findIndex(tab => tab === event.target);
+  const prevIndex = currentIndex === 0 ? tabs.length - 1 : currentIndex - 1;
+  tabs[prevIndex]?.focus();
+  tabs[prevIndex]?.click();
+  // Keep the dropdown open
+  isClickingSearchResult = true;
+};
+
 // Handle organization icon loading errors
 const handleOrgIconError = (event: Event, org?: any) => {
   const img = event.target as HTMLImageElement;
@@ -1054,41 +1118,90 @@ const getOrgInitials = (orgString: string): string => {
 };
 
 // Function to change active section with loading transitions
-const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats', preserveSearch = false) => {
+// Track if navigation is in progress to prevent rapid clicks
+let navigationInProgress = false;
+let navigationAbortController: AbortController | null = null;
+
+const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings', preserveSearch = false) => {
   console.log(`[WebContentPage] Setting active section to: ${section}, preserveSearch: ${preserveSearch}`);
   
-  // Optionally clear search when changing sections
-  if (!preserveSearch) {
-    console.log(`[WebContentPage] Clearing search before section change`);
-    searchQuery.value = '';
-    searchResults.value = { events: [], users: [], organizations: [] };
-    showSearchDropdown.value = false;
-    selectedIndex.value = -1;
-    lastSentSearchData.value = '';
-    
-    if (searchInput.value) {
-      searchInput.value.value = '';
-    }
-    
-    // Send clear signal to WebContentsView
-    await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-  } else {
-    console.log(`[WebContentPage] Preserving search state during section change`);
-  }
-  
-  // Don't show loading if it's the same section or if WebContentsView isn't attached yet
-  if (section === activeSection.value || !isWebContentsViewAttached.value) {
-    activeSection.value = section;
+  // Prevent rapid navigation clicks that can cause crashes
+  if (navigationInProgress) {
+    console.warn(`[WebContentPage] Navigation already in progress, ignoring request for ${section}`);
     return;
   }
   
-  // Show loading overlay with fade in
-  isLoading.value = true;
-  showLoadingOverlay.value = true;
-  
-  activeSection.value = section;
+  // Abort any previous navigation request
+  if (navigationAbortController) {
+    navigationAbortController.abort();
+    navigationAbortController = null;
+  }
   
   try {
+    navigationInProgress = true;
+    navigationAbortController = new AbortController();
+    
+    // Optionally clear search when changing sections
+    if (!preserveSearch) {
+      console.log(`[WebContentPage] Clearing search before section change`);
+      searchQuery.value = '';
+      searchResults.value = { events: [], users: [], organizations: [] };
+      showSearchDropdown.value = false;
+      selectedIndex.value = -1;
+      lastSentSearchData.value = '';
+      
+      // Clear the clicking flag to ensure dropdown closes
+      isClickingSearchResult = false;
+      
+      // Cancel any pending blur timers
+      if (webContentsVisibilityTimer) {
+        clearTimeout(webContentsVisibilityTimer);
+        webContentsVisibilityTimer = null;
+      }
+      
+      if (searchInput.value) {
+        searchInput.value.value = '';
+        searchInput.value.blur(); // Blur the search input
+      }
+    } else {
+      console.log(`[WebContentPage] Preserving search state during section change`);
+    }
+    
+    // IMPORTANT: Always ensure WebContentsView is visible when navigating
+    if (!isWebContentsViewVisible.value || showSearchDropdown.value) {
+      console.log(`[WebContentPage] Ensuring WebContentsView is visible`);
+      isWebContentsViewVisible.value = true;
+      showSearchDropdown.value = false; // Force close dropdown
+      
+      // Send IPC to show WebContentsView
+      if (window.ipcRenderer) {
+        window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+      }
+    }
+    
+    // Don't show loading if it's the same section or if WebContentsView isn't attached yet
+    if (section === activeSection.value || !isWebContentsViewAttached.value) {
+      activeSection.value = section;
+      navigationInProgress = false;
+      return;
+    }
+    
+    // Show loading overlay with fade in
+    isLoading.value = true;
+    showLoadingOverlay.value = true;
+    loadingProgress.value = 0;
+    loadingMessage.value = 'Initializing navigation...';
+    
+    // Simulate initial progress
+    setTimeout(() => {
+      if (isLoading.value) {
+        loadingProgress.value = 20;
+        loadingMessage.value = 'Connecting to server...';
+      }
+    }, 100);
+    
+    activeSection.value = section;
+    
     // Use the new centralized navigation system if available
     if (window.electronAPI?.navigation?.request) {
       console.log(`[WebContentPage] Using centralized navigation to section: ${section}`);
@@ -1144,6 +1257,10 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
     setTimeout(() => {
       isLoading.value = false;
     }, 300);
+  } finally {
+    // Always reset navigation flag to allow future navigations
+    navigationInProgress = false;
+    navigationAbortController = null;
   }
 };
 
@@ -1167,11 +1284,21 @@ const notifyMainProcessReady = async () => {
       // Call the enhanced IPC handler to attach WebContentsView to THIS window
       if (window.logMonitorApi && window.logMonitorApi.openEnhancedWebContentWindow) {
         console.log('[WebContentPage] Requesting WebContentsView attachment for section:', activeSection.value);
+        
+        // Update progress
+        loadingProgress.value = 30;
+        loadingMessage.value = 'Attaching WebContentsView...';
+        
         const result = await window.logMonitorApi.openEnhancedWebContentWindow(activeSection.value);
         console.log('[WebContentPage] WebContentsView attach result:', result);
         
         if (result.success) {
           console.log('[WebContentPage] WebContentsView attached successfully');
+          
+          // Update progress
+          loadingProgress.value = 50;
+          loadingMessage.value = 'Loading authentication...';
+          
           // Hide the loading placeholder since WebContentsView is now attached
           const container = document.getElementById('webcontents-container');
           if (container) {
@@ -1182,8 +1309,27 @@ const notifyMainProcessReady = async () => {
           
           // Mark WebContentsView as attached to enable loading transitions
           isWebContentsViewAttached.value = true;
+          
+          // Ensure WebContentsView is visible after attachment
+          if (!isWebContentsViewVisible.value) {
+            console.log('[WebContentPage] WebContentsView was hidden, showing it now');
+            isWebContentsViewVisible.value = true;
+            if (window.ipcRenderer) {
+              window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+            }
+          }
+          
+          // Simulate final loading steps
+          setTimeout(() => {
+            if (loadingProgress.value < 100) {
+              loadingProgress.value = 80;
+              loadingMessage.value = 'Rendering page...';
+            }
+          }, 500);
         } else {
           console.error('[WebContentPage] WebContentsView attachment failed:', result.error);
+          loadingProgress.value = 0;
+          loadingMessage.value = 'Failed to load content';
         }
       } else {
         console.warn('[WebContentPage] Enhanced API not available');
@@ -1214,6 +1360,40 @@ const updateAuthStatus = async () => {
 onMounted(async () => {
   console.log('[WebContentPage] Mounted.');
 
+  // Ensure WebContentsView is visible on mount
+  isWebContentsViewVisible.value = true;
+  showSearchDropdown.value = false;
+  searchQuery.value = '';
+  console.log('[WebContentPage] Reset initial state: visibility=true, search=false, query=empty');
+  
+  // Show initial loading state
+  if (!isWebContentsViewAttached.value) {
+    loadingProgress.value = 10;
+    loadingMessage.value = 'Initializing WebContentsView...';
+  }
+  
+  // Add global click handler to close search when clicking outside
+  const handleDocumentClick = (event: MouseEvent) => {
+    if (showSearchDropdown.value) {
+      const target = event.target as HTMLElement;
+      const isSearchArea = target.closest('[data-search-overlay]') || 
+                          target.closest('.search-container') ||
+                          target === searchInput.value;
+      
+      if (!isSearchArea) {
+        console.log('[Search] Clicked outside search area, closing dropdown');
+        closeSearch();
+      }
+    }
+  };
+  
+  document.addEventListener('click', handleDocumentClick);
+  
+  // Store cleanup function
+  onUnmounted(() => {
+    document.removeEventListener('click', handleDocumentClick);
+  });
+
   // Get authentication status first
   await updateAuthStatus();
 
@@ -1222,7 +1402,7 @@ onMounted(async () => {
     try {
       const status = await window.logMonitorApi.getWebContentWindowStatus();
       if (status.isOpen && status.activeSection) {
-        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map' || status.activeSection === 'events' || status.activeSection === 'stats') {
+        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map' || status.activeSection === 'events' || status.activeSection === 'stats' || status.activeSection === 'profile-settings') {
           activeSection.value = status.activeSection;
           console.log(`[WebContentPage] Initial section set to: ${activeSection.value}`);
         } else if (status.activeSection === '/') {
@@ -1235,10 +1415,13 @@ onMounted(async () => {
     }
   }
 
+  // Notify main process that WebContentPage is ready and attach WebContentsView
+  await notifyMainProcessReady();
+
   // Listen for navigation requests from main process
   window.addEventListener('web-content-navigate', (event: any) => {
     const section = event.detail?.section;
-    if (section === 'profile' || section === 'leaderboard' || section === 'map' || section === 'events' || section === 'stats') {
+    if (section === 'profile' || section === 'leaderboard' || section === 'map' || section === 'events' || section === 'stats' || section === 'profile-settings') {
       console.log(`[WebContentPage] Received navigation request for: ${section}`);
       setActiveSection(section);
     }
@@ -1286,570 +1469,10 @@ onMounted(async () => {
       }
     }
   });
-
-  // Enhanced polling with navigation tracking and heartbeat monitoring
-  const startSearchMonitoring = () => {
-    let lastHeartbeat = Date.now();
-    let lastUrl = '';
-    
-    const monitoringInterval = setInterval(() => {
-      if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
-        
-        // Enhanced navigation tracking with detailed debugging
-        window.logMonitorApi.executeInWebContentsView(`
-          (function() {
-            let response = { 
-              clearFlag: false, 
-              heartbeat: false,
-              needsRecovery: false,
-              navigation: {
-                url: window.location.href,
-                pathname: window.location.pathname,
-                changed: false,
-                title: document.title,
-                readyState: document.readyState
-              },
-              searchState: {
-                exists: !!window.electronSearchState,
-                timestamp: window.electronSearchState?.timestamp,
-                injectionId: window.electronSearchState?.injectionId,
-                query: window.electronSearchState?.query
-              },
-              timing: {
-                now: Date.now(),
-                pageLoad: performance.timing?.loadEventEnd || 0
-              }
-            };
-            
-            // Store last URL for navigation detection with enhanced logging
-            if (!window.electronLastUrl) {
-              window.electronLastUrl = window.location.href;
-              console.log('[WebContentsView] 🏁 Initial URL tracked:', window.location.href);
-            } else if (window.electronLastUrl !== window.location.href) {
-              console.log('[WebContentsView] 📍 NAVIGATION DETECTED:', {
-                from: window.electronLastUrl,
-                to: window.location.href,
-                searchStateExists: !!window.electronSearchState,
-                searchHeartbeatExists: typeof window.electronSearchHeartbeat === 'function',
-                currentQuery: window.electronSearchState?.query,
-                documentReady: document.readyState,
-                title: document.title,
-                timestamp: Date.now()
-              });
-              window.electronLastUrl = window.location.href;
-              response.navigation.changed = true;
-              
-              // Log any event listeners that might be lost
-              const eventListeners = [];
-              if (window.addEventListener.toString().indexOf('[native code]') === -1) {
-                eventListeners.push('addEventListener-overridden');
-              }
-              if (document.addEventListener.toString().indexOf('[native code]') === -1) {
-                eventListeners.push('document-addEventListener-overridden');
-              }
-              
-              console.log('[WebContentsView] 📍 Event listener status after navigation:', eventListeners);
-            }
-            
-            // Check for clear flag
-            if (window.electronSearchState && window.electronSearchState.shouldClear) {
-              console.log('[WebContentsView] Clear flag detected, notifying Electron');
-              window.electronSearchState.shouldClear = false;
-              window.parent.postMessage({ type: 'electron-search-clear' }, '*');
-              response.clearFlag = true;
-            }
-            
-            // Enhanced heartbeat check with diagnostic info
-            if (window.electronSearchHeartbeat && typeof window.electronSearchHeartbeat === 'function') {
-              try {
-                const heartbeat = window.electronSearchHeartbeat();
-                response.heartbeat = heartbeat.alive;
-                if (!heartbeat.alive) {
-                  console.warn('[WebContentsView] ❌ Heartbeat function exists but reports not alive:', heartbeat);
-                }
-              } catch (error) {
-                console.error('[WebContentsView] ❌ Heartbeat function threw error:', error);
-                response.needsRecovery = true;
-              }
-            } else if (window.electronSearchState) {
-              console.warn('[WebContentsView] ⚠️ Search state exists but no heartbeat function - partial failure');
-              response.needsRecovery = true;
-            } else {
-              // No search state at all - might be normal or might need injection
-              console.log('[WebContentsView] ℹ️ No search state found');
-            }
-            
-            return response;
-          })()
-        `).then((response: any) => {
-          if (response) {
-            // Enhanced navigation tracking with detailed diagnostics
-            if (response.navigation.changed && response.navigation.url !== lastUrl) {
-              console.log(`[Search] 📍 NAVIGATION DETECTED:`, {
-                from: lastUrl,
-                to: response.navigation.url,
-                searchState: response.searchState,
-                timing: response.timing,
-                pageReady: response.navigation.readyState,
-                title: response.navigation.title
-              });
-              lastUrl = response.navigation.url;
-              
-              // Enhanced timing for re-injection based on page readiness
-              const getOptimalDelay = () => {
-                // If page is still loading, wait longer
-                if (response.navigation.readyState === 'loading') {
-                  return 2000;
-                }
-                // If page is interactive but not complete, moderate delay
-                else if (response.navigation.readyState === 'interactive') {
-                  return 1000;
-                }
-                // If page is complete, shorter delay
-                else {
-                  return 500;
-                }
-              };
-              
-              const delay = getOptimalDelay();
-              console.log(`[Search] 🔄 Scheduling re-injection in ${delay}ms (page state: ${response.navigation.readyState})`);
-              
-              setTimeout(() => {
-                console.log('[Search] 🔄 Executing post-navigation re-injection');
-                if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
-                    searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
-                  console.log('[Search] Re-injecting active search state:', {
-                    query: searchQuery.value,
-                    resultCounts: {
-                      events: searchResults.value.events.length,
-                      users: searchResults.value.users.length,
-                      organizations: searchResults.value.organizations.length
-                    }
-                  });
-                  sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
-                } else {
-                  console.log('[Search] Establishing search infrastructure on new page');
-                  sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-                }
-              }, delay);
-            }
-            
-            // Enhanced heartbeat tracking (reduced logging to prevent spam)
-            if (response.heartbeat) {
-              lastHeartbeat = Date.now();
-              // Only log healthy state occasionally to reduce spam
-              if (response.searchState.exists && Math.random() < 0.1) { // 10% chance to log
-                console.log('[Search] ✅ Heartbeat alive, search state healthy');
-              }
-            } else if (response.searchState.exists && !response.heartbeat) {
-              console.warn('[Search] ⚠️ Search state exists but heartbeat failed');
-            }
-            
-            // More intelligent auto-recovery with better logging
-            const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
-            if (response.needsRecovery) {
-              console.log('[Search] 🔧 Immediate recovery needed - search state corrupted');
-              lastHeartbeat = Date.now(); // Reset to prevent immediate re-trigger
-              autoRecoverSearch();
-            } else if (!response.heartbeat && timeSinceLastHeartbeat > 15000) {
-              console.log(`[Search] 🔧 Auto-recovery triggered after ${Math.round(timeSinceLastHeartbeat/1000)}s without heartbeat`);
-              lastHeartbeat = Date.now(); // Reset to prevent immediate re-trigger
-              autoRecoverSearch();
-            }
-          }
-        }).catch((error: any) => {
-          console.warn('[Search] Monitoring execution failed:', error);
-          // If monitoring fails, attempt recovery less frequently
-          const timeSinceLastHeartbeat = Date.now() - lastHeartbeat;
-          if (timeSinceLastHeartbeat > 20000) {
-            console.log(`[Search] 🔧 Monitoring failed for ${Math.round(timeSinceLastHeartbeat/1000)}s, attempting auto-recovery`);
-            lastHeartbeat = Date.now();
-            autoRecoverSearch();
-          }
-        });
-      }
-    }, 3000); // Less frequent polling (3 seconds)
-    
-    return monitoringInterval;
-  };
-  
-  // Enhanced auto-recovery function with anti-flickering logic
-  const autoRecoverSearch = async () => {
-    console.log('[Search] 🔧 Starting auto-recovery process');
-    
-    // First, check if we really need recovery by doing a quick verification
-    try {
-      const quickCheckResult = await window.logMonitorApi.executeInWebContentsView(`
-        (function() {
-          return {
-            searchStateExists: !!window.electronSearchState,
-            heartbeatWorks: typeof window.electronSearchHeartbeat === 'function',
-            timestamp: window.electronSearchState?.timestamp,
-            query: window.electronSearchState?.query
-          };
-        })()
-      `);
-      
-      const quickCheck = quickCheckResult.success ? quickCheckResult as any : null;
-      
-      console.log('[Search] 🔧 Pre-recovery verification:', quickCheck);
-      
-      // If search state exists and query matches, maybe we don't need full recovery
-      if (quickCheck?.searchStateExists && quickCheck?.heartbeatWorks) {
-        const currentQuery = searchQuery.value.trim();
-        const stateQuery = quickCheck.query || '';
-        
-        if (currentQuery === stateQuery) {
-          console.log('[Search] ✅ Search state appears healthy, skipping recovery');
-          return;
-        } else {
-          console.log('[Search] 🔧 Query mismatch detected:', { current: currentQuery, state: stateQuery });
-        }
-      }
-    } catch (error) {
-      console.warn('[Search] 🔧 Pre-recovery check failed, proceeding with recovery:', error);
-    }
-    
-    // Only inject if we have an active search or need to establish infrastructure
-    const hasActiveSearch = searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
-        searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0);
-    
-    if (hasActiveSearch) {
-      console.log('[Search] 🔧 Recovering active search state:', {
-        query: searchQuery.value,
-        resultCounts: {
-          events: searchResults.value.events.length,
-          users: searchResults.value.users.length,
-          organizations: searchResults.value.organizations.length
-        }
-      });
-      await sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
-    } else if (searchQuery.value.trim()) {
-      console.log('[Search] 🔧 Search query exists but no results - clearing state');
-      await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-    } else {
-      console.log('[Search] 🔧 Establishing minimal search infrastructure');
-      // Only establish infrastructure if really needed
-      await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-    }
-    
-    console.log('[Search] 🔧 Auto-recovery completed');
-  };
-  
-  // Start monitoring
-  const monitoringInterval = startSearchMonitoring();
-  
-  // Clean up on unmount
-  window.addEventListener('beforeunload', () => {
-    if (monitoringInterval) {
-      clearInterval(monitoringInterval);
-    }
-  });
-
-  // Listen for clear messages from WebContentsView
-  window.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'electron-search-clear') {
-      console.log('[WebContentPage] Received search clear request from WebContentsView');
-      
-      // Clear the search input
-      searchQuery.value = '';
-      showSearchDropdown.value = false;
-      selectedIndex.value = -1;
-      
-      // Clear search results
-      searchResults.value = { events: [], users: [], organizations: [] };
-      
-      // Also blur the search input to remove focus
-      if (searchInput.value) {
-        searchInput.value.blur();
-      }
-      
-      console.log('[WebContentPage] Search box cleared');
-    }
-  });
-
-  // Set up IPC event listeners for WebContentsView events with navigation debugging
-  if (window.electron && window.electron.ipcRenderer) {
-    window.electron.ipcRenderer.on('webcontents-view-ready', () => {
-      console.log('[WebContentPage] 🟢 WebContentsView is ready');
-    });
-    
-    window.electron.ipcRenderer.on('webcontents-view-loading', () => {
-      console.log('[WebContentPage] 🟡 WebContentsView started loading - search state will be wiped');
-      // Log current search state before it gets wiped
-      console.log('[WebContentPage] Current search state before wipe:', {
-        query: searchQuery.value,
-        hasResults: searchResults.value.events.length > 0 || searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0,
-        dropdown: showSearchDropdown.value
-      });
-    });
-    
-    window.electron.ipcRenderer.on('webcontents-view-loaded', async () => {
-      console.log('[WebContentPage] 🟢 WebContentsView finished loading - starting search recovery');
-      
-      // Log navigation details
-      if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
-        window.logMonitorApi.executeInWebContentsView(`
-          console.log('[WebContentsView] 📍 Navigation completed:', {
-            url: window.location.href,
-            pathname: window.location.pathname,
-            readyState: document.readyState,
-            title: document.title
-          });
-        `).catch(() => {}); // Ignore errors
-      }
-      
-      // Hide loading overlay when content is loaded
-      if (isLoading.value) {
-        showLoadingOverlay.value = false;
-        setTimeout(() => {
-          isLoading.value = false;
-        }, 300);
-      }
-      
-      // SEARCH RECOVERY: Re-inject search state after navigation
-      if (searchQuery.value.trim()) {
-        console.log('[WebContentPage] 🔄 Recovering search state after navigation:', {
-          query: searchQuery.value,
-          hasResults: Object.keys(searchResults.value).some(key => searchResults.value[key].length > 0)
-        });
-        
-        // Wait a bit for the page to stabilize after navigation
-        setTimeout(async () => {
-          try {
-            // Re-inject the current search state
-            await sendSearchDataToWebContentsView(
-              searchQuery.value,
-              isSearching.value,
-              searchResults.value,
-              true // Force update
-            );
-            
-            console.log('[WebContentPage] ✅ Search state re-injected successfully');
-          } catch (error) {
-            console.error('[WebContentPage] ❌ Failed to re-inject search state:', error);
-          }
-        }, 500); // 500ms delay to ensure page is ready
-      }
-      
-      // Enhanced page load recovery with dynamic timing
-      const pageLoadRecovery = async () => {
-        console.log('[WebContentPage] Starting enhanced page load recovery');
-        
-        // Wait for page to be more ready - check for common framework indicators
-        let ready = false;
-        let attempts = 0;
-        const maxWaitTime = 5000; // Maximum 5 seconds
-        const checkInterval = 200; // Check every 200ms
-        
-        while (!ready && attempts < (maxWaitTime / checkInterval)) {
-          try {
-            const readinessResult = await window.logMonitorApi.executeInWebContentsView(`
-              (function() {
-                // Check for various readiness indicators
-                const indicators = {
-                  domReady: document.readyState === 'complete',
-                  hasFramework: !!(window.Vue || window.React || window.Angular),
-                  hasAppRoot: !!(document.querySelector('#app, #root, [data-app], main, .app')),
-                  hasContent: document.body && document.body.children.length > 0,
-                  noLoading: !document.querySelector('.loading, .spinner, [class*="load"]')
-                };
-                
-                const readyScore = Object.values(indicators).filter(Boolean).length;
-                return { indicators, readyScore, isReady: readyScore >= 3 };
-              })()
-            `);
-            
-            const readinessCheck = readinessResult.success ? readinessResult as any : null;
-            
-            if (readinessCheck?.isReady) {
-              ready = true;
-              console.log('[WebContentPage] Page ready for injection:', readinessCheck.indicators);
-            } else {
-              console.log(`[WebContentPage] Page not ready yet (score: ${readinessCheck?.readyScore}/5), waiting...`);
-            }
-          } catch (error) {
-            console.warn('[WebContentPage] Readiness check failed:', error);
-          }
-          
-          if (!ready) {
-            await new Promise(resolve => setTimeout(resolve, checkInterval));
-            attempts++;
-          }
-        }
-        
-        // Proceed with injection regardless of readiness after timeout
-        if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || 
-            searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
-          console.log('[WebContentPage] Re-injecting search state after page navigation with enhanced timing');
-          await sendSearchDataToWebContentsView(searchQuery.value, false, searchResults.value, true);
-        } else if (searchQuery.value.trim()) {
-          console.log('[WebContentPage] Active search query detected but no results - clearing search state');
-          await resetSearchState();
-        } else {
-          console.log('[WebContentPage] Establishing search infrastructure on new page');
-          // Always establish search infrastructure even with no active search
-          await sendSearchDataToWebContentsView('', false, { events: [], users: [], organizations: [] }, true);
-        }
-      };
-      
-      // Start recovery process
-      pageLoadRecovery().catch(error => {
-        console.error('[WebContentPage] Page load recovery failed:', error);
-      });
-    });
-    
-    window.electron.ipcRenderer.on('webcontents-view-error', (event, error) => {
-      console.error('[WebContentPage] WebContentsView error:', error);
-      // Hide loading overlay on error
-      if (isLoading.value) {
-        showLoadingOverlay.value = false;
-        setTimeout(() => {
-          isLoading.value = false;
-        }, 300);
-      }
-    });
-    
-    // Dedicated event for search state recovery after navigation
-    window.electron.ipcRenderer.on('webcontents-view-search-recovery-needed', async () => {
-      console.log('[WebContentPage] 🔍 Search recovery event received');
-      
-      // Only recover search if there's an active query
-      if (searchQuery.value.trim()) {
-        console.log('[WebContentPage] 🔄 Performing dedicated search recovery:', {
-          query: searchQuery.value,
-          hasResults: Object.keys(searchResults.value).some(key => searchResults.value[key].length > 0)
-        });
-        
-        try {
-          // Re-inject the current search state with force update
-          await sendSearchDataToWebContentsView(
-            searchQuery.value,
-            isSearching.value,
-            searchResults.value,
-            true // Force update to ensure injection
-          );
-          
-          console.log('[WebContentPage] ✅ Search state recovered successfully via dedicated event');
-        } catch (error) {
-          console.error('[WebContentPage] ❌ Failed to recover search state:', error);
-        }
-      } else {
-        console.log('[WebContentPage] 🔍 No search query to recover');
-      }
-    });
-  }
-
-  // Listen for centralized navigation state changes
-  if (window.electronAPI?.navigation?.onStateChange) {
-    const navigationCleanup = window.electronAPI.navigation.onStateChange((state: any) => {
-      console.log('[WebContentPage] Received navigation state update:', state);
-      
-      // Update active section based on navigation state
-      if (state.webContentWindow.isOpen && state.webContentWindow.currentSection) {
-        const section = state.webContentWindow.currentSection;
-        if (section === 'profile' || section === 'leaderboard' || section === 'map' || section === 'events' || section === 'stats') {
-          if (activeSection.value !== section) {
-            console.log(`[WebContentPage] Updating active section from navigation state: ${section}`);
-            activeSection.value = section;
-          }
-          
-          // Hide loading overlay if it's showing
-          if (isLoading.value) {
-            showLoadingOverlay.value = false;
-            setTimeout(() => {
-              isLoading.value = false;
-            }, 300);
-          }
-        }
-      }
-    });
-    
-    // Store cleanup function for onUnmounted
-    // Add this to cleanup array if you have one, or add to onUnmounted
-  } else {
-    console.warn('[WebContentPage] Centralized navigation state listener not available');
-  }
-
-  // Notify main process that WebContentPage is ready for WebContentsView attachment
-  notifyMainProcessReady();
-});
-
-// Start search health check when search is active
-const startSearchHealthCheck = () => {
-  // Clear any existing interval
-  if (searchHealthCheckInterval.value) {
-    clearInterval(searchHealthCheckInterval.value);
-  }
-  
-  // Only start health check if there's an active search
-  if (!searchQuery.value.trim()) {
-    return;
-  }
-  
-  console.log('[WebContentPage] Starting search health check');
-  
-  // Check every 3 seconds if search state is still active
-  searchHealthCheckInterval.value = setInterval(async () => {
-    if (!searchQuery.value.trim() || !isWebContentsViewAttached.value) {
-      // Stop health check if no search or WebContentsView detached
-      clearInterval(searchHealthCheckInterval.value);
-      searchHealthCheckInterval.value = null;
-      return;
-    }
-    
-    // Check if search state exists in WebContentsView
-    if (window.logMonitorApi && window.logMonitorApi.executeInWebContentsView) {
-      try {
-        const healthCheck = await window.logMonitorApi.executeInWebContentsView(`
-          const searchExists = !!window.electronSearchState && window.electronSearchState.query === '${searchQuery.value.replace(/'/g, "\\'")}';
-          console.log('[WebContentsView] Search health check:', { 
-            exists: searchExists, 
-            currentQuery: window.electronSearchState?.query,
-            expectedQuery: '${searchQuery.value.replace(/'/g, "\\'")}'
-          });
-          searchExists;
-        `);
-        
-        if (!healthCheck) {
-          console.log('[WebContentPage] ⚠️ Search state lost, re-injecting...');
-          await sendSearchDataToWebContentsView(
-            searchQuery.value,
-            isSearching.value,
-            searchResults.value,
-            true
-          );
-        }
-      } catch (error) {
-        console.debug('[WebContentPage] Health check failed (page might be loading):', error);
-      }
-    }
-  }, 3000); // Check every 3 seconds
-};
-
-// Stop search health check
-const stopSearchHealthCheck = () => {
-  if (searchHealthCheckInterval.value) {
-    clearInterval(searchHealthCheckInterval.value);
-    searchHealthCheckInterval.value = null;
-    console.log('[WebContentPage] Stopped search health check');
-  }
-};
-
-// Watch search query to manage health check
-watch(searchQuery, (newQuery) => {
-  if (newQuery.trim()) {
-    startSearchHealthCheck();
-  } else {
-    stopSearchHealthCheck();
-  }
 });
 
 onUnmounted(() => {
   console.log('[WebContentPage] Unmounted - WebContentsView will be cleaned up by main process');
-  
-  // Clean up health check interval
-  stopSearchHealthCheck();
 });
 
 </script>
