@@ -325,6 +325,16 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import type { IpcRendererEvent } from 'electron';
 import type { AuthData, UserProfile } from '../preload';
 
+// Declare window.ipcRenderer
+declare global {
+  interface Window {
+    ipcRenderer?: {
+      send: (channel: string, ...args: any[]) => void;
+      on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => void;
+    };
+  }
+}
+
 const webcontentsContainer = ref<HTMLDivElement | null>(null);
 const activeSection = ref<'profile' | 'leaderboard' | 'map' | 'events' | 'stats'>('profile'); // Current active section
 
@@ -787,8 +797,8 @@ const testSearch = () => {
   showSearchDropdown.value = true;
   
   // Hide WebContentsView
-  if (window.electron && window.electron.ipcRenderer) {
-    window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+  if (window.ipcRenderer) {
+    window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
   }
   
   // Add some test results
@@ -810,14 +820,17 @@ const toggleWebContentsView = () => {
   console.log('[WebContentsView] Toggling visibility, current state:', isWebContentsViewVisible.value);
   isWebContentsViewVisible.value = !isWebContentsViewVisible.value;
   
-  if (window.electron && window.electron.ipcRenderer) {
+  // Use the ipcRenderer directly exposed by preload
+  if (window.ipcRenderer) {
     if (isWebContentsViewVisible.value) {
       console.log('[WebContentsView] Showing WebContentsView');
-      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+      window.ipcRenderer.send('enhanced-window:show-webcontentsview');
     } else {
       console.log('[WebContentsView] Hiding WebContentsView');
-      window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+      window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
     }
+  } else {
+    console.error('[WebContentsView] ipcRenderer not available');
   }
 };
 
