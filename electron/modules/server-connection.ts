@@ -297,7 +297,30 @@ export function connectToServer(): void {
     logger.info(MODULE_NAME, 'Reconnection logic reset on successful connection.');
     // Emit event on successful connection/reconnection
     connectionEvents.emit(isReconnection ? 'reconnected' : 'connected');
-    // No need to send authenticate_guest message; handled by handshake and guestToken event now.
+    
+    // Send 'connecting' status while waiting for authentication
+    sendConnectionStatus('connecting', 0);
+    logger.info(MODULE_NAME, 'Socket connected, waiting for authentication confirmation from server');
+    
+    // Set a timeout to check if authentication is received
+    setTimeout(() => {
+      if (socket && socket.connected && !isAuthenticated) {
+        logger.warn(MODULE_NAME, 'Socket connected but authentication not received after 5 seconds');
+        // Check if ping/pong is working
+        const timeSinceLastPong = Date.now() - lastPongTime;
+        logger.info(MODULE_NAME, `Time since last pong: ${timeSinceLastPong}ms`);
+        
+        // If we're getting pongs but no auth, assume we're connected
+        if (timeSinceLastPong < 30000) {
+          logger.info(MODULE_NAME, 'Heartbeat is active, marking as connected despite missing auth event');
+          isAuthenticated = true;
+          sendConnectionStatus('connected');
+        } else {
+          logger.error(MODULE_NAME, 'No heartbeat detected, connection may be broken');
+          sendConnectionStatus('error');
+        }
+      }
+    }, 5000);
   });
  
   // Listen for guestToken event from server and store it
@@ -705,11 +728,21 @@ export function reconnectNow(): void {
     reconnectionTimeoutId = null;
   }
   
-  // Reset attempt counter for manual reconnection
-  reconnectionAttempt = 0;
-  
-  // Connect immediately
-  connectToServer();
+  // If socket exists and is connected, disconnect it first
+  if (socket && socket.connected) {
+    logger.info(MODULE_NAME, 'Disconnecting current socket before reconnecting');
+    socket.disconnect();
+    // Give it a moment to properly disconnect
+    setTimeout(() => {
+      reconnectionAttempt = 0;
+      connectToServer();
+    }, 100);
+  } else {
+    // Reset attempt counter for manual reconnection
+    reconnectionAttempt = 0;
+    // Connect immediately
+    connectToServer();
+  }
 }
 
 export { connectionEvents };

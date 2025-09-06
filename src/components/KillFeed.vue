@@ -20,6 +20,8 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 const connectionStatus = ref<ConnectionStatus>('connecting'); // Start with 'connecting' on app startup
 const connectionAttempts = ref<number>(0); // Track connection attempts for progressive messaging
 const nextReconnectDelay = ref<number>(0); // Track the actual reconnect delay from server
+const connectionTimeout = ref<NodeJS.Timeout | null>(null); // Timeout to prevent stuck connection
+const connectionStartTime = ref<number>(Date.now()); // Track when connection started
 const resourcePath = ref<string>(''); // To store the path provided by main process
 const currentGameMode = ref<'PU' | 'AC' | 'Unknown'>('Unknown'); // Added for stable game mode
 const searchQuery = ref<string>(''); // Explicitly type and initialize
@@ -1888,15 +1890,57 @@ const scrollToTop = async () => {
 // Handle manual reconnection request from ConnectionBanner
 const handleManualReconnect = () => {
   console.log('[KillFeed] Manual reconnect requested');
+  // Clear any existing connection timeout
+  if (connectionTimeout.value) {
+    clearTimeout(connectionTimeout.value);
+    connectionTimeout.value = null;
+  }
   // Send reconnect request to main process
   if (window.logMonitorApi?.reconnectToServer) {
     window.logMonitorApi.reconnectToServer();
   }
 };
 
+// Handle stuck connection timeout
+const handleConnectionTimeout = () => {
+  console.warn('[KillFeed] Connection timeout - stuck in connecting state for over 10 seconds');
+  
+  // Check if we're still stuck in connecting state
+  if (connectionStatus.value === 'connecting') {
+    const timeSinceStart = Date.now() - connectionStartTime.value;
+    console.log(`[KillFeed] Connection has been stuck for ${Math.round(timeSinceStart / 1000)}s`);
+    
+    // Force a status check or reconnection
+    if (window.logMonitorApi?.checkConnectionStatus) {
+      console.log('[KillFeed] Requesting connection status check');
+      window.logMonitorApi.checkConnectionStatus();
+    } else if (window.logMonitorApi?.reconnectToServer) {
+      console.log('[KillFeed] Forcing reconnection due to timeout');
+      // Change status to disconnected to show proper UI
+      connectionStatus.value = 'disconnected';
+      connectionAttempts.value = connectionAttempts.value + 1;
+      // Trigger reconnection
+      window.logMonitorApi.reconnectToServer();
+    } else {
+      // Fallback: just change status to error
+      console.error('[KillFeed] No reconnection API available, marking as error');
+      connectionStatus.value = 'error';
+    }
+  }
+  
+  connectionTimeout.value = null;
+};
+
 onMounted(async () => { // Make onMounted async
   // Get initial states synchronously FIRST
   await getInitialWindowStates();
+  
+  // Set initial connection timeout since app starts in 'connecting' state
+  if (connectionStatus.value === 'connecting') {
+    console.log('[KillFeed] Setting initial 10 second connection timeout');
+    connectionStartTime.value = Date.now();
+    connectionTimeout.value = setTimeout(handleConnectionTimeout, 10000);
+  }
   
   // Load saved event filter preference
   if (window.logMonitorApi && window.logMonitorApi.getEventFilter) {
@@ -1959,12 +2003,26 @@ onMounted(async () => { // Make onMounted async
       if (window.logMonitorApi?.onConnectionStatusChanged) {
         const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status, attempts?, delay?) => {
           console.log('[KillFeed] Received connection status update:', status, 'attempts:', attempts, 'delay:', delay);
+          
+          // Clear existing timeout if any
+          if (connectionTimeout.value) {
+            clearTimeout(connectionTimeout.value);
+            connectionTimeout.value = null;
+          }
+          
           connectionStatus.value = status;
           if (attempts !== undefined) {
             connectionAttempts.value = attempts;
           }
           if (delay !== undefined) {
             nextReconnectDelay.value = delay;
+          }
+          
+          // Set timeout if we're in connecting state
+          if (status === 'connecting') {
+            connectionStartTime.value = Date.now();
+            console.log('[KillFeed] Starting 10 second connection timeout');
+            connectionTimeout.value = setTimeout(handleConnectionTimeout, 10000);
           }
         });
         cleanupFunctions.push(cleanup);
@@ -2295,6 +2353,12 @@ onUnmounted(() => {
   // Clean up scroll listener
   if (killFeedListRef.value) {
     killFeedListRef.value.removeEventListener('scroll', handleScroll);
+  }
+  
+  // Clean up connection timeout
+  if (connectionTimeout.value) {
+    clearTimeout(connectionTimeout.value);
+    connectionTimeout.value = null;
   }
   
   // Clean up other listeners
