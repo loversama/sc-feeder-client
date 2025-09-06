@@ -138,8 +138,14 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView) {
-                // Hide the WebContentsView by setting its bounds to 0x0
-                webContentView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+                // Hide the WebContentsView by moving it off-screen (more reliable than 0x0)
+                const windowBounds = senderWindow.getContentBounds();
+                webContentView.setBounds({ 
+                    x: -windowBounds.width, 
+                    y: -windowBounds.height, 
+                    width: windowBounds.width, 
+                    height: windowBounds.height 
+                });
                 logger.info(MODULE_NAME, 'Hidden WebContentsView for search overlay');
             }
         } catch (error) {
@@ -837,50 +843,40 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         await navigateWebContentsViewToSection(webContentView, section);
         logger.info(MODULE_NAME, 'Navigation completed');
         
-        // Position the WebContentsView to fill the webcontents-container div
-        // Add a delay to ensure DOM is ready
-        setTimeout(() => {
-            targetWindow.webContents.executeJavaScript(`
-                const container = document.getElementById('webcontents-container');
-                if (container) {
-                    const rect = container.getBoundingClientRect();
-                    const windowRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-                    windowRect;
-                } else {
-                    null;
-                }
-            `).then((bounds) => {
-                if (bounds && bounds.width > 0 && bounds.height > 0) {
-                    webContentView.setBounds({
-                        x: Math.round(bounds.x),
-                        y: Math.round(bounds.y),
-                        width: Math.round(bounds.width),
-                        height: Math.round(bounds.height)
-                    });
-                    logger.info(MODULE_NAME, 'WebContentsView positioned in container:', bounds);
-                } else {
-                    // Fallback: fill the window below the header
-                    const windowBounds = targetWindow.getContentBounds();
-                    webContentView.setBounds({
-                        x: 0,
-                        y: 80, // Account for header height
-                        width: windowBounds.width,
-                        height: windowBounds.height - 80
-                    });
-                    logger.info(MODULE_NAME, 'WebContentsView positioned with fallback bounds');
-                }
-            }).catch((error) => {
-                logger.error(MODULE_NAME, 'Failed to get container bounds:', error);
-                // Fallback positioning
-                const windowBounds = targetWindow.getContentBounds();
+        // Position the WebContentsView immediately with fallback bounds
+        const windowBounds = targetWindow.getContentBounds();
+        webContentView.setBounds({
+            x: 0,
+            y: 80, // Account for header height
+            width: windowBounds.width,
+            height: windowBounds.height - 80
+        });
+        logger.info(MODULE_NAME, 'WebContentsView positioned with initial bounds');
+        
+        // Then try to get exact container bounds without delay
+        targetWindow.webContents.executeJavaScript(`
+            const container = document.getElementById('webcontents-container');
+            if (container) {
+                const rect = container.getBoundingClientRect();
+                const windowRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+                windowRect;
+            } else {
+                null;
+            }
+        `).then((bounds) => {
+            if (bounds && bounds.width > 0 && bounds.height > 0) {
                 webContentView.setBounds({
-                    x: 0,
-                    y: 80,
-                    width: windowBounds.width,
-                    height: windowBounds.height - 80
+                    x: Math.round(bounds.x),
+                    y: Math.round(bounds.y),
+                    width: Math.round(bounds.width),
+                    height: Math.round(bounds.height)
                 });
-            });
-        }, 200); // Give DOM time to render
+                logger.info(MODULE_NAME, 'WebContentsView repositioned in container:', bounds);
+            }
+        }).catch((error) => {
+            logger.error(MODULE_NAME, 'Failed to get container bounds:', error);
+            // Already positioned with fallback bounds, no action needed
+        });
         
         // Handle window resize
         targetWindow.on('resize', () => {

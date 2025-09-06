@@ -116,6 +116,7 @@
                 :key="`event-${index}`"
                 class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md"
                 :class="{ 'bg-[#333333]': selectedIndex === getEventIndex(index) }"
+                @mousedown="isClickingSearchResult = true"
                 @click="handleResultClick('event', event)"
               >
                 <div class="text-white text-sm font-medium">{{ formatEventTitle(event) }}</div>
@@ -140,6 +141,7 @@
                 :key="`user-${index}`"
                 class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md flex items-center space-x-3"
                 :class="{ 'bg-[#333333]': selectedIndex === getUserIndex(index) }"
+                @mousedown="isClickingSearchResult = true"
                 @click="handleResultClick('user', user)"
               >
                 <!-- User Avatar -->
@@ -206,6 +208,7 @@
                 :key="`org-${index}`"
                 class="p-3 hover:bg-[#333333] cursor-pointer transition-colors duration-150 rounded-md flex items-center space-x-3"
                 :class="{ 'bg-[#333333]': selectedIndex === getOrgIndex(index) }"
+                @mousedown="isClickingSearchResult = true"
                 @click="handleResultClick('organization', org)"
               >
                 <!-- Organization Icon -->
@@ -714,9 +717,19 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
   }
 };
 
+// Debounce timer for WebContentsView visibility
+let webContentsVisibilityTimer: NodeJS.Timeout | null = null;
+
 const handleSearchFocus = () => {
   if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
     showSearchDropdown.value = true;
+    
+    // Cancel any pending show operation
+    if (webContentsVisibilityTimer) {
+      clearTimeout(webContentsVisibilityTimer);
+      webContentsVisibilityTimer = null;
+    }
+    
     // Hide WebContentsView when search opens
     if (window.electron && window.electron.ipcRenderer) {
       window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
@@ -724,16 +737,28 @@ const handleSearchFocus = () => {
   }
 };
 
+// Track if we're clicking on search results
+let isClickingSearchResult = false;
+
 const handleSearchBlur = () => {
-  // Delay hiding dropdown to allow clicks on results
-  setTimeout(() => {
-    showSearchDropdown.value = false;
-    selectedIndex.value = -1;
-    // Show WebContentsView when search closes
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+  // Cancel any pending visibility timer
+  if (webContentsVisibilityTimer) {
+    clearTimeout(webContentsVisibilityTimer);
+  }
+  
+  // Use a shorter delay and check if we're clicking on results
+  webContentsVisibilityTimer = setTimeout(() => {
+    if (!isClickingSearchResult) {
+      showSearchDropdown.value = false;
+      selectedIndex.value = -1;
+      // Show WebContentsView when search closes
+      if (window.electron && window.electron.ipcRenderer) {
+        window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+      }
     }
-  }, 150);
+    isClickingSearchResult = false;
+    webContentsVisibilityTimer = null;
+  }, 100);
 };
 
 // Helper functions for search results
@@ -996,8 +1021,8 @@ watch(activeSection, (newSection) => {
 const notifyMainProcessReady = async () => {
   console.log('[WebContentPage] Notifying main process that WebContentPage is ready');
   
-  // Use a longer delay to ensure window is fully ready
-  setTimeout(async () => {
+  // Use requestAnimationFrame to ensure DOM is ready without unnecessary delay
+  requestAnimationFrame(async () => {
     try {
       console.log('[WebContentPage] Starting WebContentsView attachment process');
       console.log('[WebContentPage] Window title:', document.title);
@@ -1030,7 +1055,7 @@ const notifyMainProcessReady = async () => {
     } catch (error) {
       console.error('[WebContentPage] Exception during WebContentsView attachment:', error);
     }
-  }, 500); // Increased delay to ensure window is fully ready
+  });
 };
 
 
