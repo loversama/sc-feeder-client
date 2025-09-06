@@ -104,9 +104,10 @@ watch(isAuthenticated, (newVal, oldVal) => {
 })
 
 // Enhanced helper function to open external website with new architecture support
-const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/', title?: string) => {
+const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'account', title?: string) => {
   try {
     // First try the new enhanced WebContentsView system for Steam-like embedded experience
+    // Note: events and stats don't use WebContentsView, they open external windows
     if (['profile', 'leaderboard', 'map'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {
       try {
         console.log(`[Navigation] Attempting enhanced WebContentsView for ${section}`);
@@ -127,7 +128,13 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
     const currentUrl = window.location.href;
     const isDev = currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
     const baseUrl = isDev ? 'http://localhost:3001' : 'https://voidlog.gg';
-    const websiteUrl = section === 'profile' ? baseUrl : `${baseUrl}/${section}`;
+    let websiteUrl: string;
+    if (section === 'account') {
+      // Account settings goes to profile page with settings tab
+      websiteUrl = `${baseUrl}/profile?tab=settings`;
+    } else {
+      websiteUrl = section === 'profile' ? baseUrl : `${baseUrl}/${section}`;
+    }
     
     // Fallback to external window for scenarios where WebContentsView isn't suitable
     try {
@@ -201,8 +208,8 @@ const handleCommand = async (command: string) => {
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     } else if (command === 'account-settings') {
-      // Open profile page which contains account settings
-      await openExternalSection('profile', 'VOIDLOG.GG - Account Settings')
+      // Open profile page with account settings tab
+      await openExternalSection('account', 'VOIDLOG.GG - Account Settings')
     }
   } catch (error) {
     console.error('Error handling command:', error)

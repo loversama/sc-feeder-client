@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router';
-// Removed ref, onMounted
-import { MoreFilled } from '@element-plus/icons-vue'; // Import the icon
+import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { Setting } from '@element-plus/icons-vue'; // Import the settings icon
 import UpdateNotificationCompact from './UpdateNotificationCompact.vue';
 
-// Removed headerRef and headerHeight logic
+const router = useRouter();
+
+// Navigate to profile settings tab
+const openAccountSettings = () => {
+  router.push('/profile?tab=settings');
+};
 </script>
 
 <template>
@@ -13,13 +17,13 @@ import UpdateNotificationCompact from './UpdateNotificationCompact.vue';
     <header class="p-2 bg-[#171717] border-b border-[#262626] shadow-md shrink-0 h-[80px] flex items-center justify-between">
       <!-- Tab Navigation -->
       <nav class="mt-2 flex items-center">
-        <!-- More Options Button -->
+        <!-- Account Settings Button -->
         <el-button
-          ref="ref3"
-          :icon="MoreFilled"
+          :icon="Setting"
           text
           class="ml-5 p-2 text-theme-text-light hover:bg-white/5 border border-white/10"
-          title="More Options"
+          title="Account Settings"
+          @click="openAccountSettings"
         />
         <!-- Navigation Links -->
         <router-link
