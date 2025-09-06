@@ -24,7 +24,7 @@ console.log('Web Content App Mounted with WebContentPage directly');
 
 // --- IPC Listener for Navigation ---
 if (window.ipcRenderer) {
-  window.ipcRenderer.on('navigate-to-section', (_event: IpcRendererEvent, newSection: 'profile' | 'leaderboard') => {
+  window.ipcRenderer.on('navigate-to-section', (_event: IpcRendererEvent, newSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => {
     console.log(`[Web Content] Received navigate-to-section request: ${newSection}`);
     // The WebContentPage component will handle this through its internal navigation
     // Dispatch a custom event that WebContentPage can listen for

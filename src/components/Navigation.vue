@@ -111,7 +111,7 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
     if (['profile', 'leaderboard', 'map'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {
       try {
         console.log(`[Navigation] Attempting enhanced WebContentsView for ${section}`);
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow(section as 'profile' | 'leaderboard' | 'map');
+        const result = await window.logMonitorApi.openEnhancedWebContentWindow(section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats');
         
         if (result?.success) {
           console.log(`[Navigation] Enhanced WebContentsView opened successfully for ${section}:`, result);
@@ -160,7 +160,16 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
     if (window.logMonitorApi?.webContentNavigateToSection && ['profile', 'leaderboard', 'map'].includes(section)) {
       try {
         console.log(`[Navigation] Trying legacy WebContentsView navigation for ${section}`);
-        const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
+        // Legacy navigation only supports profile, leaderboard, map
+        if (['profile', 'leaderboard', 'map'].includes(section)) {
+          const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
+          if (navResult?.success) {
+            console.log(`[Navigation] Legacy WebContentsView navigation successful for ${section}:`, navResult);
+            return;
+          } else {
+            console.warn(`[Navigation] Legacy WebContentsView navigation failed for ${section}:`, navResult?.error);
+          }
+        }
         if (navResult?.success) {
           console.log(`[Navigation] Legacy WebContentsView navigation successful for ${section}:`, navResult);
           return;
