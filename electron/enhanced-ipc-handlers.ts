@@ -138,15 +138,22 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView) {
-                // Hide the WebContentsView by moving it off-screen (more reliable than 0x0)
-                const windowBounds = senderWindow.getContentBounds();
-                webContentView.setBounds({ 
-                    x: -windowBounds.width, 
-                    y: -windowBounds.height, 
-                    width: windowBounds.width, 
-                    height: windowBounds.height 
-                });
-                logger.info(MODULE_NAME, 'Hidden WebContentsView for search overlay');
+                // Hide the WebContentsView by removing it from the window
+                try {
+                    senderWindow.contentView.removeChildView(webContentView);
+                    logger.info(MODULE_NAME, 'Hidden WebContentsView by removing from window');
+                } catch (error) {
+                    logger.error(MODULE_NAME, 'Failed to remove WebContentsView:', error);
+                    // Fallback: move off-screen
+                    const windowBounds = senderWindow.getContentBounds();
+                    webContentView.setBounds({ 
+                        x: -windowBounds.width * 2, 
+                        y: -windowBounds.height * 2, 
+                        width: windowBounds.width, 
+                        height: windowBounds.height 
+                    });
+                    logger.info(MODULE_NAME, 'Hidden WebContentsView by moving off-screen (fallback)');
+                }
             }
         } catch (error) {
             logger.error(MODULE_NAME, 'Failed to hide WebContentsView:', error);
@@ -165,26 +172,34 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView) {
-                // Restore the WebContentsView bounds by getting container dimensions
-                senderWindow.webContents.executeJavaScript(`
-                    const container = document.getElementById('webcontents-container');
-                    if (container) {
-                        const rect = container.getBoundingClientRect();
-                        ({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-                    } else {
-                        null;
+                // Show the WebContentsView by re-adding it to the window
+                try {
+                    // First check if it's already attached
+                    const children = senderWindow.contentView.children;
+                    const isAttached = children.includes(webContentView);
+                    
+                    if (!isAttached) {
+                        // Re-add to window
+                        senderWindow.contentView.addChildView(webContentView);
+                        logger.info(MODULE_NAME, 'Re-added WebContentsView to window');
                     }
-                `).then((bounds) => {
-                    if (bounds && bounds.width > 0 && bounds.height > 0 && webContentView) {
-                        webContentView.setBounds({
-                            x: Math.round(bounds.x),
-                            y: Math.round(bounds.y),
-                            width: Math.round(bounds.width),
-                            height: Math.round(bounds.height)
-                        });
-                        logger.info(MODULE_NAME, 'Restored WebContentsView bounds after search overlay');
-                    } else {
-                        // Fallback positioning
+                    
+                    // Set proper bounds
+                    const windowBounds = senderWindow.getContentBounds();
+                    const headerHeight = 80;
+                    webContentView.setBounds({
+                        x: 0,
+                        y: headerHeight,
+                        width: windowBounds.width,
+                        height: windowBounds.height - headerHeight
+                    });
+                    logger.info(MODULE_NAME, 'Restored WebContentsView bounds');
+                    
+                } catch (error) {
+                    logger.error(MODULE_NAME, 'Failed to show WebContentsView:', error);
+                    
+                    // Fallback: just restore bounds
+                    try {
                         const windowBounds = senderWindow.getContentBounds();
                         webContentView.setBounds({
                             x: 0,
@@ -193,20 +208,10 @@ export function registerEnhancedIPCHandlers(): void {
                             height: windowBounds.height - 80
                         });
                         logger.info(MODULE_NAME, 'Used fallback bounds for WebContentsView');
+                    } catch (fallbackError) {
+                        logger.error(MODULE_NAME, 'Fallback positioning also failed:', fallbackError);
                     }
-                }).catch((error) => {
-                    logger.error(MODULE_NAME, 'Failed to get container bounds for WebContentsView restore:', error);
-                    // Fallback positioning
-                    if (!senderWindow.isDestroyed()) {
-                        const windowBounds = senderWindow.getContentBounds();
-                        webContentView.setBounds({
-                            x: 0,
-                            y: 80,
-                            width: windowBounds.width,
-                            height: windowBounds.height - 80
-                        });
-                    }
-                });
+                }
             }
         } catch (error) {
             logger.error(MODULE_NAME, 'Failed to show WebContentsView:', error);
