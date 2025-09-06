@@ -286,7 +286,7 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   // --- Enhanced WebContentsView API ---
 
   // Open enhanced WebContentsView window (new architecture)
-  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map'): Promise<{
+  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): Promise<{
     success: boolean;
     architecture?: string;
     section?: string;
