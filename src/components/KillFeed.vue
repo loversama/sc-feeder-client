@@ -5,6 +5,7 @@ import ConnectionBanner from './ConnectionBanner.vue'; // Import the connection 
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, QuestionFilled } from '@element-plus/icons-vue'; // Import icons
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
+import { useNavigationState } from '../composables/useNavigationState';
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
@@ -65,15 +66,20 @@ let cleanupFunctions: (() => void)[] = [];
 // --- Entity Resolution ---
 const { resolveEntity, isLoading: isResolvingEntities } = useEntityResolver();
 
-// --- Icon Button Active State ---
+// --- Unified Navigation State ---
+const navigation = useNavigationState();
+const { 
+  isProfileActive,
+  isLeaderboardActive,
+  isMapActive,
+  isEventsActive,
+  isStatsActive,
+  navigateToSection,
+  initializeListeners: initNavigationListeners
+} = navigation;
+
+// --- Local Icon State ---
 const isSettingsActive = ref(false);
-const isProfileActive = ref(false);
-const isLeaderboardActive = ref(false);
-const isMapActive = ref(false);
-const isEventsActive = ref(false);
-const isStatsActive = ref(false);
-// Note: For external windows like Settings, true active state tracking
-// would require IPC communication with the main process.
 
 // --- Click Handlers ---
 const openEventDetails = async (event: KillEvent) => {
@@ -161,372 +167,28 @@ const openSettingsWindow = () => {
 }
 
 const openProfile = async () => {
-  try {
-    console.log('🔘 Profile button clicked. Current state:', {
-      isProfileActive: isProfileActive.value,
-      isLeaderboardActive: isLeaderboardActive.value,
-      isMapActive: isMapActive.value,
-      isEventsActive: isEventsActive.value,
-      isStatsActive: isStatsActive.value
-    });
-    
-    // Check if new navigation system is available
-    console.log('🔍 Checking navigation system availability:', {
-      hasElectronAPI: !!window.electronAPI,
-      hasNavigation: !!window.electronAPI?.navigation,
-      hasRequest: !!window.electronAPI?.navigation?.request
-    });
-    
-    // Use the new centralized navigation system
-    if (window.electronAPI?.navigation?.request) {
-      console.log('✅ Using NEW centralized navigation system');
-      const result = await window.electronAPI.navigation.request('profile');
-      console.log('🎯 Navigation request result:', result);
-      
-      if (!result.success) {
-        console.error('❌ Navigation request failed:', result.error);
-        // Fallback to legacy system with proper logic
-        const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-        
-        if (isProfileActive.value) {
-          // Profile is already active, close it
-          window.logMonitorApi.closeEnhancedWebContentWindow();
-        } else if (isAnyWindowOpen) {
-          // Different section is open, switch to profile WITHOUT closing
-          window.logMonitorApi.openEnhancedWebContentWindow('profile');
-        } else {
-          // No window open, just open profile
-          window.logMonitorApi.openEnhancedWebContentWindow('profile');
-        }
-      }
-    } else {
-      // Fallback to existing system if new navigation not available
-      console.warn('[KillFeed] New navigation system not available, using legacy fallback');
-      
-      // Check if ANY web content window is open, not just profile
-      const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-      
-      if (isProfileActive.value) {
-        // Profile is already active, close it
-        console.log('Profile button clicked while active: Closing window.');
-        window.logMonitorApi.closeEnhancedWebContentWindow();
-      } else if (isAnyWindowOpen) {
-        // Different section is open, switch to profile (DO NOT CLOSE FIRST)
-        console.log('Profile button clicked while different section active: Switching to profile WITHOUT closing.');
-        
-        // Use enhanced WebContent which should navigate existing window to new section
-        console.log('🔄 Using enhanced WebContent to switch sections (should NOT close window)');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('profile');
-        
-        if (!result.success) {
-          console.error('Failed to switch to profile:', result.error);
-          // Last resort: legacy method
-          window.logMonitorApi.openWebContentWindow('profile');
-        }
-      } else {
-        // No window open, open profile
-        console.log('Profile button clicked while inactive: Opening enhanced WebContentsView for profile.');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('profile');
-        
-        if (!result.success) {
-          console.error('Failed to open enhanced WebContentsView:', result.error);
-          window.logMonitorApi.openWebContentWindow('profile');
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Exception caught in openProfile:", error);
-    // Fallback to legacy webview
-    try {
-      window.logMonitorApi.openWebContentWindow('profile');
-    } catch (fallbackError) {
-      console.error("Fallback also failed:", fallbackError);
-    }
-  }
+  console.log('[KillFeed] Profile button clicked');
+  await navigateToSection('profile');
 }
 
 const openLeaderboard = async () => {
-  try {
-    console.log('Leaderboard button clicked. Current state:', isLeaderboardActive.value);
-    
-    // Use the new centralized navigation system
-    if (window.electronAPI?.navigation?.request) {
-      const result = await window.electronAPI.navigation.request('leaderboard');
-      console.log('Navigation request result:', result);
-      
-      if (!result.success) {
-        console.error('Navigation request failed:', result.error);
-        // Fallback to legacy system with proper logic
-        const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-        
-        if (isLeaderboardActive.value) {
-          // Leaderboard is already active, close it
-          window.logMonitorApi.closeEnhancedWebContentWindow();
-        } else if (isAnyWindowOpen) {
-          // Different section is open, switch to leaderboard WITHOUT closing
-          window.logMonitorApi.openEnhancedWebContentWindow('leaderboard');
-        } else {
-          // No window open, just open leaderboard
-          window.logMonitorApi.openEnhancedWebContentWindow('leaderboard');
-        }
-      }
-    } else {
-      // Fallback to existing system if new navigation not available
-      console.warn('[KillFeed] New navigation system not available, using legacy fallback');
-      
-      // Check if ANY web content window is open, not just leaderboard
-      const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-      
-      if (isLeaderboardActive.value) {
-        // Leaderboard is already active, close it
-        console.log('Leaderboard button clicked while active: Closing window.');
-        window.logMonitorApi.closeEnhancedWebContentWindow();
-      } else if (isAnyWindowOpen) {
-        // Different section is open, switch to leaderboard (DO NOT CLOSE FIRST)
-        console.log('Leaderboard button clicked while different section active: Switching to leaderboard WITHOUT closing.');
-        
-        // Use enhanced WebContent which should navigate existing window to new section
-        console.log('🔄 Using enhanced WebContent to switch sections (should NOT close window)');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('leaderboard');
-        
-        if (!result.success) {
-          console.error('Failed to switch to leaderboard:', result.error);
-          // Last resort: legacy method
-          window.logMonitorApi.openWebContentWindow('leaderboard');
-        }
-      } else {
-        // No window open, open leaderboard
-        console.log('Leaderboard button clicked while inactive: Opening enhanced WebContentsView for leaderboard.');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('leaderboard');
-        
-        if (!result.success) {
-          console.error('Failed to open enhanced WebContentsView:', result.error);
-          window.logMonitorApi.openWebContentWindow('leaderboard');
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Failed to open leaderboard window:", error);
-    // Fallback to legacy webview
-    try {
-      window.logMonitorApi.openWebContentWindow('leaderboard');
-    } catch (fallbackError) {
-      console.error("Fallback also failed:", fallbackError);
-    }
-  }
+  console.log('[KillFeed] Leaderboard button clicked');
+  await navigateToSection('leaderboard');
 }
 
 const openMap = async () => {
-  try {
-    console.log('Map button clicked. Current state:', isMapActive.value);
-    
-    // Use the new centralized navigation system
-    if (window.electronAPI?.navigation?.request) {
-      const result = await window.electronAPI.navigation.request('map');
-      console.log('Navigation request result:', result);
-      
-      if (!result.success) {
-        console.error('Navigation request failed:', result.error);
-        // Fallback to legacy system with proper logic
-        const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-        
-        if (isMapActive.value) {
-          // Map is already active, close it
-          window.logMonitorApi.closeEnhancedWebContentWindow();
-        } else if (isAnyWindowOpen) {
-          // Different section is open, switch to map WITHOUT closing
-          window.logMonitorApi.openEnhancedWebContentWindow('map');
-        } else {
-          // No window open, just open map
-          window.logMonitorApi.openEnhancedWebContentWindow('map');
-        }
-      }
-    } else {
-      // Fallback to existing system if new navigation not available
-      console.warn('[KillFeed] New navigation system not available, using legacy fallback');
-      
-      // Check if ANY web content window is open, not just map
-      const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-      
-      if (isMapActive.value) {
-        // Map is already active, close it
-        console.log('Map button clicked while active: Closing window.');
-        window.logMonitorApi.closeEnhancedWebContentWindow();
-      } else if (isAnyWindowOpen) {
-        // Different section is open, switch to map (DO NOT CLOSE FIRST)
-        console.log('Map button clicked while different section active: Switching to map WITHOUT closing.');
-        
-        // Use enhanced WebContent which should navigate existing window to new section
-        console.log('🔄 Using enhanced WebContent to switch sections (should NOT close window)');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('map');
-        
-        if (!result.success) {
-          console.error('Failed to switch to map:', result.error);
-          // Last resort: legacy method
-          window.logMonitorApi.openWebContentWindow('map');
-        }
-      } else {
-        // No window open, open map
-        console.log('Map button clicked while inactive: Opening enhanced WebContentsView for map.');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('map');
-        
-        if (!result.success) {
-          console.error('Failed to open enhanced WebContentsView:', result.error);
-          window.logMonitorApi.openWebContentWindow('map');
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Failed to open map window:", error);
-    // Fallback to legacy webview
-    try {
-      window.logMonitorApi.openWebContentWindow('map');
-    } catch (fallbackError) {
-      console.error("Fallback also failed:", fallbackError);
-    }
-  }
+  console.log('[KillFeed] Map button clicked');
+  await navigateToSection('map');
 };
 
 const openEvents = async () => {
-  try {
-    console.log('Events button clicked. Current state:', isEventsActive.value);
-    
-    // Use the new centralized navigation system
-    if (window.electronAPI?.navigation?.request) {
-      const result = await window.electronAPI.navigation.request('events');
-      console.log('Navigation request result:', result);
-      
-      if (!result.success) {
-        console.error('Navigation request failed:', result.error);
-        // Fallback to legacy system with proper logic
-        const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-        
-        if (isEventsActive.value) {
-          // Events is already active, close it
-          window.logMonitorApi.closeEnhancedWebContentWindow();
-        } else if (isAnyWindowOpen) {
-          // Different section is open, switch to events WITHOUT closing
-          window.logMonitorApi.openEnhancedWebContentWindow('events');
-        } else {
-          // No window open, just open events
-          window.logMonitorApi.openEnhancedWebContentWindow('events');
-        }
-      }
-    } else {
-      // Fallback to existing system if new navigation not available
-      console.warn('[KillFeed] New navigation system not available, using legacy fallback');
-      
-      // Check if ANY web content window is open, not just events
-      const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-      
-      if (isEventsActive.value) {
-        // Events is already active, close it
-        console.log('Events button clicked while active: Closing window.');
-        window.logMonitorApi.closeEnhancedWebContentWindow();
-      } else if (isAnyWindowOpen) {
-        // Different section is open, switch to events (DO NOT CLOSE FIRST)
-        console.log('Events button clicked while different section active: Switching to events WITHOUT closing.');
-        
-        // Use enhanced WebContent which should navigate existing window to new section
-        console.log('🔄 Using enhanced WebContent to switch sections (should NOT close window)');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('events');
-        
-        if (!result.success) {
-          console.error('Failed to switch to events:', result.error);
-          // Last resort: legacy method
-          window.logMonitorApi.openWebContentWindow('events');
-        }
-      } else {
-        // No window open, open events
-        console.log('Events button clicked while inactive: Opening enhanced WebContentsView for events.');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('events');
-        
-        if (!result.success) {
-          console.error('Failed to open enhanced WebContentsView:', result.error);
-          window.logMonitorApi.openWebContentWindow('events');
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Failed to open events window:", error);
-    // Fallback to legacy webview
-    try {
-      window.logMonitorApi.openWebContentWindow('events');
-    } catch (fallbackError) {
-      console.error("Fallback also failed:", fallbackError);
-    }
-  }
+  console.log('[KillFeed] Events button clicked');
+  await navigateToSection('events');
 };
 
 const openStats = async () => {
-  try {
-    console.log('Stats button clicked. Current state:', isStatsActive.value);
-    
-    // Use the new centralized navigation system
-    if (window.electronAPI?.navigation?.request) {
-      const result = await window.electronAPI.navigation.request('stats');
-      console.log('Navigation request result:', result);
-      
-      if (!result.success) {
-        console.error('Navigation request failed:', result.error);
-        // Fallback to legacy system with proper logic
-        const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-        
-        if (isStatsActive.value) {
-          // Stats is already active, close it
-          window.logMonitorApi.closeEnhancedWebContentWindow();
-        } else if (isAnyWindowOpen) {
-          // Different section is open, switch to stats WITHOUT closing
-          window.logMonitorApi.openEnhancedWebContentWindow('stats');
-        } else {
-          // No window open, just open stats
-          window.logMonitorApi.openEnhancedWebContentWindow('stats');
-        }
-      }
-    } else {
-      // Fallback to existing system if new navigation not available
-      console.warn('[KillFeed] New navigation system not available, using legacy fallback');
-      
-      // Check if ANY web content window is open, not just stats
-      const isAnyWindowOpen = isProfileActive.value || isLeaderboardActive.value || isMapActive.value || isEventsActive.value || isStatsActive.value;
-      
-      if (isStatsActive.value) {
-        // Stats is already active, close it
-        console.log('Stats button clicked while active: Closing window.');
-        window.logMonitorApi.closeEnhancedWebContentWindow();
-      } else if (isAnyWindowOpen) {
-        // Different section is open, switch to stats (DO NOT CLOSE FIRST)
-        console.log('Stats button clicked while different section active: Switching to stats WITHOUT closing.');
-        
-        // Use enhanced WebContent which should navigate existing window to new section
-        console.log('🔄 Using enhanced WebContent to switch sections (should NOT close window)');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('stats');
-        
-        if (!result.success) {
-          console.error('Failed to switch to stats:', result.error);
-          // Last resort: legacy method
-          window.logMonitorApi.openWebContentWindow('stats');
-        }
-      } else {
-        // No window open, open stats
-        console.log('Stats button clicked while inactive: Opening enhanced WebContentsView for stats.');
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow('stats');
-        
-        if (!result.success) {
-          console.error('Failed to open enhanced WebContentsView:', result.error);
-          window.logMonitorApi.openWebContentWindow('stats');
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Failed to open stats window:", error);
-    // Fallback to legacy webview
-    try {
-      window.logMonitorApi.openWebContentWindow('stats');
-    } catch (fallbackError) {
-      console.error("Fallback also failed:", fallbackError);
-    }
-  }
+  console.log('[KillFeed] Stats button clicked');
+  await navigateToSection('stats');
 };
 
 // Generic function to open external website sections
@@ -1521,26 +1183,8 @@ const getInitialWindowStates = async () => {
       console.warn('[KillFeed] getSettingsWindowStatus API not available for initial check.');
     }
 
-    if (window.logMonitorApi?.getWebContentWindowStatus) {
-      const webContentStatus = await window.logMonitorApi.getWebContentWindowStatus();
-      console.log('[KillFeed] Initial web content status:', webContentStatus);
-      // Set based on initial status
-      isProfileActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'profile';
-      isLeaderboardActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'leaderboard';
-      isMapActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'map';
-      isEventsActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'events';
-      isStatsActive.value = webContentStatus.isOpen && webContentStatus.activeSection === 'stats';
-       // Ensure all are false if closed initially
-       if (!webContentStatus.isOpen) {
-         isProfileActive.value = false;
-         isLeaderboardActive.value = false;
-         isMapActive.value = false;
-         isEventsActive.value = false;
-         isStatsActive.value = false;
-       }
-    } else {
-      console.warn('[KillFeed] getWebContentWindowStatus API not available for initial check.');
-    }
+    // Initialize navigation listeners from unified state
+    initNavigationListeners();
   } catch (error) {
     console.error('[KillFeed] Error getting initial window states:', error);
   }
@@ -2054,62 +1698,8 @@ onMounted(async () => { // Make onMounted async
         console.warn('[KillFeed] onSettingsWindowStatus API not available.');
       }
     })(),
-    // Add listener for Web Content window status
-    (() => {
-      if (window.logMonitorApi?.onWebContentWindowStatus) {
-        const cleanup = window.logMonitorApi.onWebContentWindowStatus((_event, status: { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'stats' | 'events' | 'map' | '/' | null }) => {
-          console.log('[KillFeed] Received web content window status update:', status);
-          isProfileActive.value = status.isOpen && status.activeSection === 'profile';
-          isLeaderboardActive.value = status.isOpen && status.activeSection === 'leaderboard';
-          isMapActive.value = status.isOpen && status.activeSection === 'map';
-          isEventsActive.value = status.isOpen && status.activeSection === 'events';
-          isStatsActive.value = status.isOpen && status.activeSection === 'stats';
-          // If web content window is closed, ensure all relevant states are inactive
-          if (!status.isOpen) {
-            isProfileActive.value = false;
-            isLeaderboardActive.value = false;
-            isMapActive.value = false;
-            isEventsActive.value = false;
-            isStatsActive.value = false;
-          }
-        });
-        cleanupFunctions.push(cleanup);
-      } else {
-        console.warn('[KillFeed] onWebContentWindowStatus API not available.');
-      }
-    })(),
-    // Add listener for centralized navigation state changes
-    (() => {
-      if (window.electronAPI?.navigation?.onStateChange) {
-        const cleanup = window.electronAPI.navigation.onStateChange((state: any) => {
-          console.log('[KillFeed] Received navigation state update:', state);
-          
-          // Update active states based on centralized navigation state
-          if (state.settingsWindow.isOpen) {
-            isSettingsActive.value = true;
-          } else {
-            isSettingsActive.value = false;
-          }
-          
-          if (state.webContentWindow.isOpen) {
-            isProfileActive.value = state.webContentWindow.currentSection === 'profile';
-            isLeaderboardActive.value = state.webContentWindow.currentSection === 'leaderboard';
-            isMapActive.value = state.webContentWindow.currentSection === 'map';
-            isEventsActive.value = state.webContentWindow.currentSection === 'events';
-            isStatsActive.value = state.webContentWindow.currentSection === 'stats';
-          } else {
-            isProfileActive.value = false;
-            isLeaderboardActive.value = false;
-            isMapActive.value = false;
-            isEventsActive.value = false;
-            isStatsActive.value = false;
-          }
-        });
-        cleanupFunctions.push(cleanup);
-      } else {
-        console.warn('[KillFeed] Navigation state listener not available.');
-      }
-    })()
+    // Navigation state is now managed by unified state management
+    // Navigation state is now managed by unified state management
  ]).then(async () => {
     // Load persistent caches before loading events
     console.log('[KillFeed] Loading persistent caches...');

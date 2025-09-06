@@ -3,6 +3,7 @@ import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
 import { ElAvatar } from 'element-plus'
 import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy, Calendar, DataAnalysis, Bell, Headset } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
+import { useNavigationState } from '../composables/useNavigationState'
 
 // Props and emits
 const props = defineProps<{
@@ -16,6 +17,9 @@ const emit = defineEmits<{
 // State
 const isMenuOpen = ref(false)
 const { state: userState, reset: resetUser, updateAuthStatus } = useUserState()
+
+// Unified navigation state
+const { navigateToSection, initializeListeners: initNavigationListeners } = useNavigationState()
 
 // Quick settings state
 const soundEffectsEnabled = ref(true)
@@ -206,15 +210,15 @@ const handleCommand = async (command: string) => {
     } else if (command === 'login') {
       await window.logMonitorApi?.authShowLogin?.()
     } else if (command === 'profile') {
-      await openExternalSection('profile', 'VOIDLOG.GG - Profile')
+      await navigateToSection('profile')
     } else if (command === 'leaderboard') {
-      await openExternalSection('leaderboard', 'VOIDLOG.GG - Leaderboard')
+      await navigateToSection('leaderboard')
     } else if (command === 'map') {
-      await openExternalSection('map', 'VOIDLOG.GG - Star Citizen Map')
+      await navigateToSection('map')
     } else if (command === 'events') {
-      await openExternalSection('events', 'VOIDLOG.GG - Events')
+      await navigateToSection('events')
     } else if (command === 'stats') {
-      await openExternalSection('stats', 'VOIDLOG.GG - Stats')
+      await navigateToSection('stats')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     } else if (command === 'account-settings') {
@@ -254,6 +258,9 @@ onMounted(async () => {
   
   // Load quick settings
   await loadSettings()
+  
+  // Initialize navigation listeners
+  initNavigationListeners()
   
   // Listen for auth status changes
   if (window.logMonitorApi?.onAuthStatusChanged) {

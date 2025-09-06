@@ -14,51 +14,51 @@
         <!-- Navigation Links -->
         <div class="flex items-center space-x-6">
           <button
-            @click="setActiveSection('profile')"
+            @click="navigateToSection('profile')"
             class="px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
-              'text-[rgb(99,99,247)] bg-white/5': activeSection === 'profile',
-              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'profile' 
+              'text-[rgb(99,99,247)] bg-white/5': isProfileActive,
+              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isProfileActive 
             }"
           >
             Profile
           </button>
           <button
-            @click="setActiveSection('leaderboard')"
+            @click="navigateToSection('leaderboard')"
             class="px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
-              'text-[rgb(99,99,247)] bg-white/5': activeSection === 'leaderboard',
-              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'leaderboard' 
+              'text-[rgb(99,99,247)] bg-white/5': isLeaderboardActive,
+              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isLeaderboardActive 
             }"
           >
             Leaderboard
           </button>
           <button
-            @click="setActiveSection('map')"
+            @click="navigateToSection('map')"
             class="px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
-              'text-[rgb(99,99,247)] bg-white/5': activeSection === 'map',
-              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'map' 
+              'text-[rgb(99,99,247)] bg-white/5': isMapActive,
+              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isMapActive 
             }"
           >
             Map
           </button>
           <button
-            @click="setActiveSection('events')"
+            @click="navigateToSection('events')"
             class="px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
-              'text-[rgb(99,99,247)] bg-white/5': activeSection === 'events',
-              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'events' 
+              'text-[rgb(99,99,247)] bg-white/5': isEventsActive,
+              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isEventsActive 
             }"
           >
             Events
           </button>
           <button
-            @click="setActiveSection('stats')"
+            @click="navigateToSection('stats')"
             class="px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
-              'text-[rgb(99,99,247)] bg-white/5': activeSection === 'stats',
-              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': activeSection !== 'stats' 
+              'text-[rgb(99,99,247)] bg-white/5': isStatsActive,
+              'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isStatsActive 
             }"
           >
             Stats
@@ -90,10 +90,10 @@
           <!-- Website Settings Button (Spanner) - Only show when authenticated -->
           <button
             v-if="isAuthenticated"
-            @click="setActiveSection('profile-settings')"
+            @click="navigateToSection('profile-settings')"
             class="h-[38px] w-[38px] flex items-center justify-center bg-transparent rounded-md transition-all duration-200 text-gray-400 hover:text-white focus:outline-none"
-            :class="{ 'text-[rgb(99,99,247)] shadow-[0_0_0_1px_rgba(99,99,247,0.2)]': activeSection === 'profile-settings' }"
-            :style="activeSection === 'profile-settings' ? { border: '1px solid rgb(99,99,247)' } : { border: '1px solid #4a4a4a' }"
+            :class="{ 'text-[rgb(99,99,247)] shadow-[0_0_0_1px_rgba(99,99,247,0.2)]': isProfileSettingsActive }"
+            :style="isProfileSettingsActive ? { border: '1px solid rgb(99,99,247)' } : { border: '1px solid #4a4a4a' }"
             title="Website Settings"
           >
             <svg class="w-4 h-4 fill-current" viewBox="0 0 20 20">
@@ -446,6 +446,7 @@
 import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import type { IpcRendererEvent } from 'electron';
 import type { AuthData, UserProfile } from '../preload';
+import { useNavigationState } from '../composables/useNavigationState';
 
 // Declare window.ipcRenderer
 declare global {
@@ -458,7 +459,24 @@ declare global {
 }
 
 const webcontentsContainer = ref<HTMLDivElement | null>(null);
-const activeSection = ref<'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'>('profile'); // Current active section
+
+// Use unified navigation state
+const {
+  currentSection,
+  isNavigating,
+  isProfileActive,
+  isLeaderboardActive,
+  isMapActive,
+  isEventsActive,
+  isStatsActive,
+  isProfileSettingsActive,
+  navigateToSection,
+  updateCurrentSection,
+  initializeListeners: initNavigationListeners
+} = useNavigationState();
+
+// Computed property for backward compatibility
+const activeSection = computed(() => currentSection.value || 'profile');
 
 // State for authentication
 const isAuthenticated = ref(false);
@@ -1125,22 +1143,13 @@ let navigationAbortController: AbortController | null = null;
 const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings', preserveSearch = false) => {
   console.log(`[WebContentPage] Setting active section to: ${section}, preserveSearch: ${preserveSearch}`);
   
-  // Prevent rapid navigation clicks that can cause crashes
-  if (navigationInProgress) {
+  // Prevent rapid navigation using unified state
+  if (isNavigating.value) {
     console.warn(`[WebContentPage] Navigation already in progress, ignoring request for ${section}`);
     return;
   }
   
-  // Abort any previous navigation request
-  if (navigationAbortController) {
-    navigationAbortController.abort();
-    navigationAbortController = null;
-  }
-  
   try {
-    navigationInProgress = true;
-    navigationAbortController = new AbortController();
-    
     // Optionally clear search when changing sections
     if (!preserveSearch) {
       console.log(`[WebContentPage] Clearing search before section change`);
@@ -1180,9 +1189,7 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
     }
     
     // Don't show loading if it's the same section or if WebContentsView isn't attached yet
-    if (section === activeSection.value || !isWebContentsViewAttached.value) {
-      activeSection.value = section;
-      navigationInProgress = false;
+    if (section === currentSection.value || !isWebContentsViewAttached.value) {
       return;
     }
     
@@ -1200,56 +1207,20 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
       }
     }, 100);
     
-    activeSection.value = section;
+    // Use unified navigation state
+    await navigateToSection(section);
     
-    // Use the new centralized navigation system if available
-    if (window.electronAPI?.navigation?.request) {
-      console.log(`[WebContentPage] Using centralized navigation to section: ${section}`);
-      const result = await window.electronAPI.navigation.request(section);
-      console.log(`[WebContentPage] Centralized navigation result:`, result);
-      
-      if (!result.success) {
-        console.error('[WebContentPage] Centralized navigation failed:', result.error);
-        // Fallback to legacy system
-        throw new Error(`Navigation failed: ${result.error}`);
+    // Loading overlay will be hidden by the navigation state change event or timeout
+    setTimeout(() => {
+      if (isLoading.value) {
+        console.log('[WebContentPage] Timeout fallback: hiding loading overlay');
+        showLoadingOverlay.value = false;
+        setTimeout(() => {
+          isLoading.value = false;
+        }, 300);
       }
-      
-      // Loading overlay will be hidden by the navigation state change event or timeout
-      setTimeout(() => {
-        if (isLoading.value) {
-          console.log('[WebContentPage] Timeout fallback: hiding loading overlay');
-          showLoadingOverlay.value = false;
-          setTimeout(() => {
-            isLoading.value = false;
-          }, 300);
-        }
-      }, 5000); // 5 second timeout
-      
-    } else if (window.logMonitorApi && window.logMonitorApi.openEnhancedWebContentWindow) {
-      // Fallback to legacy system
-      console.log(`[WebContentPage] Fallback: Navigating WebContentsView to section: ${section}`);
-      const result = await window.logMonitorApi.openEnhancedWebContentWindow(section);
-      console.log(`[WebContentPage] Legacy navigation result:`, result);
-      
-      // Loading overlay will be hidden by the 'webcontents-view-loaded' event
-      // Add a timeout fallback in case the event doesn't fire
-      setTimeout(() => {
-        if (isLoading.value) {
-          console.log('[WebContentPage] Timeout fallback: hiding loading overlay');
-          showLoadingOverlay.value = false;
-          setTimeout(() => {
-            isLoading.value = false;
-          }, 300);
-        }
-      }, 5000); // 5 second timeout
-    } else {
-      console.warn('[WebContentPage] No navigation API available');
-      // Hide loading immediately if API not available
-      showLoadingOverlay.value = false;
-      setTimeout(() => {
-        isLoading.value = false;
-      }, 300);
-    }
+    }, 5000); // 5 second timeout
+    
   } catch (error) {
     console.error(`[WebContentPage] Failed to navigate WebContentsView to section ${section}:`, error);
     // Hide loading on error
@@ -1257,18 +1228,14 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
     setTimeout(() => {
       isLoading.value = false;
     }, 300);
-  } finally {
-    // Always reset navigation flag to allow future navigations
-    navigationInProgress = false;
-    navigationAbortController = null;
   }
 };
 
-// Watch for section changes to notify main process
-watch(activeSection, (newSection) => {
-  console.log(`[WebContentPage] Active section changed to: ${newSection}`);
-  // The main process will handle the WebContentsView navigation
-});
+// Report navigation changes back to unified state when user navigates directly in WebContentsView
+const reportNavigationChange = (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings') => {
+  console.log(`[WebContentPage] Reporting navigation change to unified state: ${section}`);
+  updateCurrentSection(section);
+};
 
 // Function to notify main process that WebContentPage is ready for WebContentsView
 const notifyMainProcessReady = async () => {
@@ -1279,17 +1246,17 @@ const notifyMainProcessReady = async () => {
     try {
       console.log('[WebContentPage] Starting WebContentsView attachment process');
       console.log('[WebContentPage] Window title:', document.title);
-      console.log('[WebContentPage] Active section:', activeSection.value);
+      console.log('[WebContentPage] Current section:', currentSection.value || 'profile');
       
       // Call the enhanced IPC handler to attach WebContentsView to THIS window
       if (window.logMonitorApi && window.logMonitorApi.openEnhancedWebContentWindow) {
-        console.log('[WebContentPage] Requesting WebContentsView attachment for section:', activeSection.value);
+        console.log('[WebContentPage] Requesting WebContentsView attachment for section:', currentSection.value || 'profile');
         
         // Update progress
         loadingProgress.value = 30;
         loadingMessage.value = 'Attaching WebContentsView...';
         
-        const result = await window.logMonitorApi.openEnhancedWebContentWindow(activeSection.value);
+        const result = await window.logMonitorApi.openEnhancedWebContentWindow(currentSection.value || 'profile');
         console.log('[WebContentPage] WebContentsView attach result:', result);
         
         if (result.success) {
@@ -1397,16 +1364,19 @@ onMounted(async () => {
   // Get authentication status first
   await updateAuthStatus();
 
-  // Get initial section from window status
+  // Initialize navigation listeners from unified state
+  initNavigationListeners();
+  
+  // Get initial section from window status and sync with unified state
   if (window.logMonitorApi && window.logMonitorApi.getWebContentWindowStatus) {
     try {
       const status = await window.logMonitorApi.getWebContentWindowStatus();
       if (status.isOpen && status.activeSection) {
         if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map' || status.activeSection === 'events' || status.activeSection === 'stats' || status.activeSection === 'profile-settings') {
-          activeSection.value = status.activeSection;
-          console.log(`[WebContentPage] Initial section set to: ${activeSection.value}`);
+          updateCurrentSection(status.activeSection);
+          console.log(`[WebContentPage] Initial section synced to unified state: ${status.activeSection}`);
         } else if (status.activeSection === '/') {
-          activeSection.value = 'profile'; // Default to profile for root path
+          updateCurrentSection('profile'); // Default to profile for root path
           console.log(`[WebContentPage] Initial section set to profile for root path`);
         }
       }
@@ -1468,6 +1438,14 @@ onMounted(async () => {
             setTimeout(() => {
               isLoading.value = false;
             }, 300);
+          }
+          break;
+        case 'webcontents-view-navigated':
+          // Report navigation change to unified state when user navigates directly in WebContentsView
+          const navSection = event.data.section;
+          if (navSection && navSection !== currentSection.value) {
+            console.log('[WebContentPage] WebContentsView navigated to:', navSection);
+            reportNavigationChange(navSection);
           }
           break;
       }
