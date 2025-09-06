@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
 import { ElAvatar } from 'element-plus'
-import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy } from '@element-plus/icons-vue'
+import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy, Calendar, DataAnalysis } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
 
 // Props and emits
@@ -153,6 +153,10 @@ const handleCommand = async (command: string) => {
       await openExternalSection('leaderboard', 'VOIDLOG.GG - Leaderboard')
     } else if (command === 'map') {
       await openExternalSection('map', 'VOIDLOG.GG - Star Citizen Map')
+    } else if (command === 'events') {
+      await openExternalSection('events', 'VOIDLOG.GG - Events')
+    } else if (command === 'stats') {
+      await openExternalSection('stats', 'VOIDLOG.GG - Stats')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     }
@@ -294,6 +298,22 @@ const closeMenu = () => {
               </button>
               
               <button 
+                @click="handleCommand('events')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><Calendar /></el-icon>
+                <span>Events</span>
+              </button>
+              
+              <button 
+                @click="handleCommand('stats')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><DataAnalysis /></el-icon>
+                <span>Stats</span>
+              </button>
+              
+              <button 
                 @click="handleCommand('settings')" 
                 class="menu-button"
               >
@@ -420,7 +440,7 @@ const closeMenu = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #0d0d0d;
+  background-color: #1a1a1a;
   border-top: 1px solid #272727;
   z-index: 9999; /* High z-index to ensure it covers everything */
   overflow: hidden;
@@ -458,7 +478,7 @@ const closeMenu = () => {
   left: 0;
   right: 0;
   padding: 24px;
-  background: linear-gradient(to top, #0d0d0d 70%, transparent);
+  background: linear-gradient(to top, #1a1a1a 70%, transparent);
   display: flex;
   justify-content: center;
   pointer-events: none; /* Allow clicks to pass through gradient */
@@ -562,8 +582,8 @@ const closeMenu = () => {
 }
 
 .menu-button:hover {
-  background-color: #1a1a1a;
-  border-color: #262626;
+  background-color: #262626;
+  border-color: #404040;
   color: white;
   transform: translateX(8px);
 }
