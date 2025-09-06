@@ -282,28 +282,25 @@ export function registerEnhancedIPCHandlers(): void {
                 isDestroyed: win.isDestroyed()
             })));
             
-            // First try to get the sender window (should be the web content window)
-            const senderWindow = BrowserWindow.fromWebContents(event.sender);
-            logger.info(MODULE_NAME, 'Sender window info:', senderWindow ? {
-                id: senderWindow.id,
-                title: senderWindow.getTitle(),
-                isDestroyed: senderWindow.isDestroyed()
-            } : 'null');
+            // First check if there's already a web content window open
+            webContentWindow = allWindows.find(win => 
+                win.getTitle().includes('Web Content') && 
+                !win.isDestroyed()
+            ) || null;
             
-            if (senderWindow && senderWindow.getTitle().includes('Web Content')) {
-                webContentWindow = senderWindow;
-                logger.info(MODULE_NAME, 'Using sender window as web content window');
+            if (webContentWindow) {
+                logger.info(MODULE_NAME, 'Found existing web content window:', {
+                    id: webContentWindow.id,
+                    title: webContentWindow.getTitle()
+                });
             } else {
-                // Fallback: find window by title
-                webContentWindow = allWindows.find(win => 
-                    win.getTitle().includes('Web Content') && 
-                    !win.isDestroyed()
-                ) || null;
+                logger.info(MODULE_NAME, 'No existing web content window found');
                 
-                if (webContentWindow) {
-                    logger.info(MODULE_NAME, 'Found web content window by title search');
-                } else {
-                    logger.warn(MODULE_NAME, 'Could not find web content window by title');
+                // Check if sender is the web content window (unlikely when called from main)
+                const senderWindow = BrowserWindow.fromWebContents(event.sender);
+                if (senderWindow && senderWindow.getTitle().includes('Web Content')) {
+                    webContentWindow = senderWindow;
+                    logger.info(MODULE_NAME, 'Using sender as web content window');
                 }
             }
             
@@ -799,15 +796,33 @@ export async function navigateWebContentsViewForWindow(
     section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'
 ): Promise<boolean> {
     try {
+        logger.info(MODULE_NAME, `navigateWebContentsViewForWindow called for window ${windowId}, section: ${section}`);
+        logger.info(MODULE_NAME, `Current WebContentsView map size: ${windowWebContentsViews.size}`);
+        logger.info(MODULE_NAME, `Available window IDs in map: ${Array.from(windowWebContentsViews.keys()).join(', ')}`);
+        
         const webContentView = windowWebContentsViews.get(windowId);
         
         if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
-            logger.info(MODULE_NAME, `Navigating WebContentsView for window ${windowId} to section: ${section}`);
+            logger.info(MODULE_NAME, `Found WebContentsView for window ${windowId}, navigating to section: ${section}`);
             await navigateWebContentsViewToSection(webContentView, section);
             logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${section}`);
             return true;
         } else {
             logger.warn(MODULE_NAME, `No WebContentsView found for window ${windowId}`);
+            
+            // Try to find the web content window and create WebContentsView
+            const allWindows = BrowserWindow.getAllWindows();
+            const webContentWindow = allWindows.find(win => 
+                win.id === windowId || 
+                (win.getTitle().includes('Web Content') && !win.isDestroyed())
+            );
+            
+            if (webContentWindow) {
+                logger.info(MODULE_NAME, `Found web content window (ID: ${webContentWindow.id}), creating WebContentsView`);
+                await createWebContentsViewForWindow(webContentWindow, section);
+                return true;
+            }
+            
             return false;
         }
     } catch (error) {
@@ -881,20 +896,29 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         await navigateWebContentsViewToSection(webContentView, section);
         logger.info(MODULE_NAME, 'Navigation completed');
         
-        // Position the WebContentsView immediately with fallback bounds
+        // Position the WebContentsView with proper bounds
         const windowBounds = targetWindow.getContentBounds();
         const bounds = {
             x: 0,
             y: 80, // Account for header height
-            width: windowBounds.width,
-            height: windowBounds.height - 80
+            width: Math.max(100, windowBounds.width || 1200), // Ensure minimum width
+            height: Math.max(100, (windowBounds.height - 80) || 600) // Ensure minimum height
         };
-        webContentView.setBounds(bounds);
-        logger.info(MODULE_NAME, 'WebContentsView positioned with initial bounds:', bounds);
         
-        // Debug: Check if WebContentsView is visible
-        const viewBounds = webContentView.getBounds();
-        logger.info(MODULE_NAME, 'WebContentsView actual bounds after setting:', viewBounds);
+        // Ensure view is visible before setting bounds
+        webContentView.setVisible(true);
+        webContentView.setBounds(bounds);
+        logger.info(MODULE_NAME, 'WebContentsView positioned with bounds:', bounds);
+        
+        // Force a layout update
+        targetWindow.contentView.layout();
+        
+        // Get actual bounds to verify
+        const actualBounds = webContentView.getBounds();
+        logger.info(MODULE_NAME, 'WebContentsView actual bounds after setting:', actualBounds);
+        
+        // Store the WebContentsView ID for debugging
+        logger.info(MODULE_NAME, `WebContentsView created and stored with window ID: ${windowId}`);
         
         // Set background color to ensure visibility
         webContentView.setBackgroundColor('#1a1a1a');
