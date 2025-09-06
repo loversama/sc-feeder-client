@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
 import { ElAvatar } from 'element-plus'
-import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy, Calendar, DataAnalysis } from '@element-plus/icons-vue'
+import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy, Calendar, DataAnalysis, Bell, Headset } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
 
 // Props and emits
@@ -16,6 +16,11 @@ const emit = defineEmits<{
 // State
 const isMenuOpen = ref(false)
 const { state: userState, reset: resetUser, updateAuthStatus } = useUserState()
+
+// Quick settings state
+const soundEffectsEnabled = ref(true)
+const notificationsEnabled = ref(true)
+const loadingSettings = ref(false)
 
 // Computed values for template
 const displayName = computed(() => {
@@ -50,6 +55,42 @@ const userRole = computed(() => {
   // Don't show pip for 'user' or 'guest' roles
   return null
 })
+
+// Load settings on mount
+const loadSettings = async () => {
+  loadingSettings.value = true
+  try {
+    if (window.logMonitorApi?.getSoundEffects) {
+      soundEffectsEnabled.value = await window.logMonitorApi.getSoundEffects()
+    }
+    if (window.logMonitorApi?.getNotificationSettings) {
+      notificationsEnabled.value = await window.logMonitorApi.getNotificationSettings()
+    }
+  } catch (error) {
+    console.error('[Navigation] Error loading settings:', error)
+  } finally {
+    loadingSettings.value = false
+  }
+}
+
+// Toggle handlers
+const toggleSoundEffects = async () => {
+  if (!window.logMonitorApi?.setSoundEffects) return
+  try {
+    soundEffectsEnabled.value = await window.logMonitorApi.setSoundEffects(!soundEffectsEnabled.value)
+  } catch (error) {
+    console.error('[Navigation] Error toggling sound effects:', error)
+  }
+}
+
+const toggleNotifications = async () => {
+  if (!window.logMonitorApi?.setNotificationSettings) return
+  try {
+    notificationsEnabled.value = await window.logMonitorApi.setNotificationSettings(!notificationsEnabled.value)
+  } catch (error) {
+    console.error('[Navigation] Error toggling notifications:', error)
+  }
+}
 
 // Watch for debugging
 watch(rsiMoniker, (newVal, oldVal) => {
@@ -191,6 +232,9 @@ onMounted(async () => {
     username: userState.value.username
   })
   
+  // Load quick settings
+  await loadSettings()
+  
   // Listen for auth status changes
   if (window.logMonitorApi?.onAuthStatusChanged) {
     window.logMonitorApi.onAuthStatusChanged((event, status) => {
@@ -273,53 +317,96 @@ const closeMenu = () => {
           <!-- Menu Items -->
           <div class="menu-items-wrapper">
             <div class="menu-items">
-              <button 
-                @click="handleCommand('profile')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><User /></el-icon>
-                <span>Profile</span>
-              </button>
+              <!-- Navigation Section -->
+              <div class="menu-section">
+                <h3 class="menu-section-title">Navigation</h3>
+                <button 
+                  @click="handleCommand('profile')" 
+                  class="menu-button"
+                >
+                  <div class="button-content">
+                    <el-icon :size="24"><User /></el-icon>
+                    <span>Profile</span>
+                  </div>
+                  <span class="menu-shortcut">Ctrl+P</span>
+                </button>
+                
+                <button 
+                  @click="handleCommand('leaderboard')" 
+                  class="menu-button"
+                >
+                  <div class="button-content">
+                    <el-icon :size="24"><Trophy /></el-icon>
+                    <span>Leaderboard</span>
+                  </div>
+                  <span class="menu-shortcut">Ctrl+L</span>
+                </button>
+                
+                <button 
+                  @click="handleCommand('map')" 
+                  class="menu-button"
+                >
+                  <div class="button-content">
+                    <el-icon :size="24"><MapLocation /></el-icon>
+                    <span>Map</span>
+                  </div>
+                  <span class="menu-shortcut">Ctrl+M</span>
+                </button>
+                
+                <button 
+                  @click="handleCommand('events')" 
+                  class="menu-button"
+                >
+                  <el-icon :size="24"><Calendar /></el-icon>
+                  <span>Events</span>
+                </button>
+                
+                <button 
+                  @click="handleCommand('stats')" 
+                  class="menu-button"
+                >
+                  <el-icon :size="24"><DataAnalysis /></el-icon>
+                  <span>Stats</span>
+                </button>
+              </div>
               
-              <button 
-                @click="handleCommand('leaderboard')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><Trophy /></el-icon>
-                <span>Leaderboard</span>
-              </button>
-              
-              <button 
-                @click="handleCommand('map')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><MapLocation /></el-icon>
-                <span>Map</span>
-              </button>
-              
-              <button 
-                @click="handleCommand('events')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><Calendar /></el-icon>
-                <span>Events</span>
-              </button>
-              
-              <button 
-                @click="handleCommand('stats')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><DataAnalysis /></el-icon>
-                <span>Stats</span>
-              </button>
-              
-              <button 
-                @click="handleCommand('settings')" 
-                class="menu-button"
-              >
-                <el-icon :size="24"><Switch /></el-icon>
-                <span>Settings</span>
-              </button>
+              <!-- Quick Settings Section -->
+              <div class="menu-section">
+                <h3 class="menu-section-title">Quick Settings</h3>
+                <div class="toggle-item" @click="toggleSoundEffects">
+                  <div class="toggle-info">
+                    <el-icon :size="24"><Headset /></el-icon>
+                    <span>Sound Effects</span>
+                  </div>
+                  <el-switch
+                    v-model="soundEffectsEnabled"
+                    :disabled="loadingSettings"
+                    @click.stop
+                    @change="toggleSoundEffects"
+                  />
+                </div>
+                
+                <div class="toggle-item" @click="toggleNotifications">
+                  <div class="toggle-info">
+                    <el-icon :size="24"><Bell /></el-icon>
+                    <span>Notifications</span>
+                  </div>
+                  <el-switch
+                    v-model="notificationsEnabled"
+                    :disabled="loadingSettings"
+                    @click.stop
+                    @change="toggleNotifications"
+                  />
+                </div>
+                
+                <button 
+                  @click="handleCommand('settings')" 
+                  class="menu-button"
+                >
+                  <el-icon :size="24"><Switch /></el-icon>
+                  <span>All Settings</span>
+                </button>
+              </div>
             </div>
           </div>
           
@@ -392,11 +479,28 @@ const closeMenu = () => {
   padding: 0 15px 0 10px;
   height: 60px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
   margin-top: 10px;
   border-radius: 8px;
   width: fit-content;
   max-width: 70%;
+  position: relative;
+}
+
+.avatar-button::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  background: rgb(99, 99, 247);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
+}
+
+.avatar-button:hover::after {
+  transform: scaleX(1);
 }
 
 .avatar-button:hover {
@@ -467,7 +571,7 @@ const closeMenu = () => {
 .menu-items {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   width: 100%;
   max-width: 600px;
 }
@@ -489,7 +593,35 @@ const closeMenu = () => {
   display: flex;
   gap: 16px;
   align-items: center;
+  position: relative;
 }
+
+/* Add subtle animation to menu open */
+@keyframes menuItemFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.full-menu-overlay .menu-button,
+.full-menu-overlay .toggle-item {
+  animation: menuItemFadeIn 0.3s ease-out backwards;
+}
+
+.full-menu-overlay .menu-button:nth-child(1) { animation-delay: 0.05s; }
+.full-menu-overlay .menu-button:nth-child(2) { animation-delay: 0.1s; }
+.full-menu-overlay .menu-button:nth-child(3) { animation-delay: 0.15s; }
+.full-menu-overlay .menu-button:nth-child(4) { animation-delay: 0.2s; }
+.full-menu-overlay .menu-button:nth-child(5) { animation-delay: 0.25s; }
+
+.full-menu-overlay .toggle-item:nth-child(1) { animation-delay: 0.3s; }
+.full-menu-overlay .toggle-item:nth-child(2) { animation-delay: 0.35s; }
+.full-menu-overlay .menu-section:last-child .menu-button { animation-delay: 0.4s; }
 
 .close-button-outline {
   padding: 12px 32px;
@@ -567,7 +699,7 @@ const closeMenu = () => {
 .menu-button {
   display: flex;
   align-items: center;
-  gap: 20px;
+  justify-content: space-between;
   width: 100%;
   padding: 24px 32px 24px 20px;
   background-color: transparent;
@@ -579,6 +711,41 @@ const closeMenu = () => {
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(99, 99, 247, 0.1), transparent);
+  transition: width 0.3s ease;
+}
+
+.menu-button:hover::before {
+  width: 100%;
+}
+
+.button-content {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.menu-shortcut {
+  font-size: 13px;
+  color: #737373;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  transition: color 0.2s ease;
+}
+
+.menu-button:hover .menu-shortcut {
+  color: #999;
 }
 
 .menu-button:hover {
@@ -590,6 +757,77 @@ const closeMenu = () => {
 
 .menu-button:active {
   transform: translateX(4px);
+}
+
+/* Section styles */
+.menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.menu-section:not(:last-child) {
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.menu-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #737373;
+  margin: 0 20px 8px;
+  user-select: none;
+}
+
+/* Toggle item styles */
+.toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 32px 18px 20px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.toggle-item:hover {
+  background-color: #262626;
+  border-color: #404040;
+}
+
+.toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  color: var(--color-theme-text-light);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.toggle-item:hover .toggle-info {
+  color: white;
+}
+
+/* Switch override styles */
+:deep(.el-switch) {
+  --el-switch-on-color: rgb(99, 99, 247);
+  --el-switch-off-color: #404040;
+  height: 22px;
+}
+
+:deep(.el-switch__core) {
+  height: 22px;
+  border-radius: 11px;
+}
+
+:deep(.el-switch__button) {
+  height: 18px;
+  width: 18px;
 }
 
 /* Slide animation */
