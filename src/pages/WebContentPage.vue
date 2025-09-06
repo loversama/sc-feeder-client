@@ -86,8 +86,16 @@
               </svg>
             </div>
           </div>
-          
         </div>
+        
+        <!-- WebContentsView Toggle Button (for testing) -->
+        <button
+          @click="toggleWebContentsView"
+          class="ml-4 px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors duration-200"
+          :class="{ 'bg-red-600 hover:bg-red-700': !isWebContentsViewVisible }"
+        >
+          {{ isWebContentsViewVisible ? 'Hide' : 'Show' }} WebView
+        </button>
       </nav>
     </header>
 
@@ -282,7 +290,7 @@
         ref="webcontentsContainer"
         style="width: 100%; height: 100%;"
         class="bg-[#1a1a1a]"
-        :class="{ 'invisible': showSearchDropdown }"
+        :class="{ 'invisible': !isWebContentsViewVisible }"
       >
         <!-- Initial loading placeholder -->
         <div class="flex items-center justify-center h-full text-theme-text-light">
@@ -328,6 +336,7 @@ const currentUsername = ref<string | null>(null);
 const isLoading = ref(false);
 const showLoadingOverlay = ref(false);
 const isWebContentsViewAttached = ref(false);
+const isWebContentsViewVisible = ref(true);
 
 // Search state management
 const searchQuery = ref<string>('');
@@ -537,15 +546,10 @@ const performSearch = async (query: string) => {
     return;
   }
   
-  console.log('[Search Debug] Starting search, hiding WebContentsView');
+  console.log('[Search Debug] Starting search');
   isSearching.value = true;
   showSearchDropdown.value = true;
   selectedIndex.value = -1;
-  
-  // Hide WebContentsView immediately when starting search
-  if (window.electron && window.electron.ipcRenderer) {
-    window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
-  }
   
   // Send loading state to WebContentsView
   await sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
@@ -734,10 +738,6 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
       showSearchDropdown.value = false;
       selectedIndex.value = -1;
       searchInput.value?.blur();
-      // Show WebContentsView when search closes
-      if (window.electron && window.electron.ipcRenderer) {
-        window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
-      }
       break;
   }
 };
@@ -775,10 +775,6 @@ const handleSearchBlur = () => {
     if (!isClickingSearchResult) {
       showSearchDropdown.value = false;
       selectedIndex.value = -1;
-      // Show WebContentsView when search closes
-      if (window.electron && window.electron.ipcRenderer) {
-        window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
-      }
     }
     isClickingSearchResult = false;
     webContentsVisibilityTimer = null;
@@ -807,6 +803,22 @@ const testSearch = () => {
     ],
     organizations: []
   };
+};
+
+// Toggle WebContentsView visibility
+const toggleWebContentsView = () => {
+  console.log('[WebContentsView] Toggling visibility, current state:', isWebContentsViewVisible.value);
+  isWebContentsViewVisible.value = !isWebContentsViewVisible.value;
+  
+  if (window.electron && window.electron.ipcRenderer) {
+    if (isWebContentsViewVisible.value) {
+      console.log('[WebContentsView] Showing WebContentsView');
+      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
+    } else {
+      console.log('[WebContentsView] Hiding WebContentsView');
+      window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+    }
+  }
 };
 
 // Helper functions for search results
@@ -842,12 +854,8 @@ const executeSelectedResult = () => {
 const handleResultClick = (type: 'event' | 'user' | 'organization', item: any) => {
   console.log(`[Search] *** RESULT CLICKED *** Type: ${type}, Item:`, item);
   
-  // Hide dropdown immediately and show WebContentsView
+  // Hide dropdown immediately
   showSearchDropdown.value = false;
-  
-  if (window.electron && window.electron.ipcRenderer) {
-    window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
-  }
   
   // Navigate to appropriate section - setActiveSection will handle search clearing
   switch (type) {
@@ -874,11 +882,6 @@ const navigateToSearchPage = async (query: string) => {
     // Clear search state and hide dropdown
     showSearchDropdown.value = false;
     selectedIndex.value = -1;
-    
-    // Show WebContentsView
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('enhanced-window:show-webcontentsview');
-    }
     
     // Use the enhanced IPC to navigate to the search page with query parameters
     if (window.logMonitorApi && window.logMonitorApi.navigateToSearchPage) {
