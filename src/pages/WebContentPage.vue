@@ -99,50 +99,18 @@
       </nav>
     </header>
 
-    <!-- Full-Screen Search Overlay -->
-    <Transition name="search-overlay">
-      <div 
-        v-if="showSearchDropdown"
-        class="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm z-[9999] overflow-y-auto"
-      >
-        <!-- Search Container -->
-        <div class="min-h-screen flex flex-col">
-          <!-- Close Button -->
-          <button 
-            @click="closeSearch"
-            class="absolute top-6 right-6 p-2 text-gray-400 hover:text-white transition-colors"
-          >
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-          
-          <!-- Search Header -->
-          <div class="container mx-auto px-6 pt-20 pb-8">
-            <h1 class="text-4xl font-bold text-white mb-8 text-center">Search Everything</h1>
-            
-            <!-- Large Search Input -->
-            <div class="max-w-4xl mx-auto relative">
-              <input
-                ref="overlaySearchInput"
-                v-model="searchQuery"
-                @input="handleSearchInput"
-                @keydown="handleKeyNavigation"
-                placeholder="Search events, users, organizations..."
-                class="w-full px-8 py-6 text-2xl bg-[#1a1a1a] border-2 border-[#404040] text-white rounded-xl focus:outline-none focus:border-[rgb(99,99,247)] focus:shadow-[0_0_20px_rgba(99,99,247,0.3)] placeholder-gray-500 transition-all duration-200"
-                type="text"
-                autofocus
-              />
-              <div class="absolute right-6 top-1/2 transform -translate-y-1/2">
-                <div v-if="isSearching" class="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(99,99,247)]"></div>
-                <svg v-else class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                </svg>
-              </div>
-            </div>
-            
-            <!-- Quick filters -->
-            <div class="flex justify-center gap-4 mt-6">
+    <!-- Main WebContentsView Content -->
+    <div class="flex-1 overflow-hidden relative">
+      <!-- Search Overlay (replaces WebContentsView) -->
+      <Transition name="search-overlay">
+        <div 
+          v-if="showSearchDropdown"
+          class="absolute inset-0 bg-[#1a1a1a] overflow-y-auto"
+        >
+          <!-- Search Results Container -->
+          <div class="h-full flex flex-col p-6">
+            <!-- Filter Pills -->
+            <div class="flex justify-center gap-4 mb-6">
               <button 
                 @click="filterType = 'all'"
                 :class="{ 'bg-[rgb(99,99,247)]': filterType === 'all', 'bg-gray-700': filterType !== 'all' }"
@@ -172,20 +140,19 @@
                 Organizations
               </button>
             </div>
-          </div>
-          
-          <!-- Results Container -->
-          <div class="flex-1 container mx-auto px-6 pb-10">
-            <!-- Loading State -->
-            <div v-if="isSearching" class="text-center text-gray-400 py-16">
-              <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(99,99,247)] mb-4"></div>
-              <div class="text-xl">Searching...</div>
-            </div>
+            
+            <!-- Results Container -->
+            <div class="flex-1">
+              <!-- Loading State -->
+              <div v-if="isSearching" class="text-center text-gray-400 py-16">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(99,99,247)] mb-4"></div>
+                <div class="text-xl">Searching...</div>
+              </div>
         
-            <!-- Results Grid -->
-            <div v-else-if="hasResults" class="max-w-6xl mx-auto space-y-8">
-              <!-- Events Section -->
-              <div v-if="(filterType === 'all' || filterType === 'events') && searchResults.events.length > 0" class="bg-[#1a1a1a] rounded-xl p-6">
+              <!-- Results Grid -->
+              <div v-else-if="hasResults" class="space-y-6">
+                <!-- Events Section -->
+                <div v-if="(filterType === 'all' || filterType === 'events') && searchResults.events.length > 0" class="bg-[#262626] rounded-xl p-6">
             <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
               Events ({{ searchResults.events.length }})
             </h3>
@@ -207,10 +174,10 @@
                 </button>
               </div>
             </div>
-          </div>
-          
-          <!-- Users Column -->
-          <div v-if="searchResults.users.length > 0" class="space-y-4">
+                </div>
+                
+                <!-- Users Section -->
+                <div v-if="(filterType === 'all' || filterType === 'users') && searchResults.users.length > 0" class="bg-[#262626] rounded-xl p-6">
             <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
               Users ({{ searchResults.users.length }})
             </h3>
@@ -274,10 +241,10 @@
                 </button>
               </div>
             </div>
-          </div>
-          
-          <!-- Organizations Column -->
-          <div v-if="searchResults.organizations.length > 0" class="space-y-4">
+                </div>
+                
+                <!-- Organizations Section -->
+                <div v-if="(filterType === 'all' || filterType === 'organizations') && searchResults.organizations.length > 0" class="bg-[#262626] rounded-xl p-6">
             <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
               Organizations ({{ searchResults.organizations.length }})
             </h3>
@@ -325,8 +292,8 @@
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+                </div>
+              </div>
             <!-- No Results -->
             <div v-if="!isSearching && searchQuery.trim() && !hasResults" class="text-center text-gray-400 py-16">
               <svg class="w-24 h-24 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -336,20 +303,17 @@
               <div class="text-lg text-gray-500">Try searching for events, usernames, or organization names</div>
             </div>
             
-            <!-- Empty State -->
-            <div v-if="!isSearching && !searchQuery.trim()" class="text-center text-gray-400 py-16">
-              <div class="text-2xl mb-4">Start typing to search</div>
-              <div class="text-lg text-gray-500">Search across events, users, and organizations</div>
+              <!-- Empty State -->
+              <div v-if="!isSearching && !searchQuery.trim()" class="text-center text-gray-400 py-16">
+                <div class="text-2xl mb-4">Start typing to search</div>
+                <div class="text-lg text-gray-500">Search across events, users, and organizations</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Transition>
-
-    <!-- Main WebContentsView Content -->
-    <div class="flex-1 overflow-hidden relative">
+      </Transition>
+      
       <!-- WebContentsView will be attached here by the main process -->
-      <!-- TEMPORARY: Hide WebContentsView while search is open to test z-index issue -->
       <div 
         id="webcontents-container"
         ref="webcontentsContainer"
@@ -418,7 +382,6 @@ const searchQuery = ref<string>('');
 const isSearching = ref<boolean>(false);
 const showSearchDropdown = ref<boolean>(false);
 const searchInput = ref<HTMLInputElement | null>(null);
-const overlaySearchInput = ref<HTMLInputElement | null>(null);
 const selectedIndex = ref<number>(-1);
 const searchTimeout = ref<NodeJS.Timeout | null>(null);
 const lastSentSearchData = ref<string>(''); // Track last sent data to prevent spam
@@ -618,10 +581,6 @@ const handleSearchInput = () => {
       window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
     }
     
-    // Focus the overlay search input
-    nextTick(() => {
-      overlaySearchInput.value?.focus();
-    });
   }
   
   // Hide overlay if search is cleared
@@ -1905,13 +1864,11 @@ onUnmounted(() => {
 .search-overlay-enter-from,
 .search-overlay-leave-to {
   opacity: 0;
-  backdrop-filter: blur(0px);
 }
 
 .search-overlay-enter-to,
 .search-overlay-leave-from {
   opacity: 1;
-  backdrop-filter: blur(8px);
 }
 
 /* Result hover effects */
