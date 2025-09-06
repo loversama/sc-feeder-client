@@ -47,12 +47,12 @@ let isRetryingAuth = false;
 const authRetryDelays = [2000, 5000, 10000, 30000, 60000]; // Authentication retry delays in ms
  
 // Helper function to send status updates to renderer
-function sendConnectionStatus(status: ConnectionStatus, attempts?: number) {
-    if (status !== currentStatus) {
-        logger.info(MODULE_NAME, `Connection status changed: ${currentStatus} -> ${status} (attempts: ${attempts ?? reconnectionAttempt})`);
-        currentStatus = status;
-        getMainWindow()?.webContents.send('connection-status-changed', status, attempts ?? reconnectionAttempt);
-    }
+function sendConnectionStatus(status: ConnectionStatus, attempts?: number, nextDelay?: number) {
+    const actualAttempts = attempts ?? reconnectionAttempt;
+    // Always send if attempts changed, even if status is the same
+    logger.info(MODULE_NAME, `Connection status update: ${status} (attempts: ${actualAttempts}, nextDelay: ${nextDelay}ms)`);
+    currentStatus = status;
+    getMainWindow()?.webContents.send('connection-status-changed', status, actualAttempts, nextDelay);
 }
 let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
 
@@ -183,9 +183,13 @@ function scheduleReconnection(): void {
 
   const nextDelay = getReconnectDelay(reconnectionAttempt);
   logger.warn(MODULE_NAME, `Scheduling reconnection attempt ${reconnectionAttempt + 1} in ${nextDelay / 1000}s`);
+  
+  // Send the disconnected status with the delay that will be used
+  sendConnectionStatus('disconnected', reconnectionAttempt, nextDelay);
 
   reconnectionTimeoutId = setTimeout(async () => {
-    logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt + 1})`);
+    reconnectionAttempt++;
+    logger.info(MODULE_NAME, `Attempting to reconnect... (Attempt ${reconnectionAttempt})`);
     
     // Before reconnecting, check if we need to refresh tokens
     const accessToken = getAccessToken();
@@ -202,7 +206,6 @@ function scheduleReconnection(): void {
     
     // Reconnect with fresh tokens (or guest token if refresh failed)
     connectToServer();
-    reconnectionAttempt++;
   }, nextDelay);
 }
 
@@ -230,7 +233,7 @@ export function connectToServer(): void {
     `Attempting to connect to server at ${SERVER_URL}/client (Env: ${process.env.NODE_ENV}) using ${tokenType}`,
   );
   logger.info(MODULE_NAME, `Using Socket.IO path: ${socketPath}`);
-  sendConnectionStatus('connecting'); // Update status: Connecting
+  sendConnectionStatus('connecting', reconnectionAttempt); // Update status: Connecting with attempt count
 
   // Disconnect previous socket if exists (e.g., if token changed)
   if (socket) {
@@ -323,7 +326,7 @@ export function connectToServer(): void {
     isAuthenticated = false; // Reset auth status on disconnect
     resetAuthRetryState(); // Reset authentication retry state on disconnect
     stopHeartbeat(); // Stop heartbeat when disconnected
-    sendConnectionStatus('disconnected'); // Update status: Disconnected
+    sendConnectionStatus('disconnected', reconnectionAttempt); // Update status: Disconnected with current attempts
  
     // Don't attempt to reconnect if manually disconnected
     if (!socket) {
@@ -337,7 +340,8 @@ export function connectToServer(): void {
  
   socket.on('connect_error', (error: Error) => {
     logger.error(MODULE_NAME, `Connection error: ${error.message}`);
-    sendConnectionStatus('error');
+    // Send 'disconnected' status so UI shows reconnecting message, not error
+    sendConnectionStatus('disconnected', reconnectionAttempt);
 
     // If the error is an authentication failure, clear guest token and retry as new guest
     if (
@@ -690,6 +694,22 @@ function convertProcessedServerEventToClient(serverEvent: any): KillEvent {
   }
 
   return clientEvent;
+}
+
+export function reconnectNow(): void {
+  logger.info(MODULE_NAME, 'Manual reconnection requested');
+  
+  // Clear any pending reconnection timer
+  if (reconnectionTimeoutId) {
+    clearTimeout(reconnectionTimeoutId);
+    reconnectionTimeoutId = null;
+  }
+  
+  // Reset attempt counter for manual reconnection
+  reconnectionAttempt = 0;
+  
+  // Connect immediately
+  connectToServer();
 }
 
 export { connectionEvents };

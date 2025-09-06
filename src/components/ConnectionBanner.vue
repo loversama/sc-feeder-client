@@ -69,6 +69,8 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 const props = defineProps<{
   status: ConnectionStatus;
+  connectionAttempts?: number;
+  nextReconnectDelay?: number;
   hideWhenUpdateActive?: boolean;
 }>();
 
@@ -81,17 +83,9 @@ const showSuccessMessage = ref(false);
 const reconnectAttempt = ref(0);
 const nextReconnectTime = ref(0);
 const countdownInterval = ref<NodeJS.Timeout | null>(null);
-const connectionAttempts = ref(0); // Track total connection attempts
 
-// Progressive reconnection delays: 3s, 5s, 10s, 15s, then 15-30s randomly
-const getReconnectDelay = (attempt: number): number => {
-  const progressiveDelays = [3000, 5000, 10000, 15000];
-  if (attempt < progressiveDelays.length) {
-    return progressiveDelays[attempt];
-  }
-  // After 4 attempts, use random delay between 15-30 seconds
-  return Math.floor(Math.random() * 15000) + 15000; // 15000-30000ms
-};
+// Use prop value or default to 0
+const connectionAttempts = computed(() => props.connectionAttempts ?? 0);
 
 // Computed
 const shouldShowBanner = computed(() => {
@@ -174,7 +168,6 @@ watch(() => props.status, (newStatus, oldStatus) => {
   // Handle successful connection
   if (newStatus === 'connected' && (oldStatus === 'connecting' || oldStatus === 'disconnected')) {
     showSuccessMessage.value = true;
-    connectionAttempts.value = 0; // Reset connection attempts on successful connection
     reconnectAttempt.value = 0;
     nextReconnectTime.value = 0;
     
@@ -185,21 +178,15 @@ watch(() => props.status, (newStatus, oldStatus) => {
   }
   
   // Handle disconnection - start countdown only if under 5 attempts
-  if (newStatus === 'disconnected' && connectionAttempts.value < 5) {
-    const delay = getReconnectDelay(reconnectAttempt.value);
-    startCountdown(delay);
+  if (newStatus === 'disconnected' && connectionAttempts.value < 5 && props.nextReconnectDelay) {
+    startCountdown(props.nextReconnectDelay);
   }
   
-  // Handle reconnection attempt
+  // Handle reconnection attempt tracking
   if (newStatus === 'connecting') {
     if (!oldStatus) {
       // Initial connection on app startup
-      connectionAttempts.value = 0;
       reconnectAttempt.value = 0;
-    } else if (oldStatus === 'disconnected') {
-      // Reconnection after disconnect
-      reconnectAttempt.value++;
-      connectionAttempts.value++;
     }
   }
   
@@ -209,6 +196,13 @@ watch(() => props.status, (newStatus, oldStatus) => {
       clearInterval(countdownInterval.value);
       countdownInterval.value = null;
     }
+  }
+});
+
+// Watch for delay changes to update countdown
+watch(() => props.nextReconnectDelay, (newDelay) => {
+  if (newDelay && props.status === 'disconnected' && connectionAttempts.value < 5) {
+    startCountdown(newDelay);
   }
 });
 

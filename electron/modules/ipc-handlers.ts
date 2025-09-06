@@ -36,7 +36,7 @@ import {
 } from './window-manager.ts';
 
 import { setGuestModeAndRemember } from './auth-manager';
-import { connectToServer } from './server-connection';
+import { connectToServer, reconnectNow } from './server-connection';
 import * as SessionManager from './session-manager.ts'; // Added .ts
 import * as EventProcessor from './event-processor.ts'; // Added .ts
 import * as LogWatcher from './log-watcher.ts'; // Added .ts
@@ -203,7 +203,7 @@ export function registerIpcHandlers() {
     // --- Server Connection Handlers ---
     ipcMain.handle('server:reconnect', async () => {
         logger.info(MODULE_NAME, 'Manual server reconnection requested');
-        connectToServer();
+        reconnectNow();
     });
 
     // --- Settings Handlers ---

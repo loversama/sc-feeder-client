@@ -19,6 +19,7 @@ const isOffline = ref<boolean>(false); // Track offline mode setting
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 const connectionStatus = ref<ConnectionStatus>('connecting'); // Start with 'connecting' on app startup
 const connectionAttempts = ref<number>(0); // Track connection attempts for progressive messaging
+const nextReconnectDelay = ref<number>(0); // Track the actual reconnect delay from server
 const resourcePath = ref<string>(''); // To store the path provided by main process
 const currentGameMode = ref<'PU' | 'AC' | 'Unknown'>('Unknown'); // Added for stable game mode
 const searchQuery = ref<string>(''); // Explicitly type and initialize
@@ -1956,11 +1957,14 @@ onMounted(async () => { // Make onMounted async
     // Add listener for connection status changes
     (() => {
       if (window.logMonitorApi?.onConnectionStatusChanged) {
-        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status, attempts?) => {
-          console.log('[KillFeed] Received connection status update:', status, 'attempts:', attempts);
+        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status, attempts?, delay?) => {
+          console.log('[KillFeed] Received connection status update:', status, 'attempts:', attempts, 'delay:', delay);
           connectionStatus.value = status;
           if (attempts !== undefined) {
             connectionAttempts.value = attempts;
+          }
+          if (delay !== undefined) {
+            nextReconnectDelay.value = delay;
           }
         });
         cleanupFunctions.push(cleanup);
@@ -2330,6 +2334,8 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     <div class="connection-banner-container">
       <ConnectionBanner 
         :status="connectionStatus"
+        :connection-attempts="connectionAttempts"
+        :next-reconnect-delay="nextReconnectDelay"
         :hide-when-update-active="true"
         @reconnect="handleManualReconnect"
       />
@@ -2726,6 +2732,31 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .category-filter-button .category-count {
   margin-left: 4px;
   font-weight: 600;
+}
+
+/* Fix Element Plus dropdown selected item background */
+:global(.el-select-dropdown) {
+  background-color: #1a1a1a !important;
+  border: 1px solid rgba(163, 163, 163, 0.2) !important;
+}
+
+:global(.el-select-dropdown__item) {
+  color: rgb(163, 163, 163) !important;
+  background-color: transparent !important;
+}
+
+:global(.el-select-dropdown__item:hover) {
+  background-color: rgba(99, 99, 247, 0.1) !important;
+}
+
+:global(.el-select-dropdown__item.selected) {
+  color: rgb(99, 99, 247) !important;
+  background-color: rgba(99, 99, 247, 0.15) !important;
+  font-weight: 600;
+}
+
+:global(.el-select-dropdown__item.selected::after) {
+  display: none; /* Remove the default checkmark if present */
 }
 
 /* Category Filter Popover Content */

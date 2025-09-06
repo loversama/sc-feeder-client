@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
-import { ElAvatar, ElMenu, ElMenuItem, ElSubMenu } from 'element-plus'
-import { User, Key, Switch, MapLocation } from '@element-plus/icons-vue'
+import { ElAvatar } from 'element-plus'
+import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
 
 // Props and emits
@@ -14,7 +14,7 @@ const emit = defineEmits<{
 }>()
 
 // State
-const activeIndex = ref('1')
+const isMenuOpen = ref(false)
 const { state: userState, reset: resetUser, updateAuthStatus } = useUserState()
 
 // Computed values for template
@@ -140,13 +140,17 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
 // Handlers
 const handleCommand = async (command: string) => {
   try {
+    closeMenu() // Close menu after any command
+    
     if (command === 'logout') {
       await window.logMonitorApi?.authLogout?.()
       resetUser()
     } else if (command === 'login') {
-      await openExternalSection('profile', 'VOIDLOG.GG - Login')
+      await window.logMonitorApi?.authShowLogin?.()
     } else if (command === 'profile') {
       await openExternalSection('profile', 'VOIDLOG.GG - Profile')
+    } else if (command === 'leaderboard') {
+      await openExternalSection('leaderboard', 'VOIDLOG.GG - Leaderboard')
     } else if (command === 'map') {
       await openExternalSection('map', 'VOIDLOG.GG - Star Citizen Map')
     } else if (command === 'settings') {
@@ -154,6 +158,23 @@ const handleCommand = async (command: string) => {
     }
   } catch (error) {
     console.error('Error handling command:', error)
+  }
+}
+
+const handleRegister = async () => {
+  try {
+    closeMenu()
+    // Always use production URL for registration
+    const registerUrl = 'https://voidlog.gg/register';
+    
+    // Open register page in default browser
+    if (window.logMonitorApi?.openExternal) {
+      await window.logMonitorApi.openExternal(registerUrl);
+    } else {
+      console.error('openExternal API not available');
+    }
+  } catch (error) {
+    console.error('Error opening register page:', error)
   }
 }
 
@@ -178,129 +199,154 @@ onMounted(async () => {
 const changePage = (page: string) => {
   emit('change-page', page)
 }
+
+const toggleMenu = () => {
+  isMenuOpen.value = !isMenuOpen.value
+}
+
+const closeMenu = () => {
+  isMenuOpen.value = false
+}
 </script>
 
 <template>
-  <nav class="nav-container bg-theme-bg-panel shadow">
-    <div class="nav-draggable cet-drag-region pl-5">
-      <el-menu
-        :default-active="activeIndex"
-        mode="horizontal"
-        :ellipsis="false"
-        class="custom-menu"
+  <nav class="nav-container bg-theme-bg-panel shadow relative">
+    <div class="nav-draggable cet-drag-region pl-2">
+      <!-- Avatar Button -->
+      <div 
+        class="avatar-button"
+        @click="toggleMenu"
       >
-        <el-sub-menu index="1" class="w-[60%]">
-          <template #title>
-            <div class="flex items-center gap-4">
-              <el-avatar
-                :size="42"
-                class="bg-gradient-to-br from-[rgb(99,99,247)] to-[rgb(77,77,234)] text-white font-semibold border-2 border-[#404040]"
-                shape="square"
-                :src="avatar"
-              >
-                {{ avatarText }}
-              </el-avatar>
-              <div class="flex flex-col gap-0.5 ml-1.5">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm font-semibold text-theme-text-light leading-none">
-                    {{ displayName }}
-                  </span>
-                  <!-- Role pip -->
-                  <span 
-                    v-if="userRole"
-                    class="px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase rounded border leading-none"
-                    :class="{
-                      'text-red-400 border-red-400': userRole.color === 'red',
-                      'text-orange-400 border-orange-400': userRole.color === 'orange', 
-                      'text-purple-400 border-purple-400': userRole.color === 'purple',
-                      'text-yellow-400 border-yellow-400': userRole.color === 'yellow'
-                    }"
-                  >
-                    {{ userRole.text }}
-                  </span>
-                </div>
-                <span
-                  class="text-[11px] font-medium tracking-widest uppercase leading-none"
-                  :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : (isAuthLoading ? 'text-[#999]' : 'text-[#737373]')"
-                >
-                  {{ isAuthLoading ? 'LOADING...' : (isAuthenticated ? `@${rsiMoniker || rsiHandle || 'Unknown'}` : 'GUEST MODE') }}
-                </span>
-              </div>
-            </div>
-          </template>
-          <el-menu-item index="1-1" @click="handleCommand(isAuthenticated ? 'logout' : 'login')" class="menu-item">
-            <el-icon><Key /></el-icon>
-            <span>{{ isAuthenticated ? 'Logout' : 'Login' }}</span>
-          </el-menu-item>
-          <el-menu-item index="1-2" @click="handleCommand('profile')" class="menu-item">
-            <el-icon><User /></el-icon>
-            <span>Profile</span>
-          </el-menu-item>
-          <el-menu-item index="1-3" @click="handleCommand('map')" class="menu-item">
-            <el-icon><MapLocation /></el-icon>
-            <span>Map</span>
-          </el-menu-item>
-          <el-menu-item index="1-4" @click="handleCommand('settings')" class="menu-item">
-            <el-icon><Switch /></el-icon>
-            <span>Settings</span>
-          </el-menu-item>
-        </el-sub-menu>
-      </el-menu>
+        <el-avatar
+          :size="42"
+          class="bg-gradient-to-br from-[rgb(99,99,247)] to-[rgb(77,77,234)] text-white font-semibold border-2 border-[#404040]"
+          shape="square"
+          :src="avatar"
+        >
+          {{ avatarText }}
+        </el-avatar>
+        <div class="flex flex-col gap-0.5 ml-3">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold text-theme-text-light leading-none">
+              {{ displayName }}
+            </span>
+            <!-- Role pip -->
+            <span 
+              v-if="userRole"
+              class="px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase rounded border leading-none"
+              :class="{
+                'text-red-400 border-red-400': userRole.color === 'red',
+                'text-orange-400 border-orange-400': userRole.color === 'orange', 
+                'text-purple-400 border-purple-400': userRole.color === 'purple',
+                'text-yellow-400 border-yellow-400': userRole.color === 'yellow'
+              }"
+            >
+              {{ userRole.text }}
+            </span>
+          </div>
+          <span
+            class="text-[11px] font-medium tracking-widest uppercase leading-none"
+            :class="isAuthenticated ? 'text-[rgb(99,99,247)]' : (isAuthLoading ? 'text-[#999]' : 'text-[#737373]')"
+          >
+            {{ isAuthLoading ? 'LOADING...' : (isAuthenticated ? `@${rsiMoniker || rsiHandle || 'Unknown'}` : 'GUEST MODE') }}
+          </span>
+        </div>
+        <!-- Chevron indicator -->
+        <el-icon 
+          :size="16" 
+          class="ml-2 chevron-icon"
+          :class="{ 'rotate-180': isMenuOpen }"
+        >
+          <ArrowDown />
+        </el-icon>
+      </div>
     </div>
+    
+    <!-- Full Page Slide-out Menu -->
+    <Transition name="slide-menu">
+      <div v-if="isMenuOpen" class="full-menu-overlay">
+        <div class="menu-content">
+          <!-- Menu Items -->
+          <div class="menu-items-wrapper">
+            <div class="menu-items">
+              <button 
+                @click="handleCommand('profile')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><User /></el-icon>
+                <span>Profile</span>
+              </button>
+              
+              <button 
+                @click="handleCommand('leaderboard')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><Trophy /></el-icon>
+                <span>Leaderboard</span>
+              </button>
+              
+              <button 
+                @click="handleCommand('map')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><MapLocation /></el-icon>
+                <span>Map</span>
+              </button>
+              
+              <button 
+                @click="handleCommand('settings')" 
+                class="menu-button"
+              >
+                <el-icon :size="24"><Switch /></el-icon>
+                <span>Settings</span>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Floating Footer with Action Buttons -->
+          <div class="menu-footer">
+            <div class="footer-buttons">
+              <!-- Login/Register buttons when not authenticated -->
+              <template v-if="!isAuthenticated">
+                <button 
+                  @click="handleCommand('login')"
+                  class="action-button login-button"
+                >
+                  Login
+                </button>
+                <button 
+                  @click="handleRegister"
+                  class="action-button register-button"
+                >
+                  Register
+                </button>
+              </template>
+              
+              <!-- Logout button when authenticated -->
+              <button 
+                v-else
+                @click="handleCommand('logout')"
+                class="action-button logout-button"
+              >
+                Logout
+              </button>
+              
+              <!-- Close button -->
+              <button 
+                @click="closeMenu"
+                class="close-button-outline"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </nav>
 </template>
 
 <style>
-/* Element Plus Menu Overrides */
-.custom-menu {
-  --el-menu-bg-color: transparent !important;
-  --el-menu-border-color: transparent !important;
-  --el-menu-text-color: var(--color-theme-text-light) !important;
-  --el-menu-hover-bg-color: #262626 !important;
-  --el-menu-hover-text-color: white !important;
-  --el-menu-active-color: rgb(99, 99, 247) !important;
-  --el-menu-border-color: transparent !important;
-  height: 80px !important;
-  border: none !important;
-  border-bottom: 0 !important;
-}
-
-.custom-menu :deep(.el-menu-item) {
-  border-bottom: 0 !important;
-}
-
-.el-menu--popup {
-  background-color: #171717 !important;
-  border: 1px solid #262626 !important;
-  padding: 8px !important;
-  border-radius: 8px !important;
-}
-
-.menu-item.el-menu-item {
-  height: 40px !important;
-  line-height: 40px !important;
-  color: var(--color-theme-text-light) !important;
-  margin: 2px 0 !important;
-  border-radius: 4px !important;
-  font-size: 14px !important;
-}
-
-.menu-item.el-menu-item:hover {
-  background-color: #262626 !important;
-  color: white !important;
-}
-
-.menu-item .el-icon {
-  margin-right: 12px !important;
-  font-size: 18px !important;
-}
-
-.el-sub-menu__title {
-  height: 80px !important;
-  line-height: 80px !important;
-  padding: 0 !important;
-}
-
 /* Avatar and Container Styles */
 .nav-container {
   display: flex;
@@ -308,6 +354,8 @@ const changePage = (page: string) => {
   user-select: none;
   width: 100%;
   height: 80px;
+  z-index: 1000;
+  border-bottom: 1px solid #272727;
 }
 
 .nav-draggable {
@@ -315,6 +363,24 @@ const changePage = (page: string) => {
   width: 100%;
   height: 80px;
   align-items: center;
+  position: relative;
+}
+
+.avatar-button {
+  display: flex;
+  align-items: center;
+  padding: 0 15px 0 10px;
+  height: 60px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-top: 10px;
+  border-radius: 8px;
+  width: fit-content;
+  max-width: 70%;
+}
+
+.avatar-button:hover {
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 :deep(.el-avatar) {
@@ -327,12 +393,13 @@ const changePage = (page: string) => {
   transform: scale(1.05);
 }
 
-:deep(.el-menu-item .el-icon) {
-  color: var(--color-theme-text-light) !important;
+.chevron-icon {
+  color: #737373;
+  transition: all 0.3s ease;
 }
 
-:deep(.el-menu-item:hover .el-icon) {
-  color: white !important;
+.avatar-button:hover .chevron-icon {
+  color: var(--color-theme-text-light);
 }
 
 .cet-drag-region {
@@ -344,5 +411,190 @@ const changePage = (page: string) => {
   height: 25px !important;
   z-index: -1;
   -webkit-app-region: drag;
+}
+
+/* Full Page Menu Overlay */
+.full-menu-overlay {
+  position: fixed;
+  top: 81px; /* Just below nav bar border */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #0d0d0d;
+  border-top: 1px solid #272727;
+  z-index: 9999; /* High z-index to ensure it covers everything */
+  overflow: hidden;
+  transform-origin: top;
+}
+
+.menu-content {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-items-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 40px 20px 120px 20px; /* Extra bottom padding for footer */
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.menu-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 24px;
+  background: linear-gradient(to top, #0d0d0d 70%, transparent);
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* Allow clicks to pass through gradient */
+}
+
+.footer-buttons {
+  pointer-events: auto;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.close-button-outline {
+  padding: 12px 32px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.close-button-outline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.8);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.close-button-outline:active {
+  transform: translateY(0);
+}
+
+.action-button {
+  padding: 12px 32px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-button {
+  background: rgb(99, 99, 247);
+  border-color: rgb(99, 99, 247);
+  color: white;
+}
+
+.login-button:hover {
+  background: rgb(77, 77, 234);
+  border-color: rgb(77, 77, 234);
+  transform: translateY(-2px);
+}
+
+.register-button {
+  background: transparent;
+  border-color: rgb(99, 99, 247);
+  color: rgb(99, 99, 247);
+}
+
+.register-button:hover {
+  background: rgb(99, 99, 247);
+  color: white;
+  transform: translateY(-2px);
+}
+
+.logout-button {
+  background: transparent;
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.logout-button:hover {
+  background: #dc2626;
+  color: white;
+  transform: translateY(-2px);
+}
+
+.action-button:active {
+  transform: translateY(0);
+}
+
+.menu-button {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  padding: 24px 32px 24px 20px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--color-theme-text-light);
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.menu-button:hover {
+  background-color: #1a1a1a;
+  border-color: #262626;
+  color: white;
+  transform: translateX(8px);
+}
+
+.menu-button:active {
+  transform: translateX(4px);
+}
+
+/* Slide animation */
+.slide-menu-enter-active,
+.slide-menu-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.slide-menu-enter-from {
+  transform: scaleY(0);
+  opacity: 0;
+}
+
+.slide-menu-enter-to {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+.slide-menu-leave-from {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+.slide-menu-leave-to {
+  transform: scaleY(0);
+  opacity: 0;
 }
 </style>
