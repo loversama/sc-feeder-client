@@ -798,15 +798,14 @@ const closeMenu = () => {
 .menu-section:not(:last-child) {
   margin-bottom: 32px;
   padding-bottom: 32px;
-  border-bottom: 1px solid #2a2a2a;
 }
 
 .menu-section.quick-settings-section {
   margin-top: auto;
   padding-top: 32px;
   border-top: 1px solid #2a2a2a;
-  border-bottom: none;
-  padding-bottom: 0;
+  border-bottom: 1px solid #2a2a2a;
+  padding-bottom: 32px;
   margin-bottom: 0;
 }
 
