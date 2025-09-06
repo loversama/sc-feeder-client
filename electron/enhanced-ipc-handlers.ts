@@ -330,17 +330,30 @@ export function registerEnhancedIPCHandlers(): void {
                 // Focus the window
                 webContentWindow.focus();
                 
-                // Navigate to section if needed
-                if (section && webContentWindow.webContents) {
-                    logger.info(MODULE_NAME, `Sending navigation event for section: ${section}`);
-                    webContentWindow.webContents.send('navigate-to-section', section);
+                // Check if WebContentsView already exists for this window
+                const existingView = windowWebContentsViews.get(webContentWindow.id);
+                
+                if (existingView && existingView.webContents && !existingView.webContents.isDestroyed()) {
+                    // WebContentsView exists, just navigate it
+                    logger.info(MODULE_NAME, `WebContentsView already exists, navigating to ${section}`);
+                    await navigateWebContentsViewToSection(existingView, section);
+                    
+                    // Also send navigation event to the window
+                    if (section && webContentWindow.webContents) {
+                        webContentWindow.webContents.send('navigate-to-section', section);
+                    }
+                } else {
+                    // No WebContentsView exists, create one
+                    logger.info(MODULE_NAME, 'No existing WebContentsView, creating new one');
+                    await createWebContentsViewForWindow(webContentWindow, section);
                 }
+            } else {
+                // Window doesn't exist, create it with WebContentsView
+                logger.info(MODULE_NAME, 'Creating new web content window with WebContentsView');
+                await createWebContentsViewForWindow(webContentWindow, section);
             }
             
-            // Create WebContentsView for the web content window
-            const webContentView = await createWebContentsViewForWindow(webContentWindow, section);
-            
-            logger.info(MODULE_NAME, 'WebContentsView attached to web content window successfully');
+            logger.info(MODULE_NAME, 'WebContentsView navigation completed successfully');
             
             return {
                 success: true,
@@ -1250,9 +1263,45 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
             return;
         }
         
-        const isDevelopment = process.env.NODE_ENV === 'development';
-        const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
+        logger.info(MODULE_NAME, `Navigating WebContentsView to section: ${section}`);
         
+        // First, try to navigate using the web app's internal navigation (MUCH faster)
+        const currentUrl = webContentView.webContents.getURL();
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const expectedDomain = isDevelopment ? 'localhost' : 'voidlog.gg';
+        
+        // Check if we're already on the web app
+        if (currentUrl && currentUrl.includes(expectedDomain)) {
+            logger.info(MODULE_NAME, `Already on web app, using fast internal navigation`);
+            
+            // Send a custom event to trigger internal navigation
+            const navigationScript = `
+                // Dispatch custom navigation event
+                window.dispatchEvent(new CustomEvent('web-content-navigate', { 
+                    detail: { section: '${section}' } 
+                }));
+                
+                // Also try direct navigation for WebContentPage
+                if (window.setActiveSection) {
+                    window.setActiveSection('${section}');
+                }
+                
+                true;
+            `;
+            
+            try {
+                await webContentView.webContents.executeJavaScript(navigationScript);
+                logger.info(MODULE_NAME, `Fast navigation to ${section} completed`);
+                return; // Fast path complete
+            } catch (err) {
+                logger.warn(MODULE_NAME, `Fast navigation failed, falling back to URL navigation:`, err);
+            }
+        }
+        
+        // Fallback to full URL navigation (slower but reliable)
+        logger.info(MODULE_NAME, `Using full URL navigation (slower path)`);
+        
+        const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
         const currentTokens = getCurrentAuthTokens();
         let url = webAppBaseUrl;
         
@@ -1261,7 +1310,6 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
                 if (currentTokens?.user?.username) {
                     url += `/user/${currentTokens.user.username}`;
                 } else {
-                    // Use last known username when not authenticated
                     const lastKnownUser = getLastLoggedInUser();
                     if (lastKnownUser) {
                         url += `/user/${lastKnownUser}`;
@@ -1292,27 +1340,8 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
             url += '&auth=true';
         }
 
-        logger.info(MODULE_NAME, `Navigating WebContentsView to section: ${section} - ${url}`);
+        logger.info(MODULE_NAME, `Loading URL: ${url}`);
         await webContentView.webContents.loadURL(url);
-        
-        // Add debugging to check if content loads
-        webContentView.webContents.once('dom-ready', () => {
-            logger.info(MODULE_NAME, `WebContentsView DOM ready for ${url}`);
-            
-            // Check if the page has content
-            webContentView.webContents.executeJavaScript(`
-                const body = document.body;
-                const hasContent = body && body.innerHTML.trim().length > 0;
-                console.log('[WebContentsView] Page has content:', hasContent);
-                console.log('[WebContentsView] Body innerHTML length:', body ? body.innerHTML.length : 0);
-                console.log('[WebContentsView] Document title:', document.title);
-                hasContent;
-            `).then(hasContent => {
-                logger.info(MODULE_NAME, `WebContentsView content check - Has content: ${hasContent}`);
-            }).catch(err => {
-                logger.error(MODULE_NAME, `Failed to check WebContentsView content:`, err);
-            });
-        });
     } catch (error) {
         logger.error(MODULE_NAME, `Failed to navigate WebContentsView to section ${section}:`, error);
     }

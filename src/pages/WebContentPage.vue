@@ -1417,6 +1417,10 @@ onMounted(async () => {
 
   // Notify main process that WebContentPage is ready and attach WebContentsView
   await notifyMainProcessReady();
+  
+  // Expose setActiveSection globally for fast navigation
+  (window as any).setActiveSection = setActiveSection;
+  console.log('[WebContentPage] Exposed setActiveSection globally for fast navigation');
 
   // Listen for navigation requests from main process
   window.addEventListener('web-content-navigate', (event: any) => {
