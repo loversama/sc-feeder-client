@@ -389,12 +389,9 @@ const getTruncatedFileName = (path: string): string => {
   const fileName = getFileName(path);
   if (!fileName) return '';
   
-  // Truncate to 17 characters
-  if (fileName.length > 17) {
-    const extension = fileName.lastIndexOf('.') > -1 ? fileName.slice(fileName.lastIndexOf('.')) : '';
-    const nameWithoutExt = fileName.slice(0, fileName.lastIndexOf('.'));
-    const truncatedName = nameWithoutExt.slice(0, 13) + '...';
-    return truncatedName + extension;
+  // Truncate to 16 characters total (including extension)
+  if (fileName.length > 16) {
+    return fileName.slice(0, 13) + '...';
   }
   
   return fileName;
@@ -531,7 +528,8 @@ const getTruncatedFileName = (path: string): string => {
 
 /* Custom file button styling */
 .custom-file-button {
-  max-width: 160px;
+  width: 140px !important;
+  min-width: 140px !important;
   display: inline-flex !important;
   align-items: center;
   overflow: hidden;
@@ -539,7 +537,7 @@ const getTruncatedFileName = (path: string): string => {
 
 .file-name {
   display: inline-block;
-  max-width: 120px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
