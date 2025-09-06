@@ -107,14 +107,15 @@ watch(isAuthenticated, (newVal, oldVal) => {
 const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'account', title?: string) => {
   try {
     // First try the new enhanced WebContentsView system for Steam-like embedded experience
-    // Note: events and stats don't use WebContentsView, they open external windows
-    if (['profile', 'leaderboard', 'map'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {
+    if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(section) && window.logMonitorApi?.openEnhancedWebContentWindow) {
       try {
         console.log(`[Navigation] Attempting enhanced WebContentsView for ${section}`);
+        console.log(`[Navigation] This will create/restore/focus the web content window and navigate to ${section}`);
+        
         const result = await window.logMonitorApi.openEnhancedWebContentWindow(section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats');
         
         if (result?.success) {
-          console.log(`[Navigation] Enhanced WebContentsView opened successfully for ${section}:`, result);
+          console.log(`[Navigation] Enhanced WebContentsView opened/focused successfully for ${section}:`, result);
           return;
         } else {
           console.warn(`[Navigation] Enhanced WebContentsView failed for ${section}:`, result?.error);

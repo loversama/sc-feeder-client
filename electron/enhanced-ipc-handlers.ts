@@ -308,7 +308,36 @@ export function registerEnhancedIPCHandlers(): void {
             }
             
             if (!webContentWindow) {
-                throw new Error('Web content window not found');
+                logger.info(MODULE_NAME, 'Web content window not found, creating new one');
+                
+                // Import createWebContentWindow from window-manager
+                const { createWebContentWindow } = await import('./modules/window-manager');
+                
+                // Create the window - this handles minimized/restore automatically
+                webContentWindow = createWebContentWindow(section);
+                
+                if (!webContentWindow) {
+                    throw new Error('Failed to create web content window');
+                }
+                
+                logger.info(MODULE_NAME, 'Created new web content window');
+            } else {
+                logger.info(MODULE_NAME, 'Found existing web content window');
+                
+                // Restore if minimized
+                if (webContentWindow.isMinimized()) {
+                    logger.info(MODULE_NAME, 'Window is minimized, restoring...');
+                    webContentWindow.restore();
+                }
+                
+                // Focus the window
+                webContentWindow.focus();
+                
+                // Navigate to section if needed
+                if (section && webContentWindow.webContents) {
+                    logger.info(MODULE_NAME, `Sending navigation event for section: ${section}`);
+                    webContentWindow.webContents.send('navigate-to-section', section);
+                }
             }
             
             // Create WebContentsView for the web content window
