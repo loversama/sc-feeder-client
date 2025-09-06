@@ -93,10 +93,17 @@
 
     <!-- Search Megamenu -->
     <div 
-      v-if="showSearchDropdown && (searchResults.events.length > 0 || searchResults.users.length > 0 || searchResults.organizations.length > 0 || isSearching)"
+      v-if="showSearchDropdown"
       class="w-full bg-[#2c2c2c] border-b border-[#404040] shadow-lg z-[9999]"
     >
       <div class="container mx-auto px-6 py-6">
+        <!-- Debug info -->
+        <div class="text-xs text-gray-500 mb-2 bg-gray-800 p-2 rounded">
+          Debug: showSearchDropdown={{ showSearchDropdown }}, isSearching={{ isSearching }}, 
+          query="{{ searchQuery }}", events={{ searchResults.events.length }}, 
+          users={{ searchResults.users.length }}, orgs={{ searchResults.organizations.length }}
+        </div>
+        
         <!-- Loading State -->
         <div v-if="isSearching" class="text-center text-gray-400 py-8">
           <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[rgb(99,99,247)] mr-3"></div>
@@ -253,6 +260,15 @@
         <div v-if="!isSearching && searchQuery.trim() && searchResults.events.length === 0 && searchResults.users.length === 0 && searchResults.organizations.length === 0" class="text-center text-gray-400 py-12">
           <div class="text-lg mb-2">No results found for "{{ searchQuery }}"</div>
           <div class="text-sm">Try searching for events, usernames, or organization names</div>
+        </div>
+        
+        <!-- Test Content - Always shows if dropdown is visible -->
+        <div v-if="!isSearching && !searchQuery.trim()" class="text-center text-gray-400 py-8">
+          <div class="text-lg">Type to search...</div>
+          <div class="text-sm mt-2">Search for events, users, or organizations</div>
+          <button @click="testSearch" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded">
+            Test Search (Force Show)
+          </button>
         </div>
       </div>
     </div>
@@ -510,7 +526,10 @@ const handleSearchInput = () => {
 };
 
 const performSearch = async (query: string) => {
+  console.log('[Search Debug] performSearch called with query:', query);
+  
   if (!query.trim()) {
+    console.log('[Search Debug] Empty query, clearing results');
     searchResults.value = { events: [], users: [], organizations: [] };
     showSearchDropdown.value = false;
     // Send empty search to WebContentsView
@@ -518,9 +537,15 @@ const performSearch = async (query: string) => {
     return;
   }
   
+  console.log('[Search Debug] Starting search, hiding WebContentsView');
   isSearching.value = true;
   showSearchDropdown.value = true;
   selectedIndex.value = -1;
+  
+  // Hide WebContentsView immediately when starting search
+  if (window.electron && window.electron.ipcRenderer) {
+    window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+  }
   
   // Send loading state to WebContentsView
   await sendSearchDataToWebContentsView(query, true, { events: [], users: [], organizations: [] });
@@ -721,19 +746,18 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
 let webContentsVisibilityTimer: NodeJS.Timeout | null = null;
 
 const handleSearchFocus = () => {
-  if (searchQuery.value.trim() && (searchResults.value.events.length > 0 || searchResults.value.users.length > 0 || searchResults.value.organizations.length > 0)) {
-    showSearchDropdown.value = true;
-    
+  console.log('[Search Debug] handleSearchFocus called, query:', searchQuery.value);
+  
+  // Always perform search on focus if there's a query
+  if (searchQuery.value.trim()) {
     // Cancel any pending show operation
     if (webContentsVisibilityTimer) {
       clearTimeout(webContentsVisibilityTimer);
       webContentsVisibilityTimer = null;
     }
     
-    // Hide WebContentsView when search opens
-    if (window.electron && window.electron.ipcRenderer) {
-      window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
-    }
+    // Trigger immediate search
+    performSearch(searchQuery.value);
   }
 };
 
@@ -759,6 +783,30 @@ const handleSearchBlur = () => {
     isClickingSearchResult = false;
     webContentsVisibilityTimer = null;
   }, 100);
+};
+
+// Test function to force show dropdown
+const testSearch = () => {
+  console.log('[Search Test] Forcing dropdown to show');
+  showSearchDropdown.value = true;
+  
+  // Hide WebContentsView
+  if (window.electron && window.electron.ipcRenderer) {
+    window.electron.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+  }
+  
+  // Add some test results
+  searchResults.value = {
+    events: [
+      { id: '1', title: 'Test Event 1', type: 'kill', timestamp: Date.now() },
+      { id: '2', title: 'Test Event 2', type: 'death', timestamp: Date.now() }
+    ],
+    users: [
+      { id: '1', username: 'TestUser1', pfpUrl: null },
+      { id: '2', username: 'TestUser2', pfpUrl: null }
+    ],
+    organizations: []
+  };
 };
 
 // Helper functions for search results
