@@ -379,8 +379,11 @@ const closeMenu = () => {
                 </button>
               </div>
               
+              <!-- Spacer to push Quick Settings down -->
+              <div style="flex: 1; min-height: 40px;"></div>
+              
               <!-- Quick Settings Section -->
-              <div class="menu-section">
+              <div class="menu-section quick-settings-section">
                 <h3 class="menu-section-title">Quick Settings</h3>
                 <div class="toggle-item" @click="toggleSoundEffects">
                   <div class="toggle-info">
@@ -412,16 +415,20 @@ const closeMenu = () => {
                   @click="handleCommand('account-settings')" 
                   class="menu-button"
                 >
-                  <el-icon :size="24"><Key /></el-icon>
-                  <span>Account Settings</span>
+                  <div class="button-content">
+                    <el-icon :size="24"><Key /></el-icon>
+                    <span>Account Settings</span>
+                  </div>
                 </button>
                 
                 <button 
                   @click="handleCommand('settings')" 
                   class="menu-button"
                 >
-                  <el-icon :size="24"><Switch /></el-icon>
-                  <span>Client Settings</span>
+                  <div class="button-content">
+                    <el-icon :size="24"><Switch /></el-icon>
+                    <span>Client Settings</span>
+                  </div>
                 </button>
               </div>
             </div>
@@ -581,8 +588,10 @@ const closeMenu = () => {
   overflow-x: hidden;
   padding: 40px 20px 120px 20px; /* Extra bottom padding for footer */
   display: flex;
-  justify-content: flex-start;
+  flex-direction: column;
+  justify-content: space-between;
   padding-left: 10px;
+  min-height: calc(100vh - 81px); /* Full height minus nav bar */
 }
 
 .menu-items {
@@ -591,10 +600,12 @@ const closeMenu = () => {
   gap: 0;
   width: 100%;
   max-width: 600px;
+  justify-content: space-between;
+  flex: 1;
 }
 
 .menu-footer {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
@@ -788,6 +799,15 @@ const closeMenu = () => {
   margin-bottom: 32px;
   padding-bottom: 32px;
   border-bottom: 1px solid #2a2a2a;
+}
+
+.menu-section.quick-settings-section {
+  margin-top: auto;
+  padding-top: 32px;
+  border-top: 1px solid #2a2a2a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .menu-section-title {
