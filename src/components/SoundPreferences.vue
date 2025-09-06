@@ -39,13 +39,13 @@
             size="small"
             type="info"
             plain
-            class="max-w-[150px]"
+            class="custom-file-button"
           >
-            <el-icon v-if="!soundPreferences.eventSounds[eventType].path || soundPreferences.eventSounds[eventType].path === '' || soundPreferences.eventSounds[eventType].path.startsWith('kill-event')">
+            <el-icon>
               <Folder />
             </el-icon>
-            <span class="ml-1 truncate">
-              {{ getFileName(soundPreferences.eventSounds[eventType].path) || 'Choose File' }}
+            <span class="ml-1 file-name">
+              {{ getTruncatedFileName(soundPreferences.eventSounds[eventType].path) || 'Choose File' }}
             </span>
           </el-button>
           
@@ -92,7 +92,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
-import { CaretRight } from '@element-plus/icons-vue';
+import { CaretRight, Folder } from '@element-plus/icons-vue';
 import type { SoundPreferences, SoundConfig } from '../../shared/types';
 
 // Debounce helper
@@ -383,6 +383,22 @@ const getFileName = (path: string): string => {
   if (!path || path === 'kill-event') return '';
   return path.split(/[/\\]/).pop() || path;
 };
+
+// Get truncated filename for display
+const getTruncatedFileName = (path: string): string => {
+  const fileName = getFileName(path);
+  if (!fileName) return '';
+  
+  // Truncate to 17 characters
+  if (fileName.length > 17) {
+    const extension = fileName.lastIndexOf('.') > -1 ? fileName.slice(fileName.lastIndexOf('.')) : '';
+    const nameWithoutExt = fileName.slice(0, fileName.lastIndexOf('.'));
+    const truncatedName = nameWithoutExt.slice(0, 13) + '...';
+    return truncatedName + extension;
+  }
+  
+  return fileName;
+};
 </script>
 
 <style scoped>
@@ -511,5 +527,21 @@ const getFileName = (path: string): string => {
   background-color: var(--color-theme-bg-panel);
   border-color: var(--color-theme-primary);
   color: var(--color-theme-text-white);
+}
+
+/* Custom file button styling */
+.custom-file-button {
+  max-width: 160px;
+  display: inline-flex !important;
+  align-items: center;
+  overflow: hidden;
+}
+
+.file-name {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
