@@ -99,29 +99,93 @@
       </nav>
     </header>
 
-    <!-- Search Megamenu -->
-    <div 
-      v-if="showSearchDropdown"
-      class="w-full bg-[#2c2c2c] border-b border-[#404040] shadow-lg z-[9999]"
-    >
-      <div class="container mx-auto px-6 py-6">
-        <!-- Debug info -->
-        <div class="text-xs text-gray-500 mb-2 bg-gray-800 p-2 rounded">
-          Debug: showSearchDropdown={{ showSearchDropdown }}, isSearching={{ isSearching }}, 
-          query="{{ searchQuery }}", events={{ searchResults.events.length }}, 
-          users={{ searchResults.users.length }}, orgs={{ searchResults.organizations.length }}
-        </div>
+    <!-- Full-Screen Search Overlay -->
+    <Transition name="search-overlay">
+      <div 
+        v-if="showSearchDropdown"
+        class="fixed inset-0 bg-[#0a0a0a]/95 backdrop-blur-sm z-[9999] overflow-y-auto"
+      >
+        <!-- Search Container -->
+        <div class="min-h-screen flex flex-col">
+          <!-- Close Button -->
+          <button 
+            @click="closeSearch"
+            class="absolute top-6 right-6 p-2 text-gray-400 hover:text-white transition-colors"
+          >
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+          
+          <!-- Search Header -->
+          <div class="container mx-auto px-6 pt-20 pb-8">
+            <h1 class="text-4xl font-bold text-white mb-8 text-center">Search Everything</h1>
+            
+            <!-- Large Search Input -->
+            <div class="max-w-4xl mx-auto relative">
+              <input
+                ref="overlaySearchInput"
+                v-model="searchQuery"
+                @input="handleSearchInput"
+                @keydown="handleKeyNavigation"
+                placeholder="Search events, users, organizations..."
+                class="w-full px-8 py-6 text-2xl bg-[#1a1a1a] border-2 border-[#404040] text-white rounded-xl focus:outline-none focus:border-[rgb(99,99,247)] focus:shadow-[0_0_20px_rgba(99,99,247,0.3)] placeholder-gray-500 transition-all duration-200"
+                type="text"
+                autofocus
+              />
+              <div class="absolute right-6 top-1/2 transform -translate-y-1/2">
+                <div v-if="isSearching" class="animate-spin rounded-full h-8 w-8 border-b-2 border-[rgb(99,99,247)]"></div>
+                <svg v-else class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+              </div>
+            </div>
+            
+            <!-- Quick filters -->
+            <div class="flex justify-center gap-4 mt-6">
+              <button 
+                @click="filterType = 'all'"
+                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'all', 'bg-gray-700': filterType !== 'all' }"
+                class="px-4 py-2 rounded-lg text-white transition-colors"
+              >
+                All
+              </button>
+              <button 
+                @click="filterType = 'events'"
+                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'events', 'bg-gray-700': filterType !== 'events' }"
+                class="px-4 py-2 rounded-lg text-white transition-colors"
+              >
+                Events
+              </button>
+              <button 
+                @click="filterType = 'users'"
+                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'users', 'bg-gray-700': filterType !== 'users' }"
+                class="px-4 py-2 rounded-lg text-white transition-colors"
+              >
+                Users
+              </button>
+              <button 
+                @click="filterType = 'organizations'"
+                :class="{ 'bg-[rgb(99,99,247)]': filterType === 'organizations', 'bg-gray-700': filterType !== 'organizations' }"
+                class="px-4 py-2 rounded-lg text-white transition-colors"
+              >
+                Organizations
+              </button>
+            </div>
+          </div>
+          
+          <!-- Results Container -->
+          <div class="flex-1 container mx-auto px-6 pb-10">
+            <!-- Loading State -->
+            <div v-if="isSearching" class="text-center text-gray-400 py-16">
+              <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[rgb(99,99,247)] mb-4"></div>
+              <div class="text-xl">Searching...</div>
+            </div>
         
-        <!-- Loading State -->
-        <div v-if="isSearching" class="text-center text-gray-400 py-8">
-          <div class="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-[rgb(99,99,247)] mr-3"></div>
-          <span class="text-lg">Searching...</span>
-        </div>
-        
-        <!-- Results Grid -->
-        <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <!-- Events Column -->
-          <div v-if="searchResults.events.length > 0" class="space-y-4">
+            <!-- Results Grid -->
+            <div v-else-if="hasResults" class="max-w-6xl mx-auto space-y-8">
+              <!-- Events Section -->
+              <div v-if="(filterType === 'all' || filterType === 'events') && searchResults.events.length > 0" class="bg-[#1a1a1a] rounded-xl p-6">
             <h3 class="text-lg font-semibold text-white border-b border-[#404040] pb-2">
               Events ({{ searchResults.events.length }})
             </h3>
@@ -263,23 +327,24 @@
             </div>
           </div>
         </div>
-        
-        <!-- No Results -->
-        <div v-if="!isSearching && searchQuery.trim() && searchResults.events.length === 0 && searchResults.users.length === 0 && searchResults.organizations.length === 0" class="text-center text-gray-400 py-12">
-          <div class="text-lg mb-2">No results found for "{{ searchQuery }}"</div>
-          <div class="text-sm">Try searching for events, usernames, or organization names</div>
-        </div>
-        
-        <!-- Test Content - Always shows if dropdown is visible -->
-        <div v-if="!isSearching && !searchQuery.trim()" class="text-center text-gray-400 py-8">
-          <div class="text-lg">Type to search...</div>
-          <div class="text-sm mt-2">Search for events, users, or organizations</div>
-          <button @click="testSearch" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded">
-            Test Search (Force Show)
-          </button>
+            <!-- No Results -->
+            <div v-if="!isSearching && searchQuery.trim() && !hasResults" class="text-center text-gray-400 py-16">
+              <svg class="w-24 h-24 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <div class="text-2xl mb-2">No results found for "{{ searchQuery }}"</div>
+              <div class="text-lg text-gray-500">Try searching for events, usernames, or organization names</div>
+            </div>
+            
+            <!-- Empty State -->
+            <div v-if="!isSearching && !searchQuery.trim()" class="text-center text-gray-400 py-16">
+              <div class="text-2xl mb-4">Start typing to search</div>
+              <div class="text-lg text-gray-500">Search across events, users, and organizations</div>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
 
     <!-- Main WebContentsView Content -->
     <div class="flex-1 overflow-hidden relative">
@@ -321,7 +386,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import type { IpcRendererEvent } from 'electron';
 import type { AuthData, UserProfile } from '../preload';
 
@@ -353,10 +418,12 @@ const searchQuery = ref<string>('');
 const isSearching = ref<boolean>(false);
 const showSearchDropdown = ref<boolean>(false);
 const searchInput = ref<HTMLInputElement | null>(null);
+const overlaySearchInput = ref<HTMLInputElement | null>(null);
 const selectedIndex = ref<number>(-1);
 const searchTimeout = ref<NodeJS.Timeout | null>(null);
 const lastSentSearchData = ref<string>(''); // Track last sent data to prevent spam
 const searchHealthCheckInterval = ref<NodeJS.Timeout | null>(null); // Health check for search state
+const filterType = ref<'all' | 'events' | 'users' | 'organizations'>('all');
 
 // Reset search state after page navigation
 const resetSearchState = async () => {
@@ -528,19 +595,45 @@ const searchResults = ref<{
   organizations: []
 });
 
+// Computed properties
+const hasResults = computed(() => {
+  return searchResults.value.events.length > 0 || 
+         searchResults.value.users.length > 0 || 
+         searchResults.value.organizations.length > 0;
+});
+
 // Search functionality
 const handleSearchInput = () => {
   if (searchTimeout.value) {
     clearTimeout(searchTimeout.value);
   }
   
-  // Reset search state if needed to ensure DOM bridge works
-  if (lastSentSearchData.value && !searchQuery.value.trim()) {
-    resetSearchState();
+  // Auto-show search overlay and hide WebContentsView after 3 characters
+  if (searchQuery.value.length >= 3 && !showSearchDropdown.value) {
+    showSearchDropdown.value = true;
+    isWebContentsViewVisible.value = false;
+    
+    // Hide WebContentsView
+    if (window.ipcRenderer) {
+      window.ipcRenderer.send('enhanced-window:hide-webcontentsview');
+    }
+    
+    // Focus the overlay search input
+    nextTick(() => {
+      overlaySearchInput.value?.focus();
+    });
+  }
+  
+  // Hide overlay if search is cleared
+  if (!searchQuery.value.trim() && showSearchDropdown.value) {
+    closeSearch();
+    return;
   }
   
   searchTimeout.value = setTimeout(() => {
-    performSearch(searchQuery.value);
+    if (searchQuery.value.length >= 3) {
+      performSearch(searchQuery.value);
+    }
   }, 300); // 300ms debounce
 };
 
@@ -745,9 +838,9 @@ const handleKeyNavigation = (event: KeyboardEvent) => {
       break;
     case 'Escape':
       event.preventDefault();
-      showSearchDropdown.value = false;
-      selectedIndex.value = -1;
-      searchInput.value?.blur();
+      if (showSearchDropdown.value) {
+        closeSearch();
+      }
       break;
   }
 };
@@ -813,6 +906,26 @@ const testSearch = () => {
     ],
     organizations: []
   };
+};
+
+// Close search overlay
+const closeSearch = () => {
+  console.log('[Search] Closing search overlay');
+  showSearchDropdown.value = false;
+  searchQuery.value = '';
+  searchResults.value = { events: [], users: [], organizations: [] };
+  selectedIndex.value = -1;
+  isWebContentsViewVisible.value = true;
+  
+  // Show WebContentsView
+  if (window.ipcRenderer) {
+    window.ipcRenderer.send('enhanced-window:show-webcontentsview');
+  }
+  
+  // Focus back to main search input
+  nextTick(() => {
+    searchInput.value?.focus();
+  });
 };
 
 // Toggle WebContentsView visibility
@@ -1781,6 +1894,35 @@ onUnmounted(() => {
 });
 
 </script>
+
+<style scoped>
+/* Search overlay transition */
+.search-overlay-enter-active,
+.search-overlay-leave-active {
+  transition: all 0.3s ease;
+}
+
+.search-overlay-enter-from,
+.search-overlay-leave-to {
+  opacity: 0;
+  backdrop-filter: blur(0px);
+}
+
+.search-overlay-enter-to,
+.search-overlay-leave-from {
+  opacity: 1;
+  backdrop-filter: blur(8px);
+}
+
+/* Result hover effects */
+.result-item {
+  transition: all 0.2s ease;
+}
+
+.result-item:hover {
+  transform: translateX(4px);
+}
+</style>
 
 <style scoped>
 /* Custom titlebar styles */
