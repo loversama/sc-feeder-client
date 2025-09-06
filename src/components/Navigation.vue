@@ -200,6 +200,9 @@ const handleCommand = async (command: string) => {
       await openExternalSection('stats', 'VOIDLOG.GG - Stats')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
+    } else if (command === 'account-settings') {
+      // Open profile page which contains account settings
+      await openExternalSection('profile', 'VOIDLOG.GG - Account Settings')
     }
   } catch (error) {
     console.error('Error handling command:', error)
@@ -357,16 +360,22 @@ const closeMenu = () => {
                   @click="handleCommand('events')" 
                   class="menu-button"
                 >
-                  <el-icon :size="24"><Calendar /></el-icon>
-                  <span>Events</span>
+                  <div class="button-content">
+                    <el-icon :size="24"><Calendar /></el-icon>
+                    <span>Events</span>
+                  </div>
+                  <span class="menu-shortcut">Ctrl+E</span>
                 </button>
                 
                 <button 
                   @click="handleCommand('stats')" 
                   class="menu-button"
                 >
-                  <el-icon :size="24"><DataAnalysis /></el-icon>
-                  <span>Stats</span>
+                  <div class="button-content">
+                    <el-icon :size="24"><DataAnalysis /></el-icon>
+                    <span>Stats</span>
+                  </div>
+                  <span class="menu-shortcut">Ctrl+S</span>
                 </button>
               </div>
               
@@ -400,11 +409,19 @@ const closeMenu = () => {
                 </div>
                 
                 <button 
+                  @click="handleCommand('account-settings')" 
+                  class="menu-button"
+                >
+                  <el-icon :size="24"><Key /></el-icon>
+                  <span>Account Settings</span>
+                </button>
+                
+                <button 
                   @click="handleCommand('settings')" 
                   class="menu-button"
                 >
                   <el-icon :size="24"><Switch /></el-icon>
-                  <span>All Settings</span>
+                  <span>Client Settings</span>
                 </button>
               </div>
             </div>
@@ -613,15 +630,16 @@ const closeMenu = () => {
   animation: menuItemFadeIn 0.3s ease-out backwards;
 }
 
-.full-menu-overlay .menu-button:nth-child(1) { animation-delay: 0.05s; }
-.full-menu-overlay .menu-button:nth-child(2) { animation-delay: 0.1s; }
-.full-menu-overlay .menu-button:nth-child(3) { animation-delay: 0.15s; }
-.full-menu-overlay .menu-button:nth-child(4) { animation-delay: 0.2s; }
-.full-menu-overlay .menu-button:nth-child(5) { animation-delay: 0.25s; }
+.full-menu-overlay .menu-section:nth-child(1) .menu-button:nth-of-type(1) { animation-delay: 0.05s; }
+.full-menu-overlay .menu-section:nth-child(1) .menu-button:nth-of-type(2) { animation-delay: 0.1s; }
+.full-menu-overlay .menu-section:nth-child(1) .menu-button:nth-of-type(3) { animation-delay: 0.15s; }
+.full-menu-overlay .menu-section:nth-child(1) .menu-button:nth-of-type(4) { animation-delay: 0.2s; }
+.full-menu-overlay .menu-section:nth-child(1) .menu-button:nth-of-type(5) { animation-delay: 0.25s; }
 
-.full-menu-overlay .toggle-item:nth-child(1) { animation-delay: 0.3s; }
-.full-menu-overlay .toggle-item:nth-child(2) { animation-delay: 0.35s; }
-.full-menu-overlay .menu-section:last-child .menu-button { animation-delay: 0.4s; }
+.full-menu-overlay .menu-section:nth-child(2) .toggle-item:nth-of-type(1) { animation-delay: 0.3s; }
+.full-menu-overlay .menu-section:nth-child(2) .toggle-item:nth-of-type(2) { animation-delay: 0.35s; }
+.full-menu-overlay .menu-section:nth-child(2) .menu-button:nth-of-type(1) { animation-delay: 0.4s; }
+.full-menu-overlay .menu-section:nth-child(2) .menu-button:nth-of-type(2) { animation-delay: 0.45s; }
 
 .close-button-outline {
   padding: 12px 32px;
