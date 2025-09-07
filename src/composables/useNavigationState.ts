@@ -38,8 +38,12 @@ export function useNavigationState() {
       return;
     }
     
-    // Don't navigate if already on the same section
-    if (currentSection.value === section && webContentWindowOpen.value) {
+    // Update state immediately for UI responsiveness
+    const previousSection = currentSection.value;
+    currentSection.value = section;
+    
+    // If window is already open and on the same section, just return
+    if (previousSection === section && webContentWindowOpen.value) {
       console.log('[NavigationState] Already on section:', section);
       return;
     }
@@ -48,24 +52,44 @@ export function useNavigationState() {
       isNavigating.value = true;
       lastNavigationTime.value = now;
       
-      // Use the enhanced WebContentsView navigation
+      // Check if we have a window open and just need to navigate it
+      if (webContentWindowOpen.value && window.logMonitorApi?.webContentNavigateToSection) {
+        console.log('[NavigationState] Window is open, navigating to section:', section);
+        
+        // Try the direct navigation first (for profile, leaderboard, map)
+        if (['profile', 'leaderboard', 'map'].includes(section)) {
+          const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
+          if (navResult?.success) {
+            console.log('[NavigationState] Direct navigation successful:', section);
+            webContentWindowOpen.value = true;
+            return;
+          }
+        }
+      }
+      
+      // Use the enhanced WebContentsView navigation (creates or navigates existing window)
       if (window.logMonitorApi?.openEnhancedWebContentWindow) {
         console.log('[NavigationState] Using enhanced navigation for:', section);
         
         const result = await window.logMonitorApi.openEnhancedWebContentWindow(section);
         
         if (result?.success) {
-          currentSection.value = section;
           webContentWindowOpen.value = true;
           console.log('[NavigationState] Navigation successful:', section);
         } else {
           console.error('[NavigationState] Navigation failed:', result?.error);
+          // Revert section on failure
+          currentSection.value = previousSection;
         }
       } else {
         console.error('[NavigationState] Navigation API not available');
+        // Revert section on failure
+        currentSection.value = previousSection;
       }
     } catch (error) {
       console.error('[NavigationState] Navigation error:', error);
+      // Revert section on error
+      currentSection.value = previousSection;
     } finally {
       isNavigating.value = false;
     }
@@ -89,20 +113,46 @@ export function useNavigationState() {
   
   // Initialize listeners
   function initializeListeners() {
+    console.log('[NavigationState] Initializing listeners');
+    
+    // Check initial state
+    if (window.logMonitorApi?.getWebContentWindowStatus) {
+      window.logMonitorApi.getWebContentWindowStatus().then(status => {
+        console.log('[NavigationState] Initial window status:', status);
+        if (status.isOpen && status.activeSection) {
+          webContentWindowOpen.value = true;
+          // Map '/' to 'profile'
+          if (status.activeSection === '/') {
+            currentSection.value = 'profile';
+          } else if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(status.activeSection)) {
+            currentSection.value = status.activeSection as NavigationSection;
+          }
+        }
+      });
+    }
+    
     // Listen for web content window status changes
-    if (window.logMonitorApi?.onWebContentWindowStatusChanged) {
-      window.logMonitorApi.onWebContentWindowStatusChanged((event: IpcRendererEvent, status: any) => {
+    if (window.logMonitorApi?.onWebContentWindowStatus) {
+      const cleanup = window.logMonitorApi.onWebContentWindowStatus((event: IpcRendererEvent, status: any) => {
         console.log('[NavigationState] Window status changed:', status);
         
         if (status.isOpen) {
           webContentWindowOpen.value = true;
           if (status.activeSection) {
-            currentSection.value = status.activeSection as NavigationSection;
+            // Map '/' to 'profile'
+            if (status.activeSection === '/') {
+              currentSection.value = 'profile';
+            } else if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(status.activeSection)) {
+              currentSection.value = status.activeSection as NavigationSection;
+            }
           }
         } else {
           onWindowClosed();
         }
       });
+      
+      // Store cleanup function for later
+      (window as any).__navigationStateCleanup = cleanup;
     }
     
     // Listen for navigation updates from WebContentPage

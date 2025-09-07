@@ -159,6 +159,22 @@ export class EmbeddedWebContentsManager {
 
         this.webContentView.webContents.on('did-navigate', (event, url) => {
             logger.info(MODULE_NAME, `WebContentsView navigated to: ${url}`);
+            
+            // Detect section from URL
+            const section = this.detectSectionFromUrl(url);
+            if (section && section !== this.currentSection) {
+                logger.info(MODULE_NAME, `Section changed from ${this.currentSection} to ${section}`);
+                this.currentSection = section;
+                
+                // Emit status update to all windows
+                this.emitStatusUpdate();
+                
+                // Notify WebContentPage about navigation change
+                if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                    this.separateWindow.webContents.send('webcontents-view-navigated', { section });
+                }
+            }
+            
             // Re-inject cookies for new URL
             if (this.webContentView) {
                 this.injectAuthenticationCookies(this.webContentView.webContents.session);
@@ -179,6 +195,22 @@ export class EmbeddedWebContentsManager {
         
         this.webContentView.webContents.on('did-navigate-in-page', (event, url) => {
             logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
+            
+            // Detect section from URL for SPA navigation
+            const section = this.detectSectionFromUrl(url);
+            if (section && section !== this.currentSection) {
+                logger.info(MODULE_NAME, `SPA navigation: Section changed from ${this.currentSection} to ${section}`);
+                this.currentSection = section;
+                
+                // Emit status update to all windows
+                this.emitStatusUpdate();
+                
+                // Notify WebContentPage about navigation change
+                if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                    this.separateWindow.webContents.send('webcontents-view-navigated', { section });
+                }
+            }
+            
             // For SPA navigation
             if (this.separateWindow && !this.separateWindow.isDestroyed()) {
                 this.separateWindow.webContents.send('webcontents-view-loaded');
@@ -447,6 +479,43 @@ export class EmbeddedWebContentsManager {
         }
         
         this.isVisible = false;
+    }
+    
+    private detectSectionFromUrl(url: string): 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' | null {
+        try {
+            // Remove query parameters for clean matching
+            const urlWithoutParams = url.split('?')[0];
+            
+            if (urlWithoutParams.includes('/leaderboard')) return 'leaderboard';
+            if (urlWithoutParams.includes('/map')) return 'map';
+            if (urlWithoutParams.includes('/events')) return 'events';
+            if (urlWithoutParams.includes('/stats')) return 'stats';
+            if (urlWithoutParams.includes('/settings')) return 'profile-settings';
+            if (urlWithoutParams.includes('/user/') || urlWithoutParams.includes('/profile') || urlWithoutParams.endsWith('/')) return 'profile';
+            
+            return null;
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to detect section from URL:', error);
+            return null;
+        }
+    }
+    
+    private emitStatusUpdate(): void {
+        // Emit web-content-window-status event to all BrowserWindows
+        const windows = BrowserWindow.getAllWindows();
+        const status = {
+            isOpen: this.isOverlayVisible(),
+            activeSection: this.currentSection,
+            architecture: 'embedded-webcontentsview'
+        };
+        
+        windows.forEach(window => {
+            if (!window.isDestroyed()) {
+                window.webContents.send('web-content-window-status', status);
+            }
+        });
+        
+        logger.info(MODULE_NAME, `Emitted status update: ${JSON.stringify(status)}`);
     }
 }
 

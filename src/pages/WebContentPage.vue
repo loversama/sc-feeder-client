@@ -1235,6 +1235,11 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
 const reportNavigationChange = (section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings') => {
   console.log(`[WebContentPage] Reporting navigation change to unified state: ${section}`);
   updateCurrentSection(section);
+  
+  // Also dispatch event for other components
+  window.dispatchEvent(new CustomEvent('navigation-state-update', {
+    detail: { section }
+  }));
 };
 
 // Function to notify main process that WebContentPage is ready for WebContentsView
