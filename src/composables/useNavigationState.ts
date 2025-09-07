@@ -39,9 +39,8 @@ export function useNavigationState() {
       return;
     }
     
-    // Update state immediately for UI responsiveness
+    // Save previous section
     const previousSection = currentSection.value;
-    currentSection.value = section;
     
     // If window is already open and on the same section, just return
     if (previousSection === section && webContentWindowOpen.value) {
@@ -62,6 +61,7 @@ export function useNavigationState() {
           const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
           if (navResult?.success) {
             console.log('[NavigationState] Direct navigation successful:', section);
+            currentSection.value = section;
             webContentWindowOpen.value = true;
             return;
           }
@@ -75,22 +75,17 @@ export function useNavigationState() {
         const result = await window.logMonitorApi.openEnhancedWebContentWindow(section);
         
         if (result?.success) {
+          currentSection.value = section;
           webContentWindowOpen.value = true;
           console.log('[NavigationState] Navigation successful:', section);
         } else {
           console.error('[NavigationState] Navigation failed:', result?.error);
-          // Revert section on failure
-          currentSection.value = previousSection;
         }
       } else {
         console.error('[NavigationState] Navigation API not available');
-        // Revert section on failure
-        currentSection.value = previousSection;
       }
     } catch (error) {
       console.error('[NavigationState] Navigation error:', error);
-      // Revert section on error
-      currentSection.value = previousSection;
     } finally {
       isNavigating.value = false;
     }
@@ -179,7 +174,7 @@ export function useNavigationState() {
   
   return {
     // State
-    currentSection,
+    currentSection: computed(() => currentSection.value), // Return as readonly computed
     isNavigating,
     webContentWindowOpen,
     

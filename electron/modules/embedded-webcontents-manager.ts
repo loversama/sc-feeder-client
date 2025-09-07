@@ -402,6 +402,9 @@ export class EmbeddedWebContentsManager {
         
         this.currentSection = section;
         
+        // Emit status update immediately when section changes
+        this.emitStatusUpdate();
+        
         // Build URL with same pattern as current WebContentPage.vue
         const currentTokens = getCurrentAuthTokens();
         let url = `${this.webAppBaseUrl}`;

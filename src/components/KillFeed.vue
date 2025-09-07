@@ -67,7 +67,6 @@ let cleanupFunctions: (() => void)[] = [];
 const { resolveEntity, isLoading: isResolvingEntities } = useEntityResolver();
 
 // --- Unified Navigation State ---
-const navigationState = useNavigationState();
 const {
   isProfileActive,
   isLeaderboardActive,
@@ -75,15 +74,17 @@ const {
   isEventsActive,
   isStatsActive,
   navigateToSection,
-  initializeListeners: initNavigationListeners
-} = navigationState;
+  initializeListeners: initNavigationListeners,
+  currentSection
+} = useNavigationState();
 
-// Debug: Watch navigation state changes
-watch([isProfileActive, isLeaderboardActive, isMapActive], ([profile, leaderboard, map]) => {
-  console.log('[KillFeed] Navigation state changed:', {
-    profile,
-    leaderboard,
-    map
+// Debug: Watch for section changes
+watchEffect(() => {
+  console.log('[KillFeed] Current section:', currentSection.value);
+  console.log('[KillFeed] Active states:', {
+    profile: isProfileActive.value,
+    leaderboard: isLeaderboardActive.value,
+    map: isMapActive.value
   });
 });
 
