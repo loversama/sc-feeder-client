@@ -401,6 +401,12 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
     return () => ipcRenderer.removeListener('web-content-window-status', callback);
   },
 
+  // Listen for navigation requests from main process
+  onNavigateToSection: (callback: (event: IpcRendererEvent, section: string) => void): (() => void) => {
+    ipcRenderer.on('navigate-to-section', callback);
+    return () => ipcRenderer.removeListener('navigate-to-section', callback);
+  },
+
   // Update Events
   checkForUpdate: () => {
     ipcRenderer.send('check-for-update');

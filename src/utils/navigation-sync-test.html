@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Navigation Sync Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #1a1a1a;
+      color: #fff;
+      padding: 20px;
+    }
+    
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #2a2a2a;
+      border-radius: 5px;
+    }
+    
+    .section h2 {
+      color: #6366f1;
+      margin-top: 0;
+    }
+    
+    .state-item {
+      margin: 5px 0;
+      padding: 5px;
+      background: #333;
+      border-radius: 3px;
+    }
+    
+    .state-item.active {
+      background: rgba(99, 99, 247, 0.2);
+      border: 1px solid rgba(99, 99, 247, 0.5);
+    }
+    
+    button {
+      background: #6366f1;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 5px;
+    }
+    
+    button:hover {
+      background: #5856eb;
+    }
+    
+    .log-entry {
+      font-size: 12px;
+      color: #888;
+      margin: 2px 0;
+    }
+    
+    .log-entry.error {
+      color: #ff6b6b;
+    }
+    
+    .log-entry.success {
+      color: #51cf66;
+    }
+    
+    #logs {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #111;
+      padding: 10px;
+      border-radius: 3px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Navigation Sync Test Dashboard</h1>
+  
+  <div class="section">
+    <h2>Current State</h2>
+    <div id="state-display">Loading...</div>
+  </div>
+  
+  <div class="section">
+    <h2>Test Navigation</h2>
+    <button onclick="testNav('profile')">Profile</button>
+    <button onclick="testNav('leaderboard')">Leaderboard</button>
+    <button onclick="testNav('map')">Map</button>
+    <button onclick="testNav('events')">Events</button>
+    <button onclick="testNav('stats')">Stats</button>
+  </div>
+  
+  <div class="section">
+    <h2>Active Classes in DOM</h2>
+    <div id="dom-state">Loading...</div>
+  </div>
+  
+  <div class="section">
+    <h2>Event Log</h2>
+    <button onclick="clearLogs()">Clear Logs</button>
+    <div id="logs"></div>
+  </div>
+  
+  <script>
+    const logsEl = document.getElementById('logs');
+    const stateEl = document.getElementById('state-display');
+    const domStateEl = document.getElementById('dom-state');
+    
+    function log(message, type = '') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logsEl.appendChild(entry);
+      logsEl.scrollTop = logsEl.scrollHeight;
+    }
+    
+    function clearLogs() {
+      logsEl.innerHTML = '';
+    }
+    
+    function updateStateDisplay() {
+      try {
+        // Event bus state
+        const busState = window.parent.__navBusDebug?.getState();
+        
+        // Composable state
+        const navState = window.parent.__navigationState;
+        
+        const html = `
+          <div class="state-item">
+            <strong>Event Bus:</strong> 
+            Section: ${busState?.currentSection || 'none'}, 
+            Window Open: ${busState?.isWindowOpen || false}
+          </div>
+          <div class="state-item">
+            <strong>Composable:</strong>
+            Current: ${navState?.currentSection?.value || 'none'},
+            Navigating: ${navState?.isNavigating?.value || false}
+          </div>
+          <div class="state-item ${navState?.isProfileActive?.value ? 'active' : ''}">
+            Profile Active: ${navState?.isProfileActive?.value || false}
+          </div>
+          <div class="state-item ${navState?.isLeaderboardActive?.value ? 'active' : ''}">
+            Leaderboard Active: ${navState?.isLeaderboardActive?.value || false}
+          </div>
+          <div class="state-item ${navState?.isMapActive?.value ? 'active' : ''}">
+            Map Active: ${navState?.isMapActive?.value || false}
+          </div>
+          <div class="state-item ${navState?.isEventsActive?.value ? 'active' : ''}">
+            Events Active: ${navState?.isEventsActive?.value || false}
+          </div>
+          <div class="state-item ${navState?.isStatsActive?.value ? 'active' : ''}">
+            Stats Active: ${navState?.isStatsActive?.value || false}
+          </div>
+        `;
+        
+        stateEl.innerHTML = html;
+      } catch (error) {
+        stateEl.innerHTML = `<div class="state-item">Error: ${error.message}</div>`;
+      }
+    }
+    
+    function updateDOMState() {
+      try {
+        const doc = window.parent.document;
+        const killFeedButtons = doc.querySelectorAll('.status-icon-button');
+        const navItems = doc.querySelectorAll('.menu-item');
+        
+        let html = '<strong>KillFeed Buttons:</strong><br>';
+        killFeedButtons.forEach(btn => {
+          const isActive = btn.classList.contains('active');
+          const title = btn.getAttribute('title') || 'Unknown';
+          html += `<div class="state-item ${isActive ? 'active' : ''}">${title}: ${isActive ? 'ACTIVE' : 'inactive'}</div>`;
+        });
+        
+        html += '<br><strong>Navigation Menu Items:</strong><br>';
+        navItems.forEach(item => {
+          const isActive = item.classList.contains('active');
+          const text = item.textContent?.trim() || 'Unknown';
+          if (text && text !== 'Unknown') {
+            html += `<div class="state-item ${isActive ? 'active' : ''}">${text}: ${isActive ? 'ACTIVE' : 'inactive'}</div>`;
+          }
+        });
+        
+        domStateEl.innerHTML = html;
+      } catch (error) {
+        domStateEl.innerHTML = `<div class="state-item">Error: ${error.message}</div>`;
+      }
+    }
+    
+    function testNav(section) {
+      log(`Testing navigation to ${section}...`);
+      
+      try {
+        // Emit navigation event
+        window.parent.__navBusDebug?.emit({
+          type: 'navigate',
+          section: section,
+          isOpen: true,
+          source: 'test-dashboard'
+        });
+        
+        log(`Navigation event emitted for ${section}`, 'success');
+        
+        // Update displays after a short delay
+        setTimeout(() => {
+          updateStateDisplay();
+          updateDOMState();
+        }, 100);
+        
+      } catch (error) {
+        log(`Navigation test failed: ${error.message}`, 'error');
+      }
+    }
+    
+    // Monitor navigation events
+    if (window.parent.__navigationEventBus) {
+      window.parent.__navigationEventBus.on('all', (event) => {
+        log(`Event: ${event.type} | Section: ${event.section} | Source: ${event.source}`);
+        updateStateDisplay();
+        updateDOMState();
+      });
+    }
+    
+    // Initial update
+    updateStateDisplay();
+    updateDOMState();
+    
+    // Auto-refresh every second
+    setInterval(() => {
+      updateStateDisplay();
+      updateDOMState();
+    }, 1000);
+    
+    log('Navigation sync test dashboard loaded', 'success');
+  </script>
+</body>
+</html>

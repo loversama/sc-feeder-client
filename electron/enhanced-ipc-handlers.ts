@@ -347,10 +347,6 @@ export function registerEnhancedIPCHandlers(): void {
                     logger.info(MODULE_NAME, 'No existing WebContentsView, creating new one');
                     await createWebContentsViewForWindow(webContentWindow, section);
                 }
-            } else {
-                // Window doesn't exist, create it with WebContentsView
-                logger.info(MODULE_NAME, 'Creating new web content window with WebContentsView');
-                await createWebContentsViewForWindow(webContentWindow, section);
             }
             
             logger.info(MODULE_NAME, 'WebContentsView navigation completed successfully');
@@ -457,6 +453,162 @@ export function registerEnhancedIPCHandlers(): void {
                 authenticationEnabled: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
                 timestamp: new Date().toISOString()
+            };
+        }
+    });
+
+    // Navigate to a specific section in the web content window
+    ipcMain.handle('web-content:navigate-to-section', async (event, section: 'profile' | 'leaderboard' | 'map') => {
+        try {
+            logger.info(MODULE_NAME, `Navigation request to section: ${section}`);
+            
+            // First try to navigate existing window
+            const manager = getEmbeddedWebContentManager();
+            if (manager && manager.isOverlayVisible()) {
+                await manager.navigateToSection(section);
+                logger.info(MODULE_NAME, `Navigated existing window to ${section}`);
+                
+                return {
+                    success: true,
+                    section,
+                    architecture: 'embedded-webcontentsview'
+                };
+            }
+            
+            // Check for existing web content windows
+            const allWindows = BrowserWindow.getAllWindows();
+            const webContentWindow = allWindows.find(win => 
+                win.getTitle().includes('Web Content') && 
+                !win.isDestroyed()
+            );
+            
+            if (webContentWindow) {
+                // Check if it has a WebContentsView
+                const existingView = windowWebContentsViews.get(webContentWindow.id);
+                
+                if (existingView && existingView.webContents && !existingView.webContents.isDestroyed()) {
+                    // Navigate existing WebContentsView
+                    await navigateWebContentsViewToSection(existingView, section);
+                    webContentWindow.webContents.send('navigate-to-section', section);
+                    
+                    return {
+                        success: true,
+                        section,
+                        architecture: 'webcontentsview'
+                    };
+                }
+            }
+            
+            // No existing window/view found, create new
+            logger.info(MODULE_NAME, 'No existing window found, creating new embedded window');
+            
+            if (!manager) {
+                const newManager = await createEmbeddedWebContentManager();
+                await newManager.navigateToSection(section);
+                await newManager.show();
+            } else {
+                await manager.navigateToSection(section);
+                await manager.show();
+            }
+            
+            return {
+                success: true,
+                section,
+                architecture: 'embedded-webcontentsview'
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to navigate to section:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    // Update authentication tokens in WebContentsView
+    ipcMain.handle('web-content:update-auth-tokens', async (event, tokens: { accessToken?: string; refreshToken?: string; user?: any }) => {
+        try {
+            logger.info(MODULE_NAME, 'Updating auth tokens in WebContentsView');
+            
+            // Update tokens in auth manager
+            if (tokens) {
+                storeTokens(tokens.accessToken || '', tokens.refreshToken || '', tokens.user || null);
+            }
+            
+            // Update embedded manager if it exists
+            const manager = getEmbeddedWebContentManager();
+            if (manager) {
+                await manager.refreshAuthentication();
+            }
+            
+            // Update any existing WebContentsViews
+            windowWebContentsViews.forEach((view, windowId) => {
+                if (view && view.webContents && !view.webContents.isDestroyed()) {
+                    view.webContents.send('auth-data-updated', tokens);
+                }
+            });
+            
+            // Broadcast to all windows
+            broadcastAuthUpdate();
+            
+            return {
+                success: true,
+                message: 'Auth tokens updated successfully'
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to update auth tokens:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    // Set WebContentsView architecture preference (legacy - always returns true now)
+    ipcMain.handle('web-content:set-architecture', async (event, useWebContentsView: boolean) => {
+        try {
+            logger.info(MODULE_NAME, `Architecture preference set to: ${useWebContentsView ? 'WebContentsView' : 'BrowserWindow'}`);
+            
+            // In the new architecture, we always use WebContentsView
+            // This handler exists for backwards compatibility
+            
+            return {
+                success: true,
+                architecture: 'webcontentsview',
+                message: 'Architecture is fixed to WebContentsView in current implementation'
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to set architecture:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    });
+
+    // Get current architecture being used
+    ipcMain.handle('web-content:get-architecture', async () => {
+        try {
+            // Check if embedded manager exists
+            const manager = getEmbeddedWebContentManager();
+            const hasManager = !!manager;
+            
+            // Check for any WebContentsViews
+            const hasWebContentsViews = windowWebContentsViews.size > 0;
+            
+            return {
+                current: 'webcontentsview',
+                isWebContentsViewAvailable: true,
+                hasEmbeddedManager: hasManager,
+                hasAttachedViews: hasWebContentsViews,
+                architecture: hasManager ? 'embedded-webcontentsview' : 'attached-webcontentsview'
+            };
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Failed to get architecture:', error);
+            return {
+                current: 'unknown',
+                isWebContentsViewAvailable: false,
+                error: error instanceof Error ? error.message : 'Unknown error'
             };
         }
     });
@@ -754,11 +906,64 @@ export function registerEnhancedIPCHandlers(): void {
             const webContentView = windowWebContentsViews.get(windowId);
             
             if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+                const currentUrl = webContentView.webContents.getURL();
                 const isDevelopment = process.env.NODE_ENV === 'development';
+                const expectedDomain = isDevelopment ? 'localhost' : 'voidlog.gg';
+                
+                // Check if we're already on the web app for fast navigation
+                if (currentUrl && currentUrl.includes(expectedDomain)) {
+                    logger.info(MODULE_NAME, `Already on web app, attempting fast navigation to: ${url}`);
+                    
+                    // Try using SPA navigation first
+                    const spaNavigationScript = `
+                        (function() {
+                            // Check if Vue Router is available
+                            if (window.$router) {
+                                window.$router.push('${url}');
+                                return 'router-navigation';
+                            }
+                            // Check for Next.js router
+                            else if (window.next && window.next.router) {
+                                window.next.router.push('${url}');
+                                return 'nextjs-navigation';
+                            }
+                            // Check for React Router
+                            else if (window.history && window.history.pushState) {
+                                window.history.pushState(null, '', '${url}');
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                                return 'history-navigation';
+                            }
+                            return 'no-spa-router';
+                        })();
+                    `;
+                    
+                    try {
+                        const result = await webContentView.webContents.executeJavaScript(spaNavigationScript);
+                        logger.info(MODULE_NAME, `SPA navigation result: ${result}`);
+                        
+                        if (result !== 'no-spa-router') {
+                            logger.info(MODULE_NAME, `Fast SPA navigation to ${url} completed using ${result}`);
+                            
+                            // Detect section from URL and broadcast status
+                            const section = detectSectionFromUrl(url);
+                            if (section) {
+                                broadcastNavigationStatus(section);
+                                // Also notify the specific window
+                                senderWindow.webContents.send('navigate-to-section', section);
+                            }
+                            
+                            return; // Fast path complete
+                        }
+                    } catch (err) {
+                        logger.warn(MODULE_NAME, `SPA navigation attempt failed:`, err);
+                    }
+                }
+                
+                // Fallback to full URL navigation
                 const baseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
                 const fullUrl = baseUrl + url;
                 
-                logger.info(MODULE_NAME, `Navigating WebContentsView to URL: ${fullUrl}`);
+                logger.info(MODULE_NAME, `Falling back to full URL navigation: ${fullUrl}`);
                 await webContentView.webContents.loadURL(fullUrl);
                 logger.info(MODULE_NAME, `Successfully navigated WebContentsView to ${fullUrl}`);
             } else {
@@ -802,6 +1007,44 @@ async function broadcastAuthUpdate(authData: {
 
 // Store WebContentsView instances for each window
 const windowWebContentsViews = new Map<number, WebContentsView>();
+
+// Helper function to detect section from URL
+function detectSectionFromUrl(url: string): 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' | null {
+    try {
+        // Remove query parameters for clean matching
+        const urlWithoutParams = url.split('?')[0];
+        
+        if (urlWithoutParams.includes('/leaderboard')) return 'leaderboard';
+        if (urlWithoutParams.includes('/map')) return 'map';
+        if (urlWithoutParams.includes('/events')) return 'events';
+        if (urlWithoutParams.includes('/stats')) return 'stats';
+        if (urlWithoutParams.includes('/settings')) return 'profile-settings';
+        if (urlWithoutParams.includes('/user/') || urlWithoutParams.includes('/profile') || urlWithoutParams.endsWith('/')) return 'profile';
+        
+        return null;
+    } catch (error) {
+        logger.error(MODULE_NAME, 'Failed to detect section from URL:', error);
+        return null;
+    }
+}
+
+// Helper function to broadcast navigation status to all windows
+function broadcastNavigationStatus(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings') {
+    const windows = BrowserWindow.getAllWindows();
+    const status = {
+        isOpen: true,
+        activeSection: section,
+        architecture: 'attached-webcontentsview'
+    };
+    
+    windows.forEach(window => {
+        if (!window.isDestroyed()) {
+            window.webContents.send('web-content-window-status', status);
+        }
+    });
+    
+    logger.info(MODULE_NAME, `Broadcasted navigation status: ${JSON.stringify(status)}`);
+}
 
 // Export function to navigate WebContentsView for a specific window
 export async function navigateWebContentsViewForWindow(
@@ -1231,6 +1474,18 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
         // Re-inject cookies for new URL
         injectAuthenticationCookies(webContentView.webContents.session);
         
+        // Detect section from URL
+        const section = detectSectionFromUrl(url);
+        if (section) {
+            logger.info(MODULE_NAME, `Detected section from navigation: ${section}`);
+            
+            // Emit status update to all windows
+            broadcastNavigationStatus(section);
+            
+            // Also notify the specific window
+            targetWindow.webContents.send('navigate-to-section', section);
+        }
+        
         // Notify the host window that navigation started
         targetWindow.webContents.send('webcontents-view-loading');
     });
@@ -1243,6 +1498,19 @@ function setupWebContentsViewEventHandlers(webContentView: WebContentsView, targ
 
     webContentView.webContents.on('did-navigate-in-page', (event, url) => {
         logger.info(MODULE_NAME, `WebContentsView navigated in-page to: ${url}`);
+        
+        // Detect section from URL for SPA navigation
+        const section = detectSectionFromUrl(url);
+        if (section) {
+            logger.info(MODULE_NAME, `Detected section from SPA navigation: ${section}`);
+            
+            // Emit status update to all windows
+            broadcastNavigationStatus(section);
+            
+            // Also notify the specific window
+            targetWindow.webContents.send('navigate-to-section', section);
+        }
+        
         // For SPA navigation, also notify that the page changed
         targetWindow.webContents.send('webcontents-view-loaded');
     });
@@ -1265,6 +1533,9 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
         
         logger.info(MODULE_NAME, `Navigating WebContentsView to section: ${section}`);
         
+        // Immediately broadcast the navigation status
+        broadcastNavigationStatus(section);
+        
         // First, try to navigate using the web app's internal navigation (MUCH faster)
         const currentUrl = webContentView.webContents.getURL();
         const isDevelopment = process.env.NODE_ENV === 'development';
@@ -1272,29 +1543,78 @@ async function navigateWebContentsViewToSection(webContentView: WebContentsView,
         
         // Check if we're already on the web app
         if (currentUrl && currentUrl.includes(expectedDomain)) {
-            logger.info(MODULE_NAME, `Already on web app, using fast internal navigation`);
+            logger.info(MODULE_NAME, `Already on web app, checking for fast navigation capability`);
             
-            // Send a custom event to trigger internal navigation
-            const navigationScript = `
-                // Dispatch custom navigation event
-                window.dispatchEvent(new CustomEvent('web-content-navigate', { 
-                    detail: { section: '${section}' } 
-                }));
-                
-                // Also try direct navigation for WebContentPage
-                if (window.setActiveSection) {
-                    window.setActiveSection('${section}');
-                }
-                
-                true;
+            // For voidlog.gg, we need to navigate by URL since it's an external site
+            // Build the navigation URL
+            const webAppBaseUrl = isDevelopment ? 'http://localhost:3001' : 'https://voidlog.gg';
+            const currentTokens = getCurrentAuthTokens();
+            let targetPath = '';
+            
+            switch (section) {
+                case 'profile':
+                    if (currentTokens?.user?.username) {
+                        targetPath = `/user/${currentTokens.user.username}`;
+                    } else {
+                        targetPath = '/profile';
+                    }
+                    break;
+                case 'leaderboard':
+                    targetPath = '/leaderboard';
+                    break;
+                case 'map':
+                    targetPath = '/map';
+                    break;
+                case 'events':
+                    targetPath = '/events';
+                    break;
+                case 'stats':
+                    targetPath = '/stats';
+                    break;
+                case 'profile-settings':
+                    targetPath = '/settings';
+                    break;
+            }
+            
+            // Check if we're already on the target section
+            if (currentUrl.includes(targetPath)) {
+                logger.info(MODULE_NAME, `Already on section ${section}, no navigation needed`);
+                return;
+            }
+            
+            // Try using Vue Router navigation if available (for SPA navigation)
+            const spaNavigationScript = `
+                (function() {
+                    // Check if Vue Router is available
+                    if (window.$router) {
+                        window.$router.push('${targetPath}');
+                        return 'router-navigation';
+                    }
+                    // Check for Next.js router
+                    else if (window.next && window.next.router) {
+                        window.next.router.push('${targetPath}');
+                        return 'nextjs-navigation';
+                    }
+                    // Check for React Router
+                    else if (window.history && window.history.pushState) {
+                        window.history.pushState(null, '', '${targetPath}');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                        return 'history-navigation';
+                    }
+                    return 'no-spa-router';
+                })();
             `;
             
             try {
-                await webContentView.webContents.executeJavaScript(navigationScript);
-                logger.info(MODULE_NAME, `Fast navigation to ${section} completed`);
-                return; // Fast path complete
+                const result = await webContentView.webContents.executeJavaScript(spaNavigationScript);
+                logger.info(MODULE_NAME, `SPA navigation result: ${result}`);
+                
+                if (result !== 'no-spa-router') {
+                    logger.info(MODULE_NAME, `Fast SPA navigation to ${section} completed using ${result}`);
+                    return; // Fast path complete
+                }
             } catch (err) {
-                logger.warn(MODULE_NAME, `Fast navigation failed, falling back to URL navigation:`, err);
+                logger.warn(MODULE_NAME, `SPA navigation attempt failed:`, err);
             }
         }
         

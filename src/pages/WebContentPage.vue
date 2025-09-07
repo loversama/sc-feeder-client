@@ -996,22 +996,47 @@ const handleResultClick = async (type: 'event' | 'user' | 'organization', item: 
     
     console.log(`[Search] Navigating WebContentsView to: ${navigationUrl}`);
     
-    // Use IPC to navigate the WebContentsView
-    if (window.ipcRenderer && navigationUrl) {
-      // Send navigation request to main process
+    // First, try to detect what section this navigation belongs to
+    let targetSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' | null = null;
+    
+    if (navigationUrl.includes('/user/') || navigationUrl === '/profile') {
+      targetSection = 'profile';
+    } else if (navigationUrl.includes('/event/') || navigationUrl === '/events') {
+      targetSection = 'events';
+    } else if (navigationUrl.includes('/orgs/') || navigationUrl === '/orgs') {
+      // Organizations might map to a different section or stay in current
+      targetSection = null; // Keep current section
+    }
+    
+    // If we can map to a known section, use fast navigation
+    if (targetSection && window.logMonitorApi?.webContentNavigateToSection) {
+      console.log(`[Search] Using fast navigation to section: ${targetSection}`);
+      const result = await window.logMonitorApi.webContentNavigateToSection(targetSection as 'profile' | 'leaderboard' | 'map');
+      
+      if (result?.success) {
+        // Also update local navigation state
+        setActiveSection(targetSection, true); // Preserve search during navigation
+        
+        // Then use IPC to navigate to the specific URL within that section
+        if (window.ipcRenderer) {
+          window.ipcRenderer.send('enhanced-window:navigate-to-url', navigationUrl);
+        }
+      }
+    } else if (window.ipcRenderer && navigationUrl) {
+      // Fallback: Send navigation request to main process
       window.ipcRenderer.send('enhanced-window:navigate-to-url', navigationUrl);
       console.log('[Search] Sent navigation request to main process');
-      
-      // Clear search input
-      searchQuery.value = '';
-      showSearchDropdown.value = false;
-      selectedIndex.value = -1;
-      searchResults.value = { events: [], users: [], organizations: [] };
-      
-      // Blur the search input
-      if (searchInput.value) {
-        searchInput.value.blur();
-      }
+    }
+    
+    // Clear search input
+    searchQuery.value = '';
+    showSearchDropdown.value = false;
+    selectedIndex.value = -1;
+    searchResults.value = { events: [], users: [], organizations: [] };
+    
+    // Blur the search input
+    if (searchInput.value) {
+      searchInput.value.blur();
     }
   } catch (error) {
     console.error('[Search] Failed to navigate to result:', error);
@@ -1405,6 +1430,19 @@ onMounted(async () => {
       setActiveSection(section);
     }
   });
+
+  // Listen for navigation requests from main process (IPC)
+  if (window.logMonitorApi && window.logMonitorApi.onNavigateToSection) {
+    window.logMonitorApi.onNavigateToSection((_event: IpcRendererEvent, section: string) => {
+      console.log('[WebContentPage] Received navigate-to-section IPC event:', section);
+      if (section === 'profile' || section === 'leaderboard' || section === 'map' || 
+          section === 'events' || section === 'stats' || section === 'profile-settings') {
+        setActiveSection(section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings');
+        // Also report to unified navigation state
+        reportNavigationChange(section as 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings');
+      }
+    });
+  }
 
   // Listen for auth status changes
   if (window.logMonitorApi && window.logMonitorApi.onAuthStatusChanged) {

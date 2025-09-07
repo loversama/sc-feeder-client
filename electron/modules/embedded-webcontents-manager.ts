@@ -405,7 +405,45 @@ export class EmbeddedWebContentsManager {
         // Emit status update immediately when section changes
         this.emitStatusUpdate();
         
-        // Build URL with same pattern as current WebContentPage.vue
+        // Try fast internal navigation first if we're already on the web app
+        const currentUrl = this.webContentView.webContents.getURL();
+        const isDevelopment = process.env.NODE_ENV === 'development';
+        const expectedDomain = isDevelopment ? 'localhost' : 'voidlog.gg';
+        
+        if (currentUrl && currentUrl.includes(expectedDomain)) {
+            logger.info(MODULE_NAME, `Already on web app, attempting fast internal navigation to ${section}`);
+            
+            // Send a custom event to trigger internal navigation
+            const navigationScript = `
+                // Dispatch custom navigation event
+                window.dispatchEvent(new CustomEvent('web-content-navigate', { 
+                    detail: { section: '${section}' } 
+                }));
+                
+                // Also try direct navigation for WebContentPage
+                if (window.setActiveSection) {
+                    window.setActiveSection('${section}');
+                }
+                
+                true;
+            `;
+            
+            try {
+                await this.webContentView.webContents.executeJavaScript(navigationScript);
+                logger.info(MODULE_NAME, `Fast navigation to ${section} completed`);
+                
+                // Notify WebContentPage about navigation change
+                if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                    this.separateWindow.webContents.send('webcontents-view-navigated', { section });
+                }
+                
+                return; // Fast path complete
+            } catch (err) {
+                logger.warn(MODULE_NAME, `Fast navigation failed, falling back to URL navigation:`, err);
+            }
+        }
+        
+        // Fall back to full URL navigation
         const currentTokens = getCurrentAuthTokens();
         let url = `${this.webAppBaseUrl}`;
         
@@ -439,7 +477,7 @@ export class EmbeddedWebContentsManager {
             url += '&auth=true';
         }
 
-        logger.info(MODULE_NAME, `Navigating separate WebContentsView to section: ${section} - ${url}`);
+        logger.info(MODULE_NAME, `Falling back to full URL navigation: ${section} - ${url}`);
         
         try {
             await this.webContentView.webContents.loadURL(url);

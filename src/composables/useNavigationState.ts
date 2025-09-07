@@ -1,5 +1,6 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { IpcRendererEvent } from 'electron';
+import { navigationEventBus } from '../utils/navigation-event-bus';
 
 export type NavigationSection = 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings';
 
@@ -11,7 +12,12 @@ const lastNavigationTime = ref(0);
 let isInitialized = false;
 
 // Navigation throttle to prevent multiple rapid requests
-const NAVIGATION_THROTTLE_MS = 500;
+const NAVIGATION_THROTTLE_MS = 200; // Reduced from 500ms for better responsiveness
+
+// Sync with event bus state on module load
+const busState = navigationEventBus.getState();
+currentSection.value = busState.currentSection;
+webContentWindowOpen.value = busState.isWindowOpen;
 
 export function useNavigationState() {
   // Computed states for each section
@@ -28,9 +34,18 @@ export function useNavigationState() {
     
     // Throttle navigation to prevent rapid clicks
     const now = Date.now();
-    if (now - lastNavigationTime.value < NAVIGATION_THROTTLE_MS) {
-      console.log('[NavigationState] Navigation throttled, too rapid');
+    const timeSinceLastNav = now - lastNavigationTime.value;
+    
+    // Don't throttle if navigating to a different section
+    if (timeSinceLastNav < NAVIGATION_THROTTLE_MS && currentSection.value === section) {
+      console.log('[NavigationState] Navigation throttled, too rapid for same section');
       return;
+    }
+    
+    // Reset isNavigating if it's been stuck for too long (safety mechanism)
+    if (isNavigating.value && timeSinceLastNav > 2000) {
+      console.warn('[NavigationState] Resetting stuck navigation flag');
+      isNavigating.value = false;
     }
     
     // Don't navigate if already navigating
@@ -63,6 +78,17 @@ export function useNavigationState() {
             console.log('[NavigationState] Direct navigation successful:', section);
             currentSection.value = section;
             webContentWindowOpen.value = true;
+            
+            // Emit navigation event
+            navigationEventBus.emit({
+              type: 'navigate',
+              section,
+              isOpen: true,
+              source: 'useNavigationState-direct'
+            });
+            
+            // Reset navigation flag immediately after success
+            isNavigating.value = false;
             return;
           }
         }
@@ -78,16 +104,30 @@ export function useNavigationState() {
           currentSection.value = section;
           webContentWindowOpen.value = true;
           console.log('[NavigationState] Navigation successful:', section);
+          
+          // Emit navigation event
+          navigationEventBus.emit({
+            type: 'navigate',
+            section,
+            isOpen: true,
+            source: 'useNavigationState'
+          });
         } else {
           console.error('[NavigationState] Navigation failed:', result?.error);
+          // Reset navigation flag on failure
+          isNavigating.value = false;
         }
       } else {
         console.error('[NavigationState] Navigation API not available');
+        // Reset navigation flag on API unavailable
+        isNavigating.value = false;
       }
     } catch (error) {
       console.error('[NavigationState] Navigation error:', error);
     } finally {
+      // Always reset navigation flag
       isNavigating.value = false;
+      console.log('[NavigationState] Navigation flag reset');
     }
   }
   
@@ -95,6 +135,12 @@ export function useNavigationState() {
   function onWindowClosed() {
     webContentWindowOpen.value = false;
     currentSection.value = null;
+    
+    // Emit window closed event
+    navigationEventBus.emit({
+      type: 'window-closed',
+      source: 'useNavigationState'
+    });
   }
   
   // Update state from external navigation (e.g., from WebContentPage)
@@ -105,6 +151,14 @@ export function useNavigationState() {
     if (section) {
       webContentWindowOpen.value = true;
     }
+    
+    // Emit state change event
+    navigationEventBus.emit({
+      type: 'state-change',
+      section,
+      isOpen: webContentWindowOpen.value,
+      source: 'updateCurrentSection'
+    });
   }
   
   // Initialize listeners
@@ -116,6 +170,40 @@ export function useNavigationState() {
     
     isInitialized = true;
     console.log('[NavigationState] Initializing listeners');
+    
+    // Listen to event bus for state changes from other components
+    const cleanup1 = navigationEventBus.on('navigate', (event) => {
+      console.log('[NavigationState] Received navigate event:', event);
+      if (event.section !== undefined && event.source !== 'useNavigationState') {
+        currentSection.value = event.section;
+        if (event.isOpen !== undefined) {
+          webContentWindowOpen.value = event.isOpen;
+        }
+      }
+    });
+    
+    const cleanup2 = navigationEventBus.on('state-change', (event) => {
+      console.log('[NavigationState] Received state-change event:', event);
+      if (event.source !== 'updateCurrentSection') {
+        if (event.section !== undefined) {
+          currentSection.value = event.section;
+        }
+        if (event.isOpen !== undefined) {
+          webContentWindowOpen.value = event.isOpen;
+        }
+      }
+    });
+    
+    const cleanup3 = navigationEventBus.on('window-closed', (event) => {
+      console.log('[NavigationState] Received window-closed event:', event);
+      if (event.source !== 'useNavigationState') {
+        webContentWindowOpen.value = false;
+        currentSection.value = null;
+      }
+    });
+    
+    // Store cleanup functions
+    (window as any).__navigationStateCleanups = [cleanup1, cleanup2, cleanup3];
     
     // Check initial state
     if (window.logMonitorApi?.getWebContentWindowStatus) {
@@ -191,5 +279,33 @@ export function useNavigationState() {
     onWindowClosed,
     updateCurrentSection,
     initializeListeners
+  };
+}
+
+// Watch for state changes and sync with event bus
+watch([currentSection, webContentWindowOpen], ([section, isOpen]) => {
+  // This ensures any direct ref modifications also update the event bus
+  const busState = navigationEventBus.getState();
+  if (busState.currentSection !== section || busState.isWindowOpen !== isOpen) {
+    navigationEventBus.emit({
+      type: 'state-change',
+      section,
+      isOpen,
+      source: 'ref-watch'
+    });
+  }
+});
+
+// Expose navigation state globally for debugging
+if (typeof window !== 'undefined') {
+  (window as any).__navigationState = {
+    currentSection,
+    isNavigating,
+    webContentWindowOpen,
+    isProfileActive: computed(() => currentSection.value === 'profile'),
+    isLeaderboardActive: computed(() => currentSection.value === 'leaderboard'),
+    isMapActive: computed(() => currentSection.value === 'map'),
+    isEventsActive: computed(() => currentSection.value === 'events'),
+    isStatsActive: computed(() => currentSection.value === 'stats')
   };
 }

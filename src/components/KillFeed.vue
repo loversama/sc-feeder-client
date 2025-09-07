@@ -6,6 +6,7 @@ import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, QuestionFilled } from '@element-plus/icons-vue'; // Import icons
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
 import { useNavigationState } from '../composables/useNavigationState';
+import { navigationEventBus } from '../utils/navigation-event-bus';
 
 // Using the interface from the main process instead
 // Importing type only, no runtime dependency
@@ -78,7 +79,24 @@ const {
   currentSection
 } = useNavigationState();
 
+// Force re-render key for navigation buttons
+const navButtonsKey = ref(0);
+
 // Debug: Watch for section changes
+watchEffect(() => {
+  console.log('[KillFeed] Navigation state changed:', {
+    currentSection: currentSection.value,
+    isProfileActive: isProfileActive.value,
+    isLeaderboardActive: isLeaderboardActive.value,
+    isMapActive: isMapActive.value,
+    isEventsActive: isEventsActive.value,
+    isStatsActive: isStatsActive.value
+  });
+  
+  // Force re-render of navigation buttons when state changes
+  navButtonsKey.value++;
+});
+
 watchEffect(() => {
   console.log('[KillFeed] Current section:', currentSection.value);
   console.log('[KillFeed] Active states:', {
@@ -177,28 +195,103 @@ const openSettingsWindow = () => {
 }
 
 const openProfile = async () => {
-  console.log('[KillFeed] Profile button clicked');
+  console.log('[KillFeed] Profile button clicked', {
+    currentSection: currentSection.value,
+    isProfileActive: isProfileActive.value
+  });
+  
+  // Immediately update key to show pending state
+  navButtonsKey.value++;
+  
   await navigateToSection('profile');
+  
+  // Update again after navigation completes
+  navButtonsKey.value++;
+  
+  console.log('[KillFeed] After navigation:', {
+    currentSection: currentSection.value,
+    isProfileActive: isProfileActive.value
+  });
 }
 
 const openLeaderboard = async () => {
-  console.log('[KillFeed] Leaderboard button clicked');
+  console.log('[KillFeed] Leaderboard button clicked', {
+    currentSection: currentSection.value,
+    isLeaderboardActive: isLeaderboardActive.value
+  });
+  
+  // Immediately update key to show pending state
+  navButtonsKey.value++;
+  
   await navigateToSection('leaderboard');
+  
+  // Update again after navigation completes
+  navButtonsKey.value++;
+  
+  console.log('[KillFeed] After navigation:', {
+    currentSection: currentSection.value,
+    isLeaderboardActive: isLeaderboardActive.value
+  });
 }
 
 const openMap = async () => {
-  console.log('[KillFeed] Map button clicked');
+  console.log('[KillFeed] Map button clicked', {
+    currentSection: currentSection.value,
+    isMapActive: isMapActive.value
+  });
+  
+  // Immediately update key to show pending state
+  navButtonsKey.value++;
+  
   await navigateToSection('map');
+  
+  // Update again after navigation completes
+  navButtonsKey.value++;
+  
+  console.log('[KillFeed] After navigation:', {
+    currentSection: currentSection.value,
+    isMapActive: isMapActive.value
+  });
 };
 
 const openEvents = async () => {
-  console.log('[KillFeed] Events button clicked');
+  console.log('[KillFeed] Events button clicked', {
+    currentSection: currentSection.value,
+    isEventsActive: isEventsActive.value
+  });
+  
+  // Immediately update key to show pending state
+  navButtonsKey.value++;
+  
   await navigateToSection('events');
+  
+  // Update again after navigation completes
+  navButtonsKey.value++;
+  
+  console.log('[KillFeed] After navigation:', {
+    currentSection: currentSection.value,
+    isEventsActive: isEventsActive.value
+  });
 };
 
 const openStats = async () => {
-  console.log('[KillFeed] Stats button clicked');
+  console.log('[KillFeed] Stats button clicked', {
+    currentSection: currentSection.value,
+    isStatsActive: isStatsActive.value
+  });
+  
+  // Immediately update key to show pending state
+  navButtonsKey.value++;
+  
   await navigateToSection('stats');
+  
+  // Update again after navigation completes
+  navButtonsKey.value++;
+  
+  console.log('[KillFeed] After navigation:', {
+    currentSection: currentSection.value,
+    isStatsActive: isStatsActive.value
+  });
 };
 
 // Generic function to open external website sections
@@ -1596,6 +1689,27 @@ onMounted(async () => { // Make onMounted async
     connectionTimeout.value = setTimeout(handleConnectionTimeout, 10000);
   }
   
+  // Listen to navigation events directly from event bus
+  const cleanupNavListener = navigationEventBus.on('all', (event) => {
+    if (event.type === 'navigate' || event.type === 'state-change') {
+      console.log('[KillFeed] Received navigation event from bus:', event);
+      // Force update of navigation state
+      navButtonsKey.value++;
+      
+      // If the event has a section, verify our state matches
+      if (event.section !== undefined && event.section !== currentSection.value) {
+        console.warn('[KillFeed] State mismatch detected, forcing refresh');
+        // Force a re-evaluation of computed properties
+        nextTick(() => {
+          navButtonsKey.value++;
+        });
+      }
+    }
+  });
+  
+  // Store cleanup function
+  (window as any).__killFeedNavCleanup = cleanupNavListener;
+  
   // Load saved event filter preference
   if (window.logMonitorApi && window.logMonitorApi.getEventFilter) {
     try {
@@ -2124,7 +2238,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
         <span v-if="modeBadge.text !== '?'" :class="modeBadge.class">{{ modeBadge.text }}</span>
       </div>
       <!-- Right-aligned Icon Buttons (Order: Map, Leaderboard, Profile, Settings) -->
-      <div class="status-icons-container">
+      <div class="status-icons-container" :key="navButtonsKey">
         <div
           @click="openMap"
           class="status-icon-button"

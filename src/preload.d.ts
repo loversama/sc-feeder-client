@@ -254,6 +254,7 @@ export interface LogMonitorApi {
     activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | '/' | null;
     architecture?: 'webcontentsview' | 'browserwindow' | 'unknown';
   }) => void) => () => void;
+  onNavigateToSection: (callback: (event: IpcRendererEvent, section: string) => void) => () => void;
   // For webview, it will listen to 'auth-tokens-updated' directly via window.ipcRenderer.on
   onConnectionStatusChanged: (callback: (event: IpcRendererEvent, status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => () => void;
   onGameModeUpdate: (callback: (event: IpcRendererEvent, mode: 'PU' | 'AC' | 'Unknown') => void) => () => void;
