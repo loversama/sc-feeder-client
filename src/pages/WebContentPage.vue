@@ -15,7 +15,7 @@
         <div class="flex items-center space-x-6">
           <button
             @click="navigateToSection('profile')"
-            class="px-3 py-2 rounded transition-colors duration-200"
+            class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isProfileActive,
               'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isProfileActive 
@@ -25,7 +25,7 @@
           </button>
           <button
             @click="navigateToSection('leaderboard')"
-            class="px-3 py-2 rounded transition-colors duration-200"
+            class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isLeaderboardActive,
               'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isLeaderboardActive 
@@ -35,7 +35,7 @@
           </button>
           <button
             @click="navigateToSection('map')"
-            class="px-3 py-2 rounded transition-colors duration-200"
+            class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isMapActive,
               'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isMapActive 
@@ -45,7 +45,7 @@
           </button>
           <button
             @click="navigateToSection('events')"
-            class="px-3 py-2 rounded transition-colors duration-200"
+            class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isEventsActive,
               'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isEventsActive 
@@ -55,7 +55,7 @@
           </button>
           <button
             @click="navigateToSection('stats')"
-            class="px-3 py-2 rounded transition-colors duration-200"
+            class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isStatsActive,
               'hover:bg-white/5 hover:text-[rgb(77,77,234)] text-theme-text-light': !isStatsActive 
@@ -72,7 +72,7 @@
               ref="searchInput"
               v-model="searchQuery"
               placeholder="Search events, users, organizations..."
-              class="w-full px-4 py-2 pr-10 bg-[#262626] border border-[#404040] text-white rounded-md text-sm focus:outline-none focus:border-[rgb(99,99,247)] focus:shadow-[0_0_0_1px_rgba(99,99,247,0.2)] placeholder-gray-400 transition-all duration-200"
+              class="w-full px-4 py-2 pr-10 bg-[#262626] border border-[#404040] text-white rounded-md text-sm focus:outline-none focus:border-[rgb(99,99,247)] placeholder-gray-400 transition-all duration-200"
               type="text"
               @input="handleSearchInput"
               @keydown="handleKeyNavigation"
@@ -92,7 +92,7 @@
             v-if="isAuthenticated"
             @click="navigateToSection('profile-settings')"
             class="h-[38px] w-[38px] flex items-center justify-center bg-transparent rounded-md transition-all duration-200 text-gray-400 hover:text-white focus:outline-none"
-            :class="{ 'text-[rgb(99,99,247)] shadow-[0_0_0_1px_rgba(99,99,247,0.2)]': isProfileSettingsActive }"
+            :class="{ 'text-[rgb(99,99,247)]': isProfileSettingsActive }"
             :style="isProfileSettingsActive ? { border: '1px solid rgb(99,99,247)' } : { border: '1px solid #4a4a4a' }"
             title="Website Settings"
           >
@@ -129,7 +129,7 @@
                     'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'all', 
                     'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'all' 
                   }"
-                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none relative"
                   ref="allTab"
                   tabindex="0"
                 >
@@ -150,7 +150,7 @@
                     'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'events', 
                     'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'events' 
                   }"
-                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none relative"
                   ref="eventsTab"
                   tabindex="0"
                 >
@@ -171,7 +171,7 @@
                     'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'users', 
                     'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'users' 
                   }"
-                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none relative"
                   ref="usersTab"
                   tabindex="0"
                 >
@@ -192,7 +192,7 @@
                     'border-b-2 border-[rgb(99,99,247)] text-white': filterType === 'organizations', 
                     'border-b-2 border-transparent text-gray-400 hover:text-white': filterType !== 'organizations' 
                   }"
-                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none focus:bg-[#333333] relative"
+                  class="px-6 py-3 font-medium transition-all duration-200 focus:outline-none relative"
                   ref="organizationsTab"
                   tabindex="0"
                 >
@@ -1526,6 +1526,32 @@ onUnmounted(() => {
 
 .result-item:hover {
   transform: translateX(4px);
+}
+
+/* Remove default browser focus outline on all interactive elements */
+button:focus {
+  outline: none !important;
+}
+
+button:focus-visible {
+  outline: none !important;
+}
+
+/* Remove focus outline from navigation buttons specifically */
+.navigation-button:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove any webkit focus styles */
+button::-moz-focus-inner {
+  border: 0;
+}
+
+/* Settings button specific - remove all focus effects */
+button[title="Website Settings"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
 }
 </style>
 

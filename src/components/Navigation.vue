@@ -222,8 +222,8 @@ const handleCommand = async (command: string) => {
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     } else if (command === 'account-settings') {
-      // Open profile page with account settings tab
-      await openExternalSection('account', 'VOIDLOG.GG - Account Settings')
+      // Navigate to profile settings using fast navigation
+      await navigateToSection('profile-settings' as any)
     }
   } catch (error) {
     console.error('Error handling command:', error)
