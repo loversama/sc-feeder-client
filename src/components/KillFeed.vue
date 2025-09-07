@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch, shallowRef, watchEffect } from 'vue';
 import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner component
 import ConnectionBanner from './ConnectionBanner.vue'; // Import the connection status banner
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
@@ -67,8 +67,8 @@ let cleanupFunctions: (() => void)[] = [];
 const { resolveEntity, isLoading: isResolvingEntities } = useEntityResolver();
 
 // --- Unified Navigation State ---
-const navigation = useNavigationState();
-const { 
+const navigationState = useNavigationState();
+const {
   isProfileActive,
   isLeaderboardActive,
   isMapActive,
@@ -76,7 +76,16 @@ const {
   isStatsActive,
   navigateToSection,
   initializeListeners: initNavigationListeners
-} = navigation;
+} = navigationState;
+
+// Debug: Watch navigation state changes
+watch([isProfileActive, isLeaderboardActive, isMapActive], ([profile, leaderboard, map]) => {
+  console.log('[KillFeed] Navigation state changed:', {
+    profile,
+    leaderboard,
+    map
+  });
+});
 
 // --- Local Icon State ---
 const isSettingsActive = ref(false);
@@ -2610,7 +2619,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .status-icon-button.active {
-  color: rgb(77, 77, 234);  /* primary-600 */
+  color: rgb(99, 99, 247);  /* primary-500 */
+  background-color: rgba(99, 99, 247, 0.1);
+  border: 1px solid rgba(99, 99, 247, 0.3);
 }
 .kill-feed-container {
   display: flex;

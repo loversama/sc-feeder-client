@@ -3,11 +3,12 @@ import type { IpcRendererEvent } from 'electron';
 
 export type NavigationSection = 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings';
 
-// Global state
+// Global state - OUTSIDE of the function to ensure singleton behavior
 const currentSection = ref<NavigationSection | null>(null);
 const isNavigating = ref(false);
 const webContentWindowOpen = ref(false);
 const lastNavigationTime = ref(0);
+let isInitialized = false;
 
 // Navigation throttle to prevent multiple rapid requests
 const NAVIGATION_THROTTLE_MS = 500;
@@ -113,6 +114,12 @@ export function useNavigationState() {
   
   // Initialize listeners
   function initializeListeners() {
+    if (isInitialized) {
+      console.log('[NavigationState] Already initialized, skipping');
+      return;
+    }
+    
+    isInitialized = true;
     console.log('[NavigationState] Initializing listeners');
     
     // Check initial state
@@ -124,10 +131,16 @@ export function useNavigationState() {
           // Map '/' to 'profile'
           if (status.activeSection === '/') {
             currentSection.value = 'profile';
+            console.log('[NavigationState] Set initial section to profile (from /)');
           } else if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(status.activeSection)) {
             currentSection.value = status.activeSection as NavigationSection;
+            console.log('[NavigationState] Set initial section to:', status.activeSection);
           }
+        } else {
+          console.log('[NavigationState] Window not open or no active section');
         }
+      }).catch(error => {
+        console.error('[NavigationState] Failed to get initial status:', error);
       });
     }
     
