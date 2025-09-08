@@ -2608,6 +2608,102 @@ export function createExternalWebWindow(url: string, options?: {
     return windowManager.createExternalWebWindow(url, options);
 }
 
+// Export function to create web content window
+export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): BrowserWindow | null {
+    if (webContentWindow) {
+        if (webContentWindow.isMinimized()) {
+            webContentWindow.restore(); // Restore if minimized
+        }
+        webContentWindow.focus(); // Bring to front
+
+        // Check if section needs changing
+        const newSection = section || null;
+        if (newSection && newSection !== currentWebContentSection) {
+            logger.info(MODULE_NAME, `Switching section from ${currentWebContentSection} to ${newSection}`);
+            // Send IPC to renderer to navigate
+            webContentWindow.webContents.send('navigate-to-section', newSection);
+            // Update tracked section
+            currentWebContentSection = newSection;
+            // Send status update to main window
+            getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+            logger.info(MODULE_NAME, `Sent web-content-window-status update for section switch: { isOpen: true, activeSection: ${currentWebContentSection} }`);
+        }
+        return webContentWindow; // Return existing window
+    }
+
+    // --- Create New Window ---
+    logger.info(MODULE_NAME, `Creating new web content window for section: ${section}`);
+    currentWebContentSection = section || null;
+
+    // --- Web Content Window Bounds ---
+    const savedBounds = store.get('webContentWindowBounds');
+    const defaultWidth = 1024;
+    const defaultHeight = 768;
+
+    const windowOptions: Electron.BrowserWindowConstructorOptions = {
+        width: savedBounds?.width || defaultWidth,
+        height: savedBounds?.height || defaultHeight,
+        x: savedBounds?.x,
+        y: savedBounds?.y,
+        title: 'SC KillFeeder - Web Content',
+        webPreferences: {
+            preload: getPreloadPath('preload.mjs'),
+            nodeIntegration: false,
+            contextIsolation: true,
+            devTools: !app.isPackaged,
+            spellcheck: false
+        },
+        frame: false,
+        titleBarStyle: 'hidden',
+        autoHideMenuBar: true,
+        show: false,
+        icon: getIconPath() || undefined,
+        minWidth: 800,
+        minHeight: 600
+    };
+
+    webContentWindow = new BrowserWindow(windowOptions);
+
+    // Set up bounds saving
+    const saveBounds = createSaveBoundsHandler(webContentWindow, 'webContentWindowBounds');
+    webContentWindow.on('resize', saveBounds);
+    webContentWindow.on('move', saveBounds);
+
+    // Handle window closed event
+    webContentWindow.on('closed', () => {
+        webContentWindow = null;
+        currentWebContentSection = null;
+        // Send status update to main window
+        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: false, activeSection: null });
+        logger.info(MODULE_NAME, 'Web content window closed');
+    });
+
+    // Load the web-content.html
+    if (process.env.VITE_DEV_SERVER_URL) {
+        webContentWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}web-content.html`);
+    } else {
+        const mainDist = path.join(app.getAppPath(), 'dist-electron');
+        webContentWindow.loadFile(path.join(mainDist, '../dist/web-content.html'));
+    }
+
+    // Show when ready
+    webContentWindow.once('ready-to-show', () => {
+        webContentWindow!.show();
+        // Send initial navigation if section specified
+        if (section && webContentWindow) {
+            webContentWindow.webContents.send('navigate-to-section', section);
+        }
+    });
+
+    // Setup DevTools if in development
+    setupDevToolsSecurity(webContentWindow, 'web-content');
+
+    // Send initial status update to main window
+    getMainWindow()?.webContents.send('web-content-window-status', { isOpen: true, activeSection: currentWebContentSection });
+
+    return webContentWindow;
+}
+
 // Add this IPC Handler
 ipcMain.handle('get-preload-path', (_event, filename: string) => {
   try {

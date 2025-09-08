@@ -324,9 +324,27 @@ export function registerEnhancedIPCHandlers(): void {
             }
             
             if (!webContentWindow) {
-                logger.info(MODULE_NAME, 'Web content window not found, creating new embedded manager');
+                logger.info(MODULE_NAME, 'Web content window not found, creating new one');
                 
-                // Create embedded manager instead
+                // Import window manager functions
+                const windowManagerModule = await import('./modules/window-manager');
+                const createWebContentWindow = windowManagerModule.createWebContentWindow || windowManagerModule.default?.createWebContentWindow;
+                
+                if (createWebContentWindow) {
+                    webContentWindow = createWebContentWindow(section);
+                    if (webContentWindow) {
+                        logger.info(MODULE_NAME, 'Created new web content window successfully');
+                        return {
+                            success: true,
+                            architecture: 'webcontent-window',
+                            section,
+                            timestamp: new Date().toISOString()
+                        };
+                    }
+                }
+                
+                // Fallback to embedded manager if window creation failed
+                logger.warn(MODULE_NAME, 'Failed to create web content window, falling back to embedded manager');
                 manager = await createEmbeddedWebContentManager();
                 await manager.navigateToSection(section);
                 await manager.show();
