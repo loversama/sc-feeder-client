@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineProps, defineEmits, ref, onMounted, computed, watch } from 'vue'
-import { ElAvatar } from 'element-plus'
+import { ElAvatar, ElMessage } from 'element-plus'
 import { User, Key, Switch, MapLocation, Close, ArrowDown, Trophy, Calendar, DataAnalysis, Bell, Headset } from '@element-plus/icons-vue'
 import { useUserState } from '../composables/useUserState'
 import { useNavigationState } from '../composables/useNavigationState'
@@ -181,14 +181,12 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
     // No more fallbacks - if enhanced window fails, show error
     console.error(`[Navigation] Failed to open ${section} - enhanced window creation failed`);
     
-    // Optionally, show a user-friendly error message
-    if (window.ElMessage) {
-      window.ElMessage({
-        message: `Failed to open ${section} window. Please try again.`,
-        type: 'error',
-        duration: 3000
-      });
-    }
+    // Show a user-friendly error message
+    ElMessage({
+      message: `Failed to open ${section} window. Please try again.`,
+      type: 'error',
+      duration: 3000
+    });
   } catch (error) {
     console.error(`[Navigation] Failed to open ${section}:`, error);
   }

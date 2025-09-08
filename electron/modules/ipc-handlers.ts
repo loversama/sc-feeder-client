@@ -276,7 +276,7 @@ export function registerIpcHandlers() {
             logger.debug(MODULE_NAME, 'Opening file dialog for sound selection');
             
             const mainWindow = getMainWindow();
-            const dialogOptions = {
+            const dialogOptions: Electron.OpenDialogOptions = {
                 properties: ['openFile'],
                 filters: [
                     { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg'] },
@@ -285,7 +285,9 @@ export function registerIpcHandlers() {
                 title: 'Select Sound File'
             };
             
-            const result = await dialog.showOpenDialog(mainWindow || undefined, dialogOptions);
+            const result = mainWindow 
+                ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+                : await dialog.showOpenDialog(dialogOptions);
             
             logger.debug(MODULE_NAME, 'File dialog result:', result);
             

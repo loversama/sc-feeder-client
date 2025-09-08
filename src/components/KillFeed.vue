@@ -798,6 +798,7 @@ const playKillSound = async (killEvent?: KillEvent) => {
         try {
           // Handle sound variations
           let soundPath = soundConfig.path;
+          if (!soundPath) continue;  // Skip if no path is defined
           let volumeMultiplier = 1.0;
           
           // Map sound variations to the base sound file
@@ -1374,9 +1375,9 @@ const toggleCategoryFilter = async (categoryId: string) => {
       await window.logMonitorApi.toggleCategoryFilter(categoryId);
       // Reload selected filters
       await loadSelectedCategories();
-      // Reload events to apply new filter
-      events.value = [];
-      await loadPagedEvents();
+      // Clear events to trigger refresh from server
+      allEvents.value = [];
+      searchResults.value = [];
     } catch (error) {
       console.error(`[KillFeed] Error toggling category filter:`, error);
     }
@@ -1389,9 +1390,9 @@ const clearCategoryFilters = async () => {
     try {
       await window.logMonitorApi.setSelectedCategoryFilters([]);
       selectedCategories.value = [];
-      // Reload events
-      events.value = [];
-      await loadPagedEvents();
+      // Clear events to trigger refresh from server
+      allEvents.value = [];
+      searchResults.value = [];
     } catch (error) {
       console.error(`[KillFeed] Error clearing category filters:`, error);
     }

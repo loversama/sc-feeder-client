@@ -96,7 +96,7 @@ export interface LogMonitorApi {
   }) => Promise<{ success: boolean; windowId?: number; error?: string }>;
 
   // Enhanced WebContentsView window operations
-  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats') => Promise<{
+  openEnhancedWebContentWindow: (section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings') => Promise<{
     success: boolean;
     architecture?: string;
     section?: string;

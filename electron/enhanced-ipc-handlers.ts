@@ -326,9 +326,7 @@ export function registerEnhancedIPCHandlers(): void {
                 
                 // Use the imported createWebContentWindow function
                 if (createWebContentWindow) {
-                    // Filter out profile-settings as it's not supported by createWebContentWindow
-                    const validSection = section === 'profile-settings' ? undefined : section;
-                    webContentWindow = createWebContentWindow(validSection);
+                    webContentWindow = createWebContentWindow(section);
                     if (webContentWindow) {
                         logger.info(MODULE_NAME, 'Created new web content window successfully');
                         
@@ -414,9 +412,7 @@ export function registerEnhancedIPCHandlers(): void {
             
             // Redirect to proper WebContentPage window creation
             if (createWebContentWindow) {
-                // Filter out profile-settings as it's not supported by createWebContentWindow
-                const validSection = section === 'profile-settings' ? undefined : section;
-                const window = createWebContentWindow(validSection);
+                const window = createWebContentWindow(section);
                 if (window) {
                     logger.info(MODULE_NAME, 'Created WebContentPage window instead of embedded overlay');
                     return {
@@ -617,7 +613,12 @@ export function registerEnhancedIPCHandlers(): void {
             // Broadcast to all windows
             const currentAuth = await getCurrentAuthTokens();
             if (currentAuth) {
-                await broadcastAuthUpdate(currentAuth);
+                await broadcastAuthUpdate({
+                    accessToken: currentAuth.accessToken || null,
+                    refreshToken: currentAuth.refreshToken || null,
+                    user: currentAuth.user || null,
+                    isAuthenticated: !!(currentAuth.accessToken && currentAuth.user)
+                });
             }
             
             return {

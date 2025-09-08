@@ -45,7 +45,7 @@ let webContentWindow: BrowserWindow | null = null; // Added for Web Content Wind
 let webContentBaseWindow: BaseWindow | null = null; // New BaseWindow for web content
 let webContentView: WebContentsView | null = null; // Web content view for BaseWindow
 let loginWindow: BrowserWindow | null = null;
-let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | null = null; // Track active section
+let currentWebContentSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' | null = null; // Track active section
 // Store data for the event details window temporarily
 let activeEventDataForWindow: KillEvent | null = null;
 
@@ -1749,7 +1749,7 @@ export function createWebContentBaseWindow(section?: 'profile' | 'leaderboard' |
     return webContentBaseWindow;
 }
 
-export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats'): BrowserWindow | null {
+export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): BrowserWindow | null {
     if (webContentWindow) {
         if (webContentWindow.isMinimized()) {
             webContentWindow.restore(); // Restore if minimized
@@ -2366,7 +2366,7 @@ export function getSettingsStatus(): { isOpen: boolean } {
     return { isOpen: settingsWindow !== null };
 }
 
-export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | null } {
+export function getWebContentStatus(): { isOpen: boolean, activeSection: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' | null } {
     return { isOpen: webContentWindow !== null || webContentBaseWindow !== null, activeSection: currentWebContentSection };
 }
 
