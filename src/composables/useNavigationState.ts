@@ -29,8 +29,8 @@ export function useNavigationState() {
   const isProfileSettingsActive = computed(() => currentSection.value === 'profile-settings');
   
   // Navigate to a section
-  async function navigateToSection(section: NavigationSection) {
-    console.log('[NavigationState] Navigate request:', section);
+  async function navigateToSection(section: NavigationSection, source: string = 'unknown') {
+    console.log('[NavigationState] Navigate request:', section, 'from source:', source);
     
     // Throttle navigation to prevent rapid clicks
     const now = Date.now();
@@ -57,9 +57,9 @@ export function useNavigationState() {
     // Save previous section
     const previousSection = currentSection.value;
     
-    // If window is already open and on the same section, close it (toggle behavior)
-    if (previousSection === section && webContentWindowOpen.value) {
-      console.log('[NavigationState] Same section clicked, closing window:', section);
+    // If window is already open and on the same section, close it (toggle behavior) - but only from killfeed
+    if (previousSection === section && webContentWindowOpen.value && source === 'killfeed') {
+      console.log('[NavigationState] Same section clicked from killfeed, closing window:', section);
       
       // Close the window
       if (window.logMonitorApi?.closeWebContentWindow) {
@@ -95,7 +95,7 @@ export function useNavigationState() {
               type: 'navigate',
               section,
               isOpen: true,
-              source: 'useNavigationState-direct'
+              source: source + '-direct'
             });
             
             // Reset navigation flag immediately after success
@@ -121,7 +121,7 @@ export function useNavigationState() {
             type: 'navigate',
             section,
             isOpen: true,
-            source: 'useNavigationState'
+            source: source
           });
         } else {
           console.error('[NavigationState] Navigation failed:', result?.error);

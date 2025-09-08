@@ -203,7 +203,7 @@ const openProfile = async () => {
   // Immediately update key to show pending state
   navButtonsKey.value++;
   
-  await navigateToSection('profile');
+  await navigateToSection('profile', 'killfeed');
   
   // Update again after navigation completes
   navButtonsKey.value++;
@@ -223,7 +223,7 @@ const openLeaderboard = async () => {
   // Immediately update key to show pending state
   navButtonsKey.value++;
   
-  await navigateToSection('leaderboard');
+  await navigateToSection('leaderboard', 'killfeed');
   
   // Update again after navigation completes
   navButtonsKey.value++;
@@ -243,7 +243,7 @@ const openMap = async () => {
   // Immediately update key to show pending state
   navButtonsKey.value++;
   
-  await navigateToSection('map');
+  await navigateToSection('map', 'killfeed');
   
   // Update again after navigation completes
   navButtonsKey.value++;
@@ -263,7 +263,7 @@ const openEvents = async () => {
   // Immediately update key to show pending state
   navButtonsKey.value++;
   
-  await navigateToSection('events');
+  await navigateToSection('events', 'killfeed');
   
   // Update again after navigation completes
   navButtonsKey.value++;
@@ -283,7 +283,7 @@ const openStats = async () => {
   // Immediately update key to show pending state
   navButtonsKey.value++;
   
-  await navigateToSection('stats');
+  await navigateToSection('stats', 'killfeed');
   
   // Update again after navigation completes
   navButtonsKey.value++;

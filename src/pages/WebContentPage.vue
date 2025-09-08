@@ -14,7 +14,7 @@
         <!-- Navigation Links -->
         <div class="flex items-center space-x-6">
           <button
-            @click="navigateToSection('profile')"
+            @click="navigateToSection('profile', 'webcontent')"
             class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isProfileActive,
@@ -24,7 +24,7 @@
             Profile
           </button>
           <button
-            @click="navigateToSection('leaderboard')"
+            @click="navigateToSection('leaderboard', 'webcontent')"
             class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isLeaderboardActive,
@@ -34,7 +34,7 @@
             Leaderboard
           </button>
           <button
-            @click="navigateToSection('map')"
+            @click="navigateToSection('map', 'webcontent')"
             class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isMapActive,
@@ -44,7 +44,7 @@
             Map
           </button>
           <button
-            @click="navigateToSection('events')"
+            @click="navigateToSection('events', 'webcontent')"
             class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isEventsActive,
@@ -54,7 +54,7 @@
             Events
           </button>
           <button
-            @click="navigateToSection('stats')"
+            @click="navigateToSection('stats', 'webcontent')"
             class="navigation-button px-3 py-2 rounded transition-colors duration-200"
             :class="{ 
               'text-[rgb(99,99,247)] bg-white/5': isStatsActive,
@@ -90,7 +90,7 @@
           <!-- Website Settings Button (Spanner) - Only show when authenticated -->
           <button
             v-if="isAuthenticated"
-            @click="navigateToSection('profile-settings')"
+            @click="navigateToSection('profile-settings', 'webcontent')"
             class="h-[38px] w-[38px] flex items-center justify-center bg-transparent rounded-md transition-all duration-200 text-gray-400 hover:text-white focus:outline-none"
             :class="{ 'text-[rgb(99,99,247)]': isProfileSettingsActive }"
             :style="isProfileSettingsActive ? { border: '1px solid rgb(99,99,247)' } : { border: '1px solid #4a4a4a' }"
@@ -1233,7 +1233,7 @@ const setActiveSection = async (section: 'profile' | 'leaderboard' | 'map' | 'ev
     }, 100);
     
     // Use unified navigation state
-    await navigateToSection(section);
+    await navigateToSection(section, 'webcontent');
     
     // Loading overlay will be hidden by the navigation state change event or timeout
     setTimeout(() => {

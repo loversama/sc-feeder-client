@@ -213,15 +213,15 @@ const handleCommand = async (command: string) => {
     } else if (command === 'login') {
       await window.logMonitorApi?.authShowLogin?.()
     } else if (command === 'profile') {
-      await navigateToSection('profile')
+      await navigateToSection('profile', 'navigation-menu')
     } else if (command === 'leaderboard') {
-      await navigateToSection('leaderboard')
+      await navigateToSection('leaderboard', 'navigation-menu')
     } else if (command === 'map') {
-      await navigateToSection('map')
+      await navigateToSection('map', 'navigation-menu')
     } else if (command === 'events') {
-      await navigateToSection('events')
+      await navigateToSection('events', 'navigation-menu')
     } else if (command === 'stats') {
-      await navigateToSection('stats')
+      await navigateToSection('stats', 'navigation-menu')
     } else if (command === 'settings') {
       await window.logMonitorApi?.openSettingsWindow?.()
     } else if (command === 'account-settings') {
