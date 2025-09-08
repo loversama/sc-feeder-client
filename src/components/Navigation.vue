@@ -186,13 +186,16 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
       }
     }
 
-    // Final fallback to legacy webview system
-    try {
-      console.log(`[Navigation] Final fallback to legacy webview for ${section}`);
-      const result = await window.logMonitorApi?.openWebContentWindow?.(section);
-      console.log(`[Navigation] Legacy webview fallback result for ${section}:`, result);
-    } catch (fallbackError) {
-      console.error(`[Navigation] All fallbacks failed for ${section}:`, fallbackError);
+    // No more fallbacks - if enhanced window fails, show error
+    console.error(`[Navigation] Failed to open ${section} - enhanced window creation failed`);
+    
+    // Optionally, show a user-friendly error message
+    if (window.ElMessage) {
+      window.ElMessage({
+        message: `Failed to open ${section} window. Please try again.`,
+        type: 'error',
+        duration: 3000
+      });
     }
   } catch (error) {
     console.error(`[Navigation] Failed to open ${section}:`, error);

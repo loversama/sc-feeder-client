@@ -6,7 +6,7 @@ import {
     getEmbeddedWebContentManager, 
     closeEmbeddedWebContentManager 
 } from './modules/embedded-webcontents-manager';
-import { getMainWindow, getPreloadPath } from './modules/window-manager';
+import { getMainWindow, getPreloadPath, createWebContentWindow } from './modules/window-manager';
 import { getLastLoggedInUser } from './modules/config-manager';
 
 const MODULE_NAME = 'EnhancedIPCHandlers';
@@ -221,16 +221,30 @@ export function registerEnhancedIPCHandlers(): void {
     // Window close
     ipcMain.on('enhanced-window:close', async (event) => {
         try {
-            // Close embedded overlay instead of entire window
-            const manager = getEmbeddedWebContentManager();
-            if (manager) {
-                await manager.hide();
-                logger.info(MODULE_NAME, 'Embedded overlay hidden');
-            } else {
-                logger.warn(MODULE_NAME, 'No embedded manager found to close');
+            // Try to close the WebContentPage window first
+            const senderWindow = BrowserWindow.fromWebContents(event.sender);
+            if (senderWindow && senderWindow.getTitle().includes('Web Content')) {
+                logger.info(MODULE_NAME, 'Closing WebContentPage window');
+                senderWindow.close();
+                return;
             }
+            
+            // If no WebContentPage window, check for any web content windows
+            const allWindows = BrowserWindow.getAllWindows();
+            const webContentWindow = allWindows.find(win => 
+                win.getTitle().includes('Web Content') && 
+                !win.isDestroyed()
+            );
+            
+            if (webContentWindow) {
+                logger.info(MODULE_NAME, 'Found and closing web content window');
+                webContentWindow.close();
+                return;
+            }
+            
+            logger.warn(MODULE_NAME, 'No web content window found to close');
         } catch (error) {
-            logger.error(MODULE_NAME, 'Failed to close embedded overlay:', error instanceof Error ? error.message : 'Unknown error');
+            logger.error(MODULE_NAME, 'Failed to close window:', error instanceof Error ? error.message : 'Unknown error');
         }
     });
 
@@ -271,24 +285,8 @@ export function registerEnhancedIPCHandlers(): void {
         try {
             logger.info(MODULE_NAME, `Handling enhanced window request for section: ${section}`);
             
-            // First check if we have an embedded manager
-            let manager = getEmbeddedWebContentManager();
-            
-            // If we already have a manager, use it
-            if (manager) {
-                logger.info(MODULE_NAME, 'Using existing embedded manager');
-                await manager.navigateToSection(section);
-                await manager.show();
-                
-                return {
-                    success: true,
-                    architecture: 'embedded-webcontentsview',
-                    section,
-                    timestamp: new Date().toISOString()
-                };
-            }
-            
-            logger.info(MODULE_NAME, `Attaching WebContentsView to web content window for section: ${section}`);
+            // FIRST: Try to find or create the proper WebContentPage window
+            logger.info(MODULE_NAME, `Looking for web content window for section: ${section}`);
             
             // Find the web content window by title or check all windows
             let webContentWindow: BrowserWindow | null = null;
@@ -326,14 +324,15 @@ export function registerEnhancedIPCHandlers(): void {
             if (!webContentWindow) {
                 logger.info(MODULE_NAME, 'Web content window not found, creating new one');
                 
-                // Import window manager functions
-                const windowManagerModule = await import('./modules/window-manager');
-                const createWebContentWindow = windowManagerModule.createWebContentWindow || windowManagerModule.default?.createWebContentWindow;
-                
+                // Use the imported createWebContentWindow function
                 if (createWebContentWindow) {
                     webContentWindow = createWebContentWindow(section);
                     if (webContentWindow) {
                         logger.info(MODULE_NAME, 'Created new web content window successfully');
+                        
+                        // Wait a moment for window to be ready
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        
                         return {
                             success: true,
                             architecture: 'webcontent-window',
@@ -343,16 +342,12 @@ export function registerEnhancedIPCHandlers(): void {
                     }
                 }
                 
-                // Fallback to embedded manager if window creation failed
-                logger.warn(MODULE_NAME, 'Failed to create web content window, falling back to embedded manager');
-                manager = await createEmbeddedWebContentManager();
-                await manager.navigateToSection(section);
-                await manager.show();
-                
+                // Don't fallback - just report the error
+                logger.error(MODULE_NAME, 'Failed to create web content window - createWebContentWindow returned null');
                 return {
-                    success: true,
-                    architecture: 'embedded-webcontentsview',
-                    section,
+                    success: false,
+                    error: 'Failed to create web content window',
+                    architecture: 'webcontent-window',
                     timestamp: new Date().toISOString()
                 };
             } else {
@@ -410,29 +405,32 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
-    // Create embedded WebContentsView overlay (replaces old webview system)
+    // DEPRECATED: Create embedded WebContentsView overlay - now redirects to proper WebContentPage
     ipcMain.handle('enhanced-window:create', async (_, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' = 'profile') => {
         try {
-            logger.info(MODULE_NAME, `Creating embedded WebContentsView overlay for section: ${section}`);
+            logger.warn(MODULE_NAME, `DEPRECATED: enhanced-window:create called, redirecting to WebContentPage for section: ${section}`);
             
-            let manager = getEmbeddedWebContentManager();
-            if (!manager) {
-                manager = await createEmbeddedWebContentManager();
+            // Redirect to proper WebContentPage window creation
+            if (createWebContentWindow) {
+                const window = createWebContentWindow(section);
+                if (window) {
+                    logger.info(MODULE_NAME, 'Created WebContentPage window instead of embedded overlay');
+                    return {
+                        success: true,
+                        architecture: 'webcontent-window',
+                        section,
+                        timestamp: new Date().toISOString()
+                    };
+                }
             }
             
-            await manager.navigateToSection(section);
-            await manager.show();
-            
-            logger.info(MODULE_NAME, 'Separate WebContentsView window created successfully');
-            
             return {
-                success: true,
-                architecture: 'separate-webcontentsview',
-                section,
-                timestamp: new Date().toISOString()
+                success: false,
+                error: 'Failed to create WebContentPage window',
+                architecture: 'webcontent-window'
             };
         } catch (error) {
-            logger.error(MODULE_NAME, 'Failed to create embedded WebContentsView overlay:', error);
+            logger.error(MODULE_NAME, 'Failed to create window:', error);
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Unknown error',
@@ -441,35 +439,55 @@ export function registerEnhancedIPCHandlers(): void {
         }
     });
 
-    // Close embedded WebContentsView overlay
+    // Close WebContentPage window (previously embedded overlay)
     ipcMain.handle('enhanced-window:close-window', async () => {
         try {
-            const manager = getEmbeddedWebContentManager();
-            if (manager) {
-                await manager.hide();
-                logger.info(MODULE_NAME, 'Embedded WebContentsView overlay hidden');
+            // Find and close the WebContentPage window
+            const allWindows = BrowserWindow.getAllWindows();
+            const webContentWindow = allWindows.find(win => 
+                win.getTitle().includes('Web Content') && 
+                !win.isDestroyed()
+            );
+            
+            if (webContentWindow) {
+                logger.info(MODULE_NAME, 'Closing WebContentPage window');
+                webContentWindow.close();
                 return true;
             } else {
-                logger.warn(MODULE_NAME, 'No embedded manager found to hide');
+                logger.warn(MODULE_NAME, 'No WebContentPage window found to close');
                 return false;
             }
         } catch (error) {
-            logger.error(MODULE_NAME, 'Failed to hide embedded WebContentsView overlay:', error);
+            logger.error(MODULE_NAME, 'Failed to close WebContentPage window:', error);
             return false;
         }
     });
 
-    // Get embedded WebContentsView overlay status
+    // Get WebContentPage window status
     ipcMain.handle('enhanced-window:get-status', async () => {
         try {
-            const manager = getEmbeddedWebContentManager();
+            // Find the WebContentPage window
+            const allWindows = BrowserWindow.getAllWindows();
+            const webContentWindow = allWindows.find(win => 
+                win.getTitle().includes('Web Content') && 
+                !win.isDestroyed()
+            );
             
-            if (manager) {
+            if (webContentWindow) {
+                // Get the current section from window state or WebContentsView
+                let activeSection = null;
+                const webContentView = windowWebContentsViews.get(webContentWindow.id);
+                
+                if (webContentView && webContentView.webContents && !webContentView.webContents.isDestroyed()) {
+                    const currentUrl = webContentView.webContents.getURL();
+                    activeSection = detectSectionFromUrl(currentUrl);
+                }
+                
                 return {
-                    isOpen: manager.isOverlayVisible(),
-                    activeSection: manager.getCurrentSection(),
-                    architecture: 'embedded-webcontentsview',
-                    authenticationEnabled: manager.isAuthenticationEnabled(),
+                    isOpen: true,
+                    activeSection: activeSection,
+                    architecture: 'webcontent-window',
+                    authenticationEnabled: true,
                     timestamp: new Date().toISOString()
                 };
             } else {
@@ -482,7 +500,7 @@ export function registerEnhancedIPCHandlers(): void {
                 };
             }
         } catch (error) {
-            logger.error(MODULE_NAME, 'Failed to get embedded WebContentsView overlay status:', error);
+            logger.error(MODULE_NAME, 'Failed to get WebContentPage window status:', error);
             return {
                 isOpen: false,
                 activeSection: null,
@@ -536,22 +554,25 @@ export function registerEnhancedIPCHandlers(): void {
                 }
             }
             
-            // No existing window/view found, create new
-            logger.info(MODULE_NAME, 'No existing window found, creating new embedded window');
+            // No existing window/view found, create proper WebContentPage window
+            logger.info(MODULE_NAME, 'No existing window found, creating proper WebContentPage window');
             
-            if (!manager) {
-                const newManager = await createEmbeddedWebContentManager();
-                await newManager.navigateToSection(section);
-                await newManager.show();
-            } else {
-                await manager.navigateToSection(section);
-                await manager.show();
+            if (createWebContentWindow) {
+                const newWindow = createWebContentWindow(section);
+                if (newWindow) {
+                    logger.info(MODULE_NAME, 'Created new WebContentPage window successfully');
+                    return {
+                        success: true,
+                        section,
+                        architecture: 'webcontent-window'
+                    };
+                }
             }
             
+            // Return error instead of falling back to embedded manager
             return {
-                success: true,
-                section,
-                architecture: 'embedded-webcontentsview'
+                success: false,
+                error: 'Failed to create WebContentPage window'
             };
         } catch (error) {
             logger.error(MODULE_NAME, 'Failed to navigate to section:', error);
