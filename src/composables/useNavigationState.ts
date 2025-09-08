@@ -114,6 +114,20 @@ export function useNavigationState() {
           });
         } else {
           console.error('[NavigationState] Navigation failed:', result?.error);
+          
+          // Fallback to legacy web content window
+          console.log('[NavigationState] Falling back to legacy openWebContentWindow');
+          if (window.logMonitorApi?.openWebContentWindow) {
+            try {
+              await window.logMonitorApi.openWebContentWindow(section as any);
+              currentSection.value = section;
+              webContentWindowOpen.value = true;
+              console.log('[NavigationState] Legacy navigation successful:', section);
+            } catch (legacyError) {
+              console.error('[NavigationState] Legacy navigation also failed:', legacyError);
+            }
+          }
+          
           // Reset navigation flag on failure
           isNavigating.value = false;
         }
