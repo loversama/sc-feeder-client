@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # Or your project's node version
+          node-version: '20' # Updated to Node.js 20 as required by dependencies
           cache: 'npm'
           cache-dependency-path: package-lock.json # Path relative to the default working-directory
 
