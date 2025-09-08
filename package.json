@@ -1,6 +1,8 @@
 {
   "name": "VOIDLOG.GG-Client",
   "productName": "VOIDLOG.GG Client",
+  "description": "VOIDLOG.GG Client - Star Citizen Kill Feed Monitor",
+  "author": "VOIDLOG.GG Team",
   "private": true,
   "version": "0.1.9-alpha",
   "type": "module",
@@ -42,7 +44,7 @@
     "bufferutil": "^4.0.9",
     "cheerio": "^1.0.0",
     "cross-env": "^7.0.3",
-    "electron": "^38.0.0",
+    "electron": "^30.0.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^4.0.0",
     "node-fetch": "^2.7.0",
