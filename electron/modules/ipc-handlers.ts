@@ -276,7 +276,7 @@ export function registerIpcHandlers() {
             logger.debug(MODULE_NAME, 'Opening file dialog for sound selection');
             
             const mainWindow = getMainWindow();
-            const result = await dialog.showOpenDialog(mainWindow, {
+            const result = await dialog.showOpenDialog(mainWindow ? mainWindow : undefined, {
                 properties: ['openFile'],
                 filters: [
                     { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg'] },
@@ -336,7 +336,7 @@ export function registerIpcHandlers() {
             return { success: true };
         } catch (error) {
             logger.error(MODULE_NAME, `Error testing sound: ${error}`);
-            return { success: false, error: error.message };
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     });
     
@@ -1072,7 +1072,7 @@ ipcMain.handle('auth:show-login', () => {
             return { success: true };
         } catch (error) {
             logger.error(MODULE_NAME, 'Error clearing zone history:', error);
-            return { success: false, error: error.message };
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     });
 

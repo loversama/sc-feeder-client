@@ -326,7 +326,9 @@ export function registerEnhancedIPCHandlers(): void {
                 
                 // Use the imported createWebContentWindow function
                 if (createWebContentWindow) {
-                    webContentWindow = createWebContentWindow(section);
+                    // Filter out profile-settings as it's not supported by createWebContentWindow
+                    const validSection = section === 'profile-settings' ? undefined : section;
+                    webContentWindow = createWebContentWindow(validSection);
                     if (webContentWindow) {
                         logger.info(MODULE_NAME, 'Created new web content window successfully');
                         
@@ -412,7 +414,9 @@ export function registerEnhancedIPCHandlers(): void {
             
             // Redirect to proper WebContentPage window creation
             if (createWebContentWindow) {
-                const window = createWebContentWindow(section);
+                // Filter out profile-settings as it's not supported by createWebContentWindow
+                const validSection = section === 'profile-settings' ? undefined : section;
+                const window = createWebContentWindow(validSection);
                 if (window) {
                     logger.info(MODULE_NAME, 'Created WebContentPage window instead of embedded overlay');
                     return {
@@ -589,8 +593,12 @@ export function registerEnhancedIPCHandlers(): void {
             logger.info(MODULE_NAME, 'Updating auth tokens in WebContentsView');
             
             // Update tokens in auth manager
-            if (tokens) {
-                storeTokens(tokens.accessToken || '', tokens.refreshToken || '', tokens.user || null);
+            if (tokens && tokens.accessToken && tokens.refreshToken) {
+                await storeTokens({
+                    accessToken: tokens.accessToken,
+                    refreshToken: tokens.refreshToken,
+                    user: tokens.user || null
+                });
             }
             
             // Update embedded manager if it exists
@@ -607,7 +615,8 @@ export function registerEnhancedIPCHandlers(): void {
             });
             
             // Broadcast to all windows
-            broadcastAuthUpdate();
+            const currentAuth = await getCurrentAuthTokens();
+            await broadcastAuthUpdate(currentAuth);
             
             return {
                 success: true,
@@ -1224,8 +1233,7 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         webContentView.setBounds(bounds);
         logger.info(MODULE_NAME, 'WebContentsView positioned with bounds:', bounds);
         
-        // Force a layout update
-        targetWindow.contentView.layout();
+        // Force a layout update - removed as View.layout() is no longer available in newer Electron versions
         
         // Get actual bounds to verify
         const actualBounds = webContentView.getBounds();

@@ -419,14 +419,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates,
-                        isPlayerInvolved: isPlayerInvolved,
-                        // Add enhanced metadata with zone information
-                        metadata: {
-                            locationSource: locationData.locationSource,
-                            originalZone: vehicle_zone,
-                            zoneInfo: locationData.zoneInfo,
-                            zoneResolution: locationData.zoneResolution
-                        } as EventZoneMetadata
+                        isPlayerInvolved: isPlayerInvolved
                     };
 
                     // Only process events where the current user is involved
@@ -525,15 +518,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates, // Will be undefined for combat deaths
-                        isPlayerInvolved: isPlayerInvolved,
-                        // Add enhanced metadata with zone hierarchy information
-                        metadata: {
-                            locationSource: locationData.locationSource,
-                            originalZone: killMatch.groups.Zone,
-                            cleanedZone: Zone,
-                            zoneInfo: locationData.zoneInfo,
-                            zoneResolution: locationData.zoneResolution
-                        } as EventZoneMetadata
+                        isPlayerInvolved: isPlayerInvolved
                     };
 
                     // Only process events where the current user is involved
