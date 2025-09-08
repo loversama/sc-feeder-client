@@ -1878,7 +1878,9 @@ export function createWebContentWindow(section?: 'profile' | 'leaderboard' | 'ma
     webContentWindow.on('closed', () => {
         webContentWindow = null; // Dereference the window object
         currentWebContentSection = null; // Clear active section
-        logger.info(MODULE_NAME, 'Web content window closed. Cleared active section.');
+        // Send status update to main window
+        getMainWindow()?.webContents.send('web-content-window-status', { isOpen: false, activeSection: null });
+        logger.info(MODULE_NAME, 'Web content window closed. Cleared active section and sent status update.');
     });
 
     // --- Save Web Content Window Bounds ---
