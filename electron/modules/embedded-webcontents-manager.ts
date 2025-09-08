@@ -60,7 +60,7 @@ export class EmbeddedWebContentsManager {
                 width: 1024,
                 height: 768,
                 title: 'SC Feeder - Web Content',
-                show: false,
+                show: false, // Will be shown when show() is called
                 resizable: true,
                 minimizable: true,
                 maximizable: true,
@@ -68,6 +68,8 @@ export class EmbeddedWebContentsManager {
                 backgroundColor: '#1a1a1a',
                 minWidth: 800,
                 minHeight: 600,
+                center: true, // Center on screen
+                autoHideMenuBar: true, // Hide menu bar
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
@@ -377,7 +379,18 @@ export class EmbeddedWebContentsManager {
     }
 
     public async show(): Promise<void> {
-        if (!this.separateWindow) return;
+        // If window was closed, recreate it
+        if (!this.separateWindow || this.separateWindow.isDestroyed()) {
+            logger.info(MODULE_NAME, 'Window was closed, recreating...');
+            await this.createSeparateWindow();
+            await this.createWebContentView();
+            this.setupEventHandlers();
+        }
+
+        if (!this.separateWindow) {
+            logger.error(MODULE_NAME, 'Failed to create window');
+            return;
+        }
 
         this.isVisible = true;
         this.separateWindow.show();
@@ -386,6 +399,9 @@ export class EmbeddedWebContentsManager {
         this.separateWindow.focus();
         
         logger.info(MODULE_NAME, 'Separate WebContentsView window shown');
+        
+        // Emit status update after showing window
+        this.emitStatusUpdate();
     }
 
     public async hide(): Promise<void> {
@@ -398,6 +414,14 @@ export class EmbeddedWebContentsManager {
     }
 
     public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<void> {
+        // If window was closed, recreate it
+        if (!this.separateWindow || this.separateWindow.isDestroyed() || !this.webContentView || this.webContentView.webContents.isDestroyed()) {
+            logger.info(MODULE_NAME, 'Window or view was closed, recreating...');
+            await this.createSeparateWindow();
+            await this.createWebContentView();
+            this.setupEventHandlers();
+        }
+        
         // Prevent crashes from destroyed WebContentsView
         if (!this.webContentView || !this.webContentView.webContents || this.webContentView.webContents.isDestroyed()) {
             logger.error(MODULE_NAME, `WebContentsView is destroyed or not available, cannot navigate to ${section}`);
