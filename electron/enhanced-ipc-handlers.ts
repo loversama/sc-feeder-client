@@ -274,7 +274,7 @@ export function registerEnhancedIPCHandlers(): void {
             // First check if we have an embedded manager
             let manager = getEmbeddedWebContentManager();
             
-            // If we already have a manager, use it (it will recreate window if needed)
+            // If we already have a manager, use it
             if (manager) {
                 logger.info(MODULE_NAME, 'Using existing embedded manager');
                 await manager.navigateToSection(section);
@@ -288,8 +288,7 @@ export function registerEnhancedIPCHandlers(): void {
                 };
             }
             
-            // Otherwise, check for existing windows to attach to
-            logger.info(MODULE_NAME, `No embedded manager found, checking for existing windows for section: ${section}`);
+            logger.info(MODULE_NAME, `Attaching WebContentsView to web content window for section: ${section}`);
             
             // Find the web content window by title or check all windows
             let webContentWindow: BrowserWindow | null = null;
@@ -484,11 +483,9 @@ export function registerEnhancedIPCHandlers(): void {
             
             // First try to navigate existing window
             const manager = getEmbeddedWebContentManager();
-            if (manager) {
-                // If manager exists but window is closed, navigateToSection will recreate it
+            if (manager && manager.isOverlayVisible()) {
                 await manager.navigateToSection(section);
-                await manager.show();
-                logger.info(MODULE_NAME, `Navigated embedded window to ${section}`);
+                logger.info(MODULE_NAME, `Navigated existing window to ${section}`);
                 
                 return {
                     success: true,
@@ -521,12 +518,17 @@ export function registerEnhancedIPCHandlers(): void {
                 }
             }
             
-            // No existing window/view found, create new embedded manager
+            // No existing window/view found, create new
             logger.info(MODULE_NAME, 'No existing window found, creating new embedded window');
             
-            const newManager = await createEmbeddedWebContentManager();
-            await newManager.navigateToSection(section);
-            await newManager.show();
+            if (!manager) {
+                const newManager = await createEmbeddedWebContentManager();
+                await newManager.navigateToSection(section);
+                await newManager.show();
+            } else {
+                await manager.navigateToSection(section);
+                await manager.show();
+            }
             
             return {
                 success: true,
@@ -1298,32 +1300,27 @@ async function setupAuthenticationForSession(webContentSession: Electron.Session
         
         // Set up request interception
         webContentSession.webRequest.onBeforeSendHeaders((details, callback) => {
-            const url = details.url;
+            const currentTokens = getCurrentAuthTokens();
             
-            // Skip static assets and other requests that don't need auth
-            const isStaticAsset = url.includes('/_nuxt/') || 
-                                 url.includes('/node_modules/') ||
-                                 url.includes('.js') || 
-                                 url.includes('.css') ||
-                                 url.includes('.mjs') ||
-                                 url.includes('.vue') ||
-                                 url.includes('.png') ||
-                                 url.includes('.jpg') ||
-                                 url.includes('.ico') ||
-                                 url.includes('.svg') ||
-                                 url.includes('.woff') ||
-                                 url.includes('.ttf') ||
-                                 url.includes('/socket.io/'); // Skip socket.io polling/websocket
-            
-            // Only check auth for actual API requests
-            const isApiRequest = url.includes('/api/') && !isStaticAsset;
-            
-            if (isApiRequest && !details.requestHeaders['Authorization']) {
-                const currentTokens = getCurrentAuthTokens();
+            if (currentTokens?.accessToken) {
+                const url = details.url;
                 
-                if (currentTokens?.accessToken) {
+                // Only add auth headers to API requests, not static assets
+                const isApiRequest = url.includes('/api/') && !url.includes('/_nuxt/');
+                
+                // Also add auth for specific trusted domain requests (but not static assets)
+                const isTrustedDomainRequest = trustedDomains.some(domain => {
+                    try {
+                        const urlObj = new URL(url);
+                        return urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain);
+                    } catch {
+                        return false;
+                    }
+                }) && !url.includes('/_nuxt/') && !url.includes('/node_modules/');
+
+                if ((isApiRequest || isTrustedDomainRequest) && !details.requestHeaders['Authorization']) {
                     details.requestHeaders['Authorization'] = `Bearer ${currentTokens.accessToken}`;
-                    logger.debug(MODULE_NAME, `Added Authorization header to API request: ${url}`);
+                    logger.debug(MODULE_NAME, `Added Authorization header to: ${url}`);
                 }
             }
 

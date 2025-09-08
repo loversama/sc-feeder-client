@@ -60,7 +60,7 @@ export class EmbeddedWebContentsManager {
                 width: 1024,
                 height: 768,
                 title: 'SC Feeder - Web Content',
-                show: false, // Will be shown when show() is called
+                show: false,
                 resizable: true,
                 minimizable: true,
                 maximizable: true,
@@ -68,8 +68,6 @@ export class EmbeddedWebContentsManager {
                 backgroundColor: '#1a1a1a',
                 minWidth: 800,
                 minHeight: 600,
-                center: true, // Center on screen
-                autoHideMenuBar: true, // Hide menu bar
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
@@ -237,33 +235,16 @@ export class EmbeddedWebContentsManager {
         try {
             // Set up request interception (same as external windows)
             webContentSession.webRequest.onBeforeSendHeaders((details, callback) => {
-                const url = details.url;
+                const currentTokens = getCurrentAuthTokens();
                 
-                // Skip static assets and other requests that don't need auth
-                const isStaticAsset = url.includes('/_nuxt/') || 
-                                     url.includes('/node_modules/') ||
-                                     url.includes('.js') || 
-                                     url.includes('.css') ||
-                                     url.includes('.mjs') ||
-                                     url.includes('.vue') ||
-                                     url.includes('.png') ||
-                                     url.includes('.jpg') ||
-                                     url.includes('.ico') ||
-                                     url.includes('.svg') ||
-                                     url.includes('.woff') ||
-                                     url.includes('.ttf');
-                
-                const isSocketIO = url.includes('/socket.io/');
-                
-                // Only check auth for actual API requests
-                const isApiRequest = url.includes('/api/') && !isStaticAsset;
-                
-                if (isApiRequest && !details.requestHeaders['Authorization']) {
-                    const currentTokens = getCurrentAuthTokens();
-                    
-                    if (currentTokens?.accessToken) {
+                if (currentTokens?.accessToken) {
+                    const url = details.url;
+                    const isApiRequest = url.includes('/api/') || 
+                                        this.trustedDomains.some(domain => url.includes(domain));
+
+                    if (isApiRequest && !details.requestHeaders['Authorization']) {
                         details.requestHeaders['Authorization'] = `Bearer ${currentTokens.accessToken}`;
-                        logger.debug(MODULE_NAME, `Added Authorization header to API request: ${url}`);
+                        logger.debug(MODULE_NAME, `Added Authorization header to: ${url}`);
                     }
                 }
 
@@ -396,41 +377,15 @@ export class EmbeddedWebContentsManager {
     }
 
     public async show(): Promise<void> {
-        // If window was closed, recreate it
-        if (!this.separateWindow || this.separateWindow.isDestroyed()) {
-            logger.info(MODULE_NAME, 'Window was closed, recreating...');
-            await this.createSeparateWindow();
-            await this.createWebContentView();
-            this.setupEventHandlers();
-        }
-
-        if (!this.separateWindow) {
-            logger.error(MODULE_NAME, 'Failed to create window');
-            return;
-        }
+        if (!this.separateWindow) return;
 
         this.isVisible = true;
-        
-        logger.info(MODULE_NAME, 'About to show window...');
         this.separateWindow.show();
-        logger.info(MODULE_NAME, 'Window show() called');
         
         // Focus the separate window
         this.separateWindow.focus();
-        logger.info(MODULE_NAME, 'Window focus() called');
-        
-        // Force window to be visible
-        this.separateWindow.setAlwaysOnTop(true);
-        setTimeout(() => {
-            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
-                this.separateWindow.setAlwaysOnTop(false);
-            }
-        }, 100);
         
         logger.info(MODULE_NAME, 'Separate WebContentsView window shown');
-        
-        // Emit status update after showing window
-        this.emitStatusUpdate();
     }
 
     public async hide(): Promise<void> {
@@ -443,14 +398,6 @@ export class EmbeddedWebContentsManager {
     }
 
     public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<void> {
-        // If window was closed, recreate it
-        if (!this.separateWindow || this.separateWindow.isDestroyed() || !this.webContentView || this.webContentView.webContents.isDestroyed()) {
-            logger.info(MODULE_NAME, 'Window or view was closed, recreating...');
-            await this.createSeparateWindow();
-            await this.createWebContentView();
-            this.setupEventHandlers();
-        }
-        
         // Prevent crashes from destroyed WebContentsView
         if (!this.webContentView || !this.webContentView.webContents || this.webContentView.webContents.isDestroyed()) {
             logger.error(MODULE_NAME, `WebContentsView is destroyed or not available, cannot navigate to ${section}`);
