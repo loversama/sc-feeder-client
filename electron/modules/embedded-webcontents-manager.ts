@@ -146,6 +146,10 @@ export class EmbeddedWebContentsManager {
             this.isVisible = false;
             this.separateWindow = null;
             this.webContentView = null;
+            
+            // Emit status update to notify frontend that window is closed
+            this.emitStatusUpdate();
+            logger.info(MODULE_NAME, 'Window closed, status update emitted');
         });
 
         // Web content events
@@ -373,7 +377,18 @@ export class EmbeddedWebContentsManager {
     }
 
     public async show(): Promise<void> {
-        if (!this.separateWindow) return;
+        // If window was closed, recreate it
+        if (!this.separateWindow || this.separateWindow.isDestroyed()) {
+            logger.info(MODULE_NAME, 'Window was closed, recreating...');
+            await this.createSeparateWindow();
+            await this.createWebContentView();
+            this.setupEventHandlers();
+        }
+
+        if (!this.separateWindow) {
+            logger.error(MODULE_NAME, 'Failed to create window');
+            return;
+        }
 
         this.isVisible = true;
         this.separateWindow.show();
@@ -394,6 +409,14 @@ export class EmbeddedWebContentsManager {
     }
 
     public async navigateToSection(section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings'): Promise<void> {
+        // If window was closed, recreate it
+        if (!this.separateWindow || this.separateWindow.isDestroyed() || !this.webContentView || this.webContentView.webContents.isDestroyed()) {
+            logger.info(MODULE_NAME, 'Window or view was closed, recreating...');
+            await this.createSeparateWindow();
+            await this.createWebContentView();
+            this.setupEventHandlers();
+        }
+        
         // Prevent crashes from destroyed WebContentsView
         if (!this.webContentView || !this.webContentView.webContents || this.webContentView.webContents.isDestroyed()) {
             logger.error(MODULE_NAME, `WebContentsView is destroyed or not available, cannot navigate to ${section}`);

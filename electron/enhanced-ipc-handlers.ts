@@ -269,6 +269,26 @@ export function registerEnhancedIPCHandlers(): void {
     // Attach WebContentsView to existing WebContentPage.vue window
     ipcMain.handle('enhanced-window:attach-to-existing', async (event, section: 'profile' | 'leaderboard' | 'map' | 'events' | 'stats' | 'profile-settings' = 'profile') => {
         try {
+            logger.info(MODULE_NAME, `Handling enhanced window request for section: ${section}`);
+            
+            // First check if we have an embedded manager
+            let manager = getEmbeddedWebContentManager();
+            
+            // If we already have a manager, use it (it will recreate window if needed)
+            if (manager) {
+                logger.info(MODULE_NAME, 'Using existing embedded manager');
+                await manager.navigateToSection(section);
+                await manager.show();
+                
+                return {
+                    success: true,
+                    architecture: 'embedded-webcontentsview',
+                    section,
+                    timestamp: new Date().toISOString()
+                };
+            }
+            
+            // Otherwise, check for existing windows to attach to
             logger.info(MODULE_NAME, `Attaching WebContentsView to web content window for section: ${section}`);
             
             // Find the web content window by title or check all windows
@@ -305,19 +325,19 @@ export function registerEnhancedIPCHandlers(): void {
             }
             
             if (!webContentWindow) {
-                logger.info(MODULE_NAME, 'Web content window not found, creating new one');
+                logger.info(MODULE_NAME, 'Web content window not found, creating new embedded manager');
                 
-                // Import createWebContentWindow from window-manager
-                const { createWebContentWindow } = await import('./modules/window-manager');
+                // Create embedded manager instead
+                manager = await createEmbeddedWebContentManager();
+                await manager.navigateToSection(section);
+                await manager.show();
                 
-                // Create the window - this handles minimized/restore automatically
-                webContentWindow = createWebContentWindow(section);
-                
-                if (!webContentWindow) {
-                    throw new Error('Failed to create web content window');
-                }
-                
-                logger.info(MODULE_NAME, 'Created new web content window');
+                return {
+                    success: true,
+                    architecture: 'embedded-webcontentsview',
+                    section,
+                    timestamp: new Date().toISOString()
+                };
             } else {
                 logger.info(MODULE_NAME, 'Found existing web content window');
                 
@@ -464,9 +484,11 @@ export function registerEnhancedIPCHandlers(): void {
             
             // First try to navigate existing window
             const manager = getEmbeddedWebContentManager();
-            if (manager && manager.isOverlayVisible()) {
+            if (manager) {
+                // If manager exists but window is closed, navigateToSection will recreate it
                 await manager.navigateToSection(section);
-                logger.info(MODULE_NAME, `Navigated existing window to ${section}`);
+                await manager.show();
+                logger.info(MODULE_NAME, `Navigated embedded window to ${section}`);
                 
                 return {
                     success: true,
@@ -499,17 +521,12 @@ export function registerEnhancedIPCHandlers(): void {
                 }
             }
             
-            // No existing window/view found, create new
+            // No existing window/view found, create new embedded manager
             logger.info(MODULE_NAME, 'No existing window found, creating new embedded window');
             
-            if (!manager) {
-                const newManager = await createEmbeddedWebContentManager();
-                await newManager.navigateToSection(section);
-                await newManager.show();
-            } else {
-                await manager.navigateToSection(section);
-                await manager.show();
-            }
+            const newManager = await createEmbeddedWebContentManager();
+            await newManager.navigateToSection(section);
+            await newManager.show();
             
             return {
                 success: true,
