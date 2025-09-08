@@ -795,9 +795,11 @@ const playKillSound = async (killEvent?: KillEvent) => {
       for (const format of soundFormats) {
         if (audioPlayed) break;
         
+        // Define soundPath outside the try block so it's accessible in catch
+        let soundPath = soundConfig.path;
+        
         try {
           // Handle sound variations
-          let soundPath = soundConfig.path;
           if (!soundPath) continue;  // Skip if no path is defined
           let volumeMultiplier = 1.0;
           
@@ -1772,7 +1774,7 @@ onMounted(async () => { // Make onMounted async
     // Add listener for connection status changes
     (() => {
       if (window.logMonitorApi?.onConnectionStatusChanged) {
-        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event, status, attempts?, delay?) => {
+        const cleanup = window.logMonitorApi.onConnectionStatusChanged((_event: any, status: string, attempts?: number, delay?: number) => {
           console.log('[KillFeed] Received connection status update:', status, 'attempts:', attempts, 'delay:', delay);
           
           // Clear existing timeout if any
@@ -1781,7 +1783,7 @@ onMounted(async () => { // Make onMounted async
             connectionTimeout.value = null;
           }
           
-          connectionStatus.value = status;
+          connectionStatus.value = status as ConnectionStatus;
           if (attempts !== undefined) {
             connectionAttempts.value = attempts;
           }

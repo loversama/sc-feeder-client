@@ -1394,8 +1394,9 @@ onMounted(async () => {
     try {
       const status = await window.logMonitorApi.getWebContentWindowStatus();
       if (status.isOpen && status.activeSection) {
-        if (status.activeSection === 'profile' || status.activeSection === 'leaderboard' || status.activeSection === 'map' || status.activeSection === 'events' || status.activeSection === 'stats' || status.activeSection === 'profile-settings') {
-          updateCurrentSection(status.activeSection);
+        const validSections = ['profile', 'leaderboard', 'map', 'events', 'stats', 'profile-settings'] as const;
+        if (validSections.includes(status.activeSection as any)) {
+          updateCurrentSection(status.activeSection as any);
           console.log(`[WebContentPage] Initial section synced to unified state: ${status.activeSection}`);
         } else if (status.activeSection === '/') {
           updateCurrentSection('profile'); // Default to profile for root path
