@@ -708,10 +708,10 @@ const playKillSound = async (killEvent?: KillEvent) => {
       enabled: playSoundEffects.value,
       eventSounds: {
         vehicleDestruction: { type: 'default', path: 'clean_pop', volume: 0.5 },
-        crash: { type: 'default', path: 'kill-event-high', volume: 0.5 },
+        crash: { type: 'default', path: 'metallic_din_2', volume: 0.5 },
         playerKill: { type: 'default', path: 'metallic_din_1', volume: 0.5 },
         npcKill: { type: 'default', path: 'metallic_din_npc', volume: 0.3 },
-        playerDeath: { type: 'default', path: 'kill-event-high', volume: 0.6 }
+        playerDeath: { type: 'default', path: 'cranial_snap', volume: 0.6 }
       }
     };
   }

@@ -129,10 +129,10 @@ const soundPreferences = ref<SoundPreferences>({
   enabled: true,
   eventSounds: {
     vehicleDestruction: { type: 'default', path: 'clean_pop', volume: 0.6 },
-    crash: { type: 'default', path: 'kill-event-high', volume: 0.7 },
+    crash: { type: 'default', path: 'metallic_din_2', volume: 0.7 },
     playerKill: { type: 'default', path: 'metallic_din_1', volume: 0.5 },
     npcKill: { type: 'default', path: 'metallic_din_npc', volume: 0.4 },
-    playerDeath: { type: 'default', path: 'kill-event-high', volume: 0.8 },
+    playerDeath: { type: 'default', path: 'cranial_snap', volume: 0.8 },
   }
 });
 
@@ -188,7 +188,7 @@ const updatePreferencesImmediate = async () => {
           },
           crash: {
             type: soundPreferences.value.eventSounds.crash.type || 'default',
-            path: soundPreferences.value.eventSounds.crash.path || 'kill-event-high',
+            path: soundPreferences.value.eventSounds.crash.path || 'metallic_din_2',
             volume: ensureValidVolume(soundPreferences.value.eventSounds.crash.volume)
           },
           playerKill: {
@@ -203,7 +203,7 @@ const updatePreferencesImmediate = async () => {
           },
           playerDeath: {
             type: soundPreferences.value.eventSounds.playerDeath.type || 'default',
-            path: soundPreferences.value.eventSounds.playerDeath.path || 'kill-event-high',
+            path: soundPreferences.value.eventSounds.playerDeath.path || 'cranial_snap',
             volume: ensureValidVolume(soundPreferences.value.eventSounds.playerDeath.volume)
           }
         }
@@ -257,10 +257,10 @@ const handleTypeChange = async (eventType: keyof typeof eventTypes) => {
 const getDefaultPathForEventType = (eventType: keyof typeof eventTypes): string => {
   const defaults = {
     vehicleDestruction: 'clean_pop',
-    crash: 'kill-event-high',
+    crash: 'metallic_din_2',
     playerKill: 'metallic_din_1',
     npcKill: 'metallic_din_npc',
-    playerDeath: 'kill-event-high'
+    playerDeath: 'cranial_snap'
   };
   return defaults[eventType] || 'metallic_din_1';
 };
