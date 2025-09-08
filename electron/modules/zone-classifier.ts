@@ -25,7 +25,6 @@ const MODULE_NAME = 'ZoneClassifier';
 const DEFAULT_CONFIG: ZoneClassificationConfig = {
   maxHistorySize: 10,
   fallbackTimeout: 300000, // 5 minutes
-  confidenceThreshold: 0.6,
   
   // Primary zone patterns - systems, planets, moons, major bodies
   primaryZonePatterns: [

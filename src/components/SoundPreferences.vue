@@ -318,26 +318,22 @@ const testSound = async (eventType: keyof typeof eventTypes) => {
   const config = soundPreferences.value.eventSounds[eventType];
   if (config.type === 'none') return;
   
+  let audio: HTMLAudioElement | undefined;
+  
   try {
-    let audio: HTMLAudioElement;
-    
     if (config.type === 'custom' && config.path) {
-      // For custom sounds, load through IPC to get data URL
-      const result = await window.logMonitorApi.testSound(config.path, config.volume);
+      // For custom sounds, test through IPC
+      const success = await window.logMonitorApi.testSound(config.path, config.volume);
       
-      if (!result.success) {
-        ElMessage.error(result.error || 'Failed to load sound file');
-        return;
-      }
-      
-      if (result.dataUrl) {
-        // Use the data URL returned from IPC
-        audio = new Audio(result.dataUrl);
-        audio.volume = config.volume || 0.5;
-      } else {
+      if (!success) {
         ElMessage.error('Failed to load sound file');
         return;
       }
+      
+      // If test was successful, play the sound
+      const soundUrl = `file://${config.path}`;
+      audio = new Audio(soundUrl);
+      audio.volume = config.volume || 0.5;
     } else {
       // For default sounds, try multiple formats
       const formats = ['mp3', 'm4a', 'wav'];
@@ -352,9 +348,9 @@ const testSound = async (eventType: keyof typeof eventTypes) => {
           
           // Test if the file exists
           await new Promise((resolve, reject) => {
-            audio.addEventListener('canplaythrough', resolve, { once: true });
-            audio.addEventListener('error', reject, { once: true });
-            audio.load();
+            audio!.addEventListener('canplaythrough', resolve, { once: true });
+            audio!.addEventListener('error', reject, { once: true });
+            audio!.load();
           });
           
           audioCreated = true;
@@ -370,8 +366,10 @@ const testSound = async (eventType: keyof typeof eventTypes) => {
       }
     }
     
-    await audio.play();
-    ElMessage.success(`Testing ${eventTypes[eventType].label} sound`);
+    if (audio) {
+      await audio.play();
+      ElMessage.success(`Testing ${eventTypes[eventType].label} sound`);
+    }
   } catch (error) {
     console.error('Failed to play test sound:', error);
     ElMessage.error('Failed to play sound');

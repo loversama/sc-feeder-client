@@ -616,7 +616,9 @@ export function registerEnhancedIPCHandlers(): void {
             
             // Broadcast to all windows
             const currentAuth = await getCurrentAuthTokens();
-            await broadcastAuthUpdate(currentAuth);
+            if (currentAuth) {
+                await broadcastAuthUpdate(currentAuth);
+            }
             
             return {
                 success: true,

@@ -276,7 +276,7 @@ export function connectToServer(): void {
     upgrade: true,
     rememberUpgrade: true,
     // Configure ping/pong timeouts to prevent disconnections
-    pingInterval: 25000, // Send ping every 25 seconds
+    // pingInterval: 25000, // Send ping every 25 seconds - removed as not supported in socket.io v4
     pingTimeout: 60000,  // Wait 60 seconds for pong response
   });
 

@@ -166,15 +166,7 @@ const openExternalSection = async (section: 'profile' | 'leaderboard' | 'map' | 
       try {
         console.log(`[Navigation] Trying legacy WebContentsView navigation for ${section}`);
         // Legacy navigation only supports profile, leaderboard, map
-        if (['profile', 'leaderboard', 'map'].includes(section)) {
-          const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
-          if (navResult?.success) {
-            console.log(`[Navigation] Legacy WebContentsView navigation successful for ${section}:`, navResult);
-            return;
-          } else {
-            console.warn(`[Navigation] Legacy WebContentsView navigation failed for ${section}:`, navResult?.error);
-          }
-        }
+        const navResult = await window.logMonitorApi.webContentNavigateToSection(section as 'profile' | 'leaderboard' | 'map');
         if (navResult?.success) {
           console.log(`[Navigation] Legacy WebContentsView navigation successful for ${section}:`, navResult);
           return;

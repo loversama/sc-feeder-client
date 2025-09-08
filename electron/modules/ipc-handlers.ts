@@ -276,14 +276,16 @@ export function registerIpcHandlers() {
             logger.debug(MODULE_NAME, 'Opening file dialog for sound selection');
             
             const mainWindow = getMainWindow();
-            const result = await dialog.showOpenDialog(mainWindow ? mainWindow : undefined, {
+            const dialogOptions = {
                 properties: ['openFile'],
                 filters: [
                     { name: 'Audio Files', extensions: ['mp3', 'm4a', 'wav', 'ogg'] },
                     { name: 'All Files', extensions: ['*'] }
                 ],
                 title: 'Select Sound File'
-            });
+            };
+            
+            const result = await dialog.showOpenDialog(mainWindow || undefined, dialogOptions);
             
             logger.debug(MODULE_NAME, 'File dialog result:', result);
             

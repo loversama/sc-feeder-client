@@ -283,6 +283,18 @@ export interface LogMonitorApi {
   // External URL handling
   openExternal: (url: string) => Promise<void>;
 
+  // Event Filters and Categories
+  setEventFilter: (filter: 'all' | 'local') => Promise<{ success: boolean; error?: string }>;
+  getEventFilter: () => Promise<'all' | 'local'>;
+  getDiscoveredCategories: () => Promise<Record<string, import('../shared/types').EventCategory>>;
+  getSelectedCategoryFilters: () => Promise<string[]>;
+  toggleCategoryFilter: (categoryId: string) => Promise<void>;
+  setSelectedCategoryFilters: (categoryIds: string[]) => Promise<void>;
+  
+  // Connection Management
+  reconnectToServer: () => void;
+  checkConnectionStatus: () => void;
+  
   // Cleanup
   removeAllListeners: () => void;
 }

@@ -448,15 +448,7 @@ import type { IpcRendererEvent } from 'electron';
 import type { AuthData, UserProfile } from '../preload';
 import { useNavigationState } from '../composables/useNavigationState';
 
-// Declare window.ipcRenderer
-declare global {
-  interface Window {
-    ipcRenderer?: {
-      send: (channel: string, ...args: any[]) => void;
-      on: (channel: string, listener: (event: IpcRendererEvent, ...args: any[]) => void) => void;
-    };
-  }
-}
+// window.ipcRenderer is already declared in vite-env.d.ts
 
 const webcontentsContainer = ref<HTMLDivElement | null>(null);
 

@@ -582,14 +582,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
                     coordinates: locationData.coordinates, // Will be undefined for environmental deaths
-                    isPlayerInvolved: isPlayerInvolved,
-                    // Add enhanced metadata with zone hierarchy information
-                    metadata: {
-                        locationSource: locationData.locationSource,
-                        fallbackUsed: locationData.locationSource !== 'event',
-                        zoneInfo: locationData.zoneInfo,
-                        zoneResolution: locationData.zoneResolution
-                    } as EventZoneMetadata
+                    isPlayerInvolved: isPlayerInvolved
                 };
 
                 // Only process events where the current user is involved

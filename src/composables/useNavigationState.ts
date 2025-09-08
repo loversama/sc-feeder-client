@@ -226,7 +226,7 @@ export function useNavigationState() {
           if (status.activeSection === '/') {
             currentSection.value = 'profile';
             console.log('[NavigationState] Set initial section to profile (from /)');
-          } else if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(status.activeSection)) {
+          } else if (['profile', 'leaderboard', 'map', 'events', 'stats', 'profile-settings'].includes(status.activeSection)) {
             currentSection.value = status.activeSection as NavigationSection;
             console.log('[NavigationState] Set initial section to:', status.activeSection);
           }
@@ -249,7 +249,7 @@ export function useNavigationState() {
             // Map '/' to 'profile'
             if (status.activeSection === '/') {
               currentSection.value = 'profile';
-            } else if (['profile', 'leaderboard', 'map', 'events', 'stats'].includes(status.activeSection)) {
+            } else if (['profile', 'leaderboard', 'map', 'events', 'stats', 'profile-settings'].includes(status.activeSection)) {
               currentSection.value = status.activeSection as NavigationSection;
             }
           }

@@ -777,7 +777,7 @@ const playKillSound = async (killEvent?: KillEvent) => {
         // Try to play the sound
         try {
           await audio.play();
-          console.debug(`Sound played successfully: ${soundConfig.path}.${format}`);
+          console.debug(`Sound played successfully: ${soundConfig.path}`);
           audioPlayed = true;
         } catch (playError) {
           console.error('Failed to play custom sound:', playError);
@@ -825,7 +825,7 @@ const playKillSound = async (killEvent?: KillEvent) => {
           // Try to play the sound
           try {
             await audio.play();
-            console.debug(`Sound played successfully: ${soundConfig.path}.${format}`);
+            console.debug(`Sound played successfully: ${soundPath}.${format}`);
             audioPlayed = true;
           } catch (playError) {
             // If play fails due to autoplay policy, try playing on next user interaction
@@ -837,11 +837,11 @@ const playKillSound = async (killEvent?: KillEvent) => {
             // 3. Format not supported
             
             // Try to play on next user interaction if autoplay was blocked
-            if (playError.name === 'NotAllowedError') {
+            if ((playError as Error).name === 'NotAllowedError') {
               const playOnInteraction = async () => {
                 try {
                   await audio.play();
-                  console.debug(`Sound played after user interaction: ${soundConfig.path}.${format}`);
+                  console.debug(`Sound played after user interaction: ${soundPath}.${format}`);
                   document.removeEventListener('click', playOnInteraction);
                   document.removeEventListener('keydown', playOnInteraction);
                 } catch (e) {
@@ -1375,7 +1375,8 @@ const toggleCategoryFilter = async (categoryId: string) => {
       // Reload selected filters
       await loadSelectedCategories();
       // Reload events to apply new filter
-      await loadInitialEvents();
+      events.value = [];
+      await loadPagedEvents();
     } catch (error) {
       console.error(`[KillFeed] Error toggling category filter:`, error);
     }
@@ -1389,7 +1390,8 @@ const clearCategoryFilters = async () => {
       await window.logMonitorApi.setSelectedCategoryFilters([]);
       selectedCategories.value = [];
       // Reload events
-      await loadInitialEvents();
+      events.value = [];
+      await loadPagedEvents();
     } catch (error) {
       console.error(`[KillFeed] Error clearing category filters:`, error);
     }
