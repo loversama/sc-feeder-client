@@ -164,7 +164,8 @@ function startHeartbeat() {
       clientId: getPersistedClientId(),
     });
     
-    logger.debug(MODULE_NAME, 'Heartbeat ping sent');
+    // Only log heartbeat at trace level to reduce console spam
+    // logger.trace(MODULE_NAME, 'Heartbeat ping sent');
   }, HEARTBEAT_INTERVAL);
 }
 
@@ -275,9 +276,9 @@ export function connectToServer(): void {
     forceNew: false,
     upgrade: true,
     rememberUpgrade: true
-    // Configure ping/pong timeouts to prevent disconnections
-    // pingInterval: 25000, // Send ping every 25 seconds - removed as not supported in socket.io v4
-    // pingTimeout: 60000,  // Wait 60 seconds for pong response - removed as not supported in socket.io v4
+    // Note: In socket.io v4, ping/pong is handled automatically
+    // Server sends PING, client responds with PONG
+    // The server controls pingInterval and pingTimeout
   });
 
   socket.on('connect', () => {
@@ -298,9 +299,14 @@ export function connectToServer(): void {
     // Emit event on successful connection/reconnection
     connectionEvents.emit(isReconnection ? 'reconnected' : 'connected');
     
-    // Send 'connecting' status while waiting for authentication
-    sendConnectionStatus('connecting', 0);
-    logger.info(MODULE_NAME, 'Socket connected, waiting for authentication confirmation from server');
+    // Only send 'connecting' status if we're not already authenticated
+    // This prevents showing "Connecting to server" during routine heartbeats
+    if (!isAuthenticated) {
+      sendConnectionStatus('connecting', 0);
+      logger.info(MODULE_NAME, 'Socket connected, waiting for authentication confirmation from server');
+    } else {
+      logger.debug(MODULE_NAME, 'Socket reconnected, already authenticated');
+    }
     
     // Set a timeout to check if authentication is received
     setTimeout(() => {
@@ -407,7 +413,10 @@ export function connectToServer(): void {
       logger.warn(MODULE_NAME, `Received 'retry_auth' event from server. Reason: ${data?.reason || 'No reason provided'}. Authentication failed.`);
       isAuthenticated = false; // Mark as not authenticated
       resetAuthRetryState(); // Reset authentication retry state when server requests retry
-      sendConnectionStatus('connecting'); // Show user we are trying again
+      // Don't show "connecting" if we're already connected, just re-authenticating
+      if (!socket?.connected) {
+        sendConnectionStatus('connecting'); // Show user we are trying again
+      }
 
       // Explicitly disconnect the current socket instance.
       if (socket) {
@@ -439,7 +448,8 @@ export function connectToServer(): void {
   socket.on('pong', (data: { timestamp: number }) => {
     lastPongTime = Date.now();
     const latency = lastPongTime - (data?.timestamp || lastPongTime);
-    logger.debug(MODULE_NAME, `Received pong from server, latency: ${latency}ms`);
+    // Only log pong at trace level to reduce console spam
+    // logger.trace(MODULE_NAME, `Received pong from server, latency: ${latency}ms`);
   });
 
   // Listen for processed events from server (/logs namespace with role-based filtering)
