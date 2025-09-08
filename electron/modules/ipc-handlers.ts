@@ -587,6 +587,15 @@ try {
         return true; // Indicate the call was made
     });
 
+    ipcMain.handle('close-web-content-window', () => {
+        logger.info(MODULE_NAME, "Received 'close-web-content-window' request.");
+        closeWebContentWindow(); // Call the function from window-manager
+        return {
+            success: true,
+            architecture: 'browserwindow' as const
+        };
+    });
+
 
 
     // NEW: Handlers for getting window status synchronously

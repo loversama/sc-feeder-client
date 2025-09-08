@@ -57,9 +57,20 @@ export function useNavigationState() {
     // Save previous section
     const previousSection = currentSection.value;
     
-    // If window is already open and on the same section, just return
+    // If window is already open and on the same section, close it (toggle behavior)
     if (previousSection === section && webContentWindowOpen.value) {
-      console.log('[NavigationState] Already on section:', section);
+      console.log('[NavigationState] Same section clicked, closing window:', section);
+      
+      // Close the window
+      if (window.logMonitorApi?.closeWebContentWindow) {
+        try {
+          await window.logMonitorApi.closeWebContentWindow();
+          // The window close handler will update the state
+          return;
+        } catch (error) {
+          console.error('[NavigationState] Failed to close window:', error);
+        }
+      }
       return;
     }
     
