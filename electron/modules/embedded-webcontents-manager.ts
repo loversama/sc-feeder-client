@@ -619,8 +619,10 @@ export class EmbeddedWebContentsManager {
 let embeddedManager: EmbeddedWebContentsManager | null = null;
 
 export async function createEmbeddedWebContentManager(): Promise<EmbeddedWebContentsManager> {
+    // If manager already exists, return it instead of recreating
     if (embeddedManager) {
-        embeddedManager.dispose();
+        logger.info(MODULE_NAME, 'Returning existing embedded manager');
+        return embeddedManager;
     }
     
     embeddedManager = new EmbeddedWebContentsManager();
