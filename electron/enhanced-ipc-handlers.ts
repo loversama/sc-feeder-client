@@ -1298,27 +1298,32 @@ async function setupAuthenticationForSession(webContentSession: Electron.Session
         
         // Set up request interception
         webContentSession.webRequest.onBeforeSendHeaders((details, callback) => {
-            const currentTokens = getCurrentAuthTokens();
+            const url = details.url;
             
-            if (currentTokens?.accessToken) {
-                const url = details.url;
+            // Skip static assets and other requests that don't need auth
+            const isStaticAsset = url.includes('/_nuxt/') || 
+                                 url.includes('/node_modules/') ||
+                                 url.includes('.js') || 
+                                 url.includes('.css') ||
+                                 url.includes('.mjs') ||
+                                 url.includes('.vue') ||
+                                 url.includes('.png') ||
+                                 url.includes('.jpg') ||
+                                 url.includes('.ico') ||
+                                 url.includes('.svg') ||
+                                 url.includes('.woff') ||
+                                 url.includes('.ttf') ||
+                                 url.includes('/socket.io/'); // Skip socket.io polling/websocket
+            
+            // Only check auth for actual API requests
+            const isApiRequest = url.includes('/api/') && !isStaticAsset;
+            
+            if (isApiRequest && !details.requestHeaders['Authorization']) {
+                const currentTokens = getCurrentAuthTokens();
                 
-                // Only add auth headers to API requests, not static assets
-                const isApiRequest = url.includes('/api/') && !url.includes('/_nuxt/');
-                
-                // Also add auth for specific trusted domain requests (but not static assets)
-                const isTrustedDomainRequest = trustedDomains.some(domain => {
-                    try {
-                        const urlObj = new URL(url);
-                        return urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain);
-                    } catch {
-                        return false;
-                    }
-                }) && !url.includes('/_nuxt/') && !url.includes('/node_modules/');
-
-                if ((isApiRequest || isTrustedDomainRequest) && !details.requestHeaders['Authorization']) {
+                if (currentTokens?.accessToken) {
                     details.requestHeaders['Authorization'] = `Bearer ${currentTokens.accessToken}`;
-                    logger.debug(MODULE_NAME, `Added Authorization header to: ${url}`);
+                    logger.debug(MODULE_NAME, `Added Authorization header to API request: ${url}`);
                 }
             }
 

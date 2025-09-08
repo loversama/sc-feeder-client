@@ -235,16 +235,33 @@ export class EmbeddedWebContentsManager {
         try {
             // Set up request interception (same as external windows)
             webContentSession.webRequest.onBeforeSendHeaders((details, callback) => {
-                const currentTokens = getCurrentAuthTokens();
+                const url = details.url;
                 
-                if (currentTokens?.accessToken) {
-                    const url = details.url;
-                    const isApiRequest = url.includes('/api/') || 
-                                        this.trustedDomains.some(domain => url.includes(domain));
-
-                    if (isApiRequest && !details.requestHeaders['Authorization']) {
+                // Skip static assets and other requests that don't need auth
+                const isStaticAsset = url.includes('/_nuxt/') || 
+                                     url.includes('/node_modules/') ||
+                                     url.includes('.js') || 
+                                     url.includes('.css') ||
+                                     url.includes('.mjs') ||
+                                     url.includes('.vue') ||
+                                     url.includes('.png') ||
+                                     url.includes('.jpg') ||
+                                     url.includes('.ico') ||
+                                     url.includes('.svg') ||
+                                     url.includes('.woff') ||
+                                     url.includes('.ttf');
+                
+                const isSocketIO = url.includes('/socket.io/');
+                
+                // Only check auth for actual API requests
+                const isApiRequest = url.includes('/api/') && !isStaticAsset;
+                
+                if (isApiRequest && !details.requestHeaders['Authorization']) {
+                    const currentTokens = getCurrentAuthTokens();
+                    
+                    if (currentTokens?.accessToken) {
                         details.requestHeaders['Authorization'] = `Bearer ${currentTokens.accessToken}`;
-                        logger.debug(MODULE_NAME, `Added Authorization header to: ${url}`);
+                        logger.debug(MODULE_NAME, `Added Authorization header to API request: ${url}`);
                     }
                 }
 
