@@ -289,7 +289,7 @@ export function registerEnhancedIPCHandlers(): void {
             }
             
             // Otherwise, check for existing windows to attach to
-            logger.info(MODULE_NAME, `Attaching WebContentsView to web content window for section: ${section}`);
+            logger.info(MODULE_NAME, `No embedded manager found, checking for existing windows for section: ${section}`);
             
             // Find the web content window by title or check all windows
             let webContentWindow: BrowserWindow | null = null;

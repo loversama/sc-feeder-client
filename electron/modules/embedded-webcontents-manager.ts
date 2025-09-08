@@ -60,7 +60,7 @@ export class EmbeddedWebContentsManager {
                 width: 1024,
                 height: 768,
                 title: 'SC Feeder - Web Content',
-                show: false,
+                show: false, // Will be shown when show() is called
                 resizable: true,
                 minimizable: true,
                 maximizable: true,
@@ -68,6 +68,8 @@ export class EmbeddedWebContentsManager {
                 backgroundColor: '#1a1a1a',
                 minWidth: 800,
                 minHeight: 600,
+                center: true, // Center on screen
+                autoHideMenuBar: true, // Hide menu bar
                 webPreferences: {
                     nodeIntegration: false,
                     contextIsolation: true,
