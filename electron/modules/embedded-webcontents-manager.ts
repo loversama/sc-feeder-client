@@ -408,12 +408,27 @@ export class EmbeddedWebContentsManager {
         }
 
         this.isVisible = true;
+        
+        logger.info(MODULE_NAME, 'About to show window...');
         this.separateWindow.show();
+        logger.info(MODULE_NAME, 'Window show() called');
         
         // Focus the separate window
         this.separateWindow.focus();
+        logger.info(MODULE_NAME, 'Window focus() called');
+        
+        // Force window to be visible
+        this.separateWindow.setAlwaysOnTop(true);
+        setTimeout(() => {
+            if (this.separateWindow && !this.separateWindow.isDestroyed()) {
+                this.separateWindow.setAlwaysOnTop(false);
+            }
+        }, 100);
         
         logger.info(MODULE_NAME, 'Separate WebContentsView window shown');
+        
+        // Emit status update after showing window
+        this.emitStatusUpdate();
     }
 
     public async hide(): Promise<void> {
