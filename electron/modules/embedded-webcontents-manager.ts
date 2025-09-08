@@ -95,7 +95,7 @@ export class EmbeddedWebContentsManager {
                     webSecurity: true,
                     allowRunningInsecureContent: false,
                     session: webContentSession,
-                    preload: getPreloadPath('webcontents-view-preload.js'),
+                    preload: getPreloadPath('webcontents-view-preload.mjs'),
                     devTools: !app.isPackaged // Disable DevTools in production
                 }
             });

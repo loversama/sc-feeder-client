@@ -1131,7 +1131,7 @@ async function createWebContentsViewForWindow(targetWindow: BrowserWindow, secti
         
         let preloadPath: string;
         try {
-            preloadPath = getPreloadPath('webcontents-view-preload.js');
+            preloadPath = getPreloadPath('webcontents-view-preload.mjs');
             logger.info(MODULE_NAME, 'Preload path resolved:', preloadPath);
         } catch (preloadError) {
             logger.warn(MODULE_NAME, 'Failed to get preload path, continuing without:', preloadError);
