@@ -435,9 +435,28 @@ const toggleLaunchOnStartup = async () => {
   if (!window.logMonitorApi?.setLaunchOnStartup) return;
   try {
     const result = await window.logMonitorApi.setLaunchOnStartup(launchOnStartup.value);
-    launchOnStartup.value = !!result;
-    setStatus(`Launch on startup ${launchOnStartup.value ? 'enabled' : 'disabled'}`);
+
+    if (result.success) {
+      // Update the switch to match the actual enabled state
+      launchOnStartup.value = result.enabled;
+      setStatus(`Launch on startup ${result.enabled ? 'enabled' : 'disabled'}`);
+
+      // Show warnings if any
+      if (result.warnings && result.warnings.length > 0) {
+        result.warnings.forEach((warning: string) => {
+          console.warn('Startup warning:', warning);
+        });
+      }
+    } else {
+      // Operation failed - revert the switch
+      launchOnStartup.value = !launchOnStartup.value;
+      const errorMsg = result.errors?.join(', ') || 'Unknown error';
+      setStatus(`Failed to update launch on startup: ${errorMsg}`);
+      console.error('Launch on startup update failed:', result.errors);
+    }
   } catch (error) {
+    // Exception occurred - revert the switch
+    launchOnStartup.value = !launchOnStartup.value;
     console.error('Failed to update launch on startup setting:', error);
     setStatus('Error updating launch on startup setting');
   }
