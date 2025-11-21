@@ -50,6 +50,34 @@ let isZoneSystemInitialized = false;
 const recentPlayerDeaths: PlayerDeath[] = []; // Track recent player deaths for correlation (internal to parser?) - Let's keep this here for now for correlation logic within parse
 const MAX_KILL_EVENTS = 100; // Keep limit definition if needed by processor logic moved here, otherwise move to processor. Let's assume processor handles limits.
 
+// === DUAL-MODE DETECTION CONFIGURATION ===
+const ENABLE_OLD_FORMAT = true;    // Keep old format detection
+const ENABLE_NEW_FORMAT = true;    // Enable new format detection
+const PREFERRED_FORMAT: 'old' | 'new' = 'old';  // Prioritize old when both present
+const DEDUP_WINDOW_MS = 5000;      // 5-second deduplication window
+
+// Detection priority (lower index = higher priority)
+const DETECTION_PRIORITY = [
+  'corpse_log_old',        // 1. OLD: <[ActorState] Corpse> (most reliable)
+  'actor_state_dead_new',  // 2. NEW: <[ActorState] Dead> (has name)
+  'corpse_utils_new',      // 3. NEW: CSCActorCorpseUtils (no name)
+  'attachment_received',   // 4. NEW: AttachmentReceived (respawn)
+];
+
+// Deduplication cache
+const recentDeaths = new Map<string, {method: string; timestamp: number}>();
+
+// Detection metrics
+let detectionStats = {
+  old_corpse_log: 0,
+  actor_state_dead_new: 0,
+  corpse_utils_new: 0,
+  attachment_received: 0,
+  unknown_format: 0,
+  duplicates_prevented: 0,
+};
+// === END DUAL-MODE DETECTION CONFIGURATION ===
+
 // --- Constants ---
 
 // Ship manufacturer prefixes
@@ -71,6 +99,28 @@ const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterio
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
 const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
+
+// === NEW FORMAT PATTERNS (Star Citizen 4.4+) ===
+// New ActorState Dead (player death in vehicle context - HAS player name)
+const newActorStateDeadRegex =
+  /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[Notice\]\s+<\[ActorState\] Dead>\s+\[ACTOR STATE\]\[CSCActorControlStateDead::PrePhysicsUpdate\]\s+Actor '(?<actor>[^']+)'\s+\[(?<actor_id>\d+)\]\s+ejected from zone '(?<from_zone>[^']+)'\s+\[(?<from_zone_id>\d+)\]\s+to zone '(?<to_zone>[^']+)'\s+\[(?<to_zone_id>\d+)\]\s+due to (?<reason>.+)\./;
+
+// CSCActorCorpseUtils (definitive player death - NO player name, needs currentUsername)
+const corpseUtilsRegex =
+  /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[Notice\]\s+<Adding non kept item \[CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement\]>\s+Item '(?<item_name>[^']+)\s+-\s+Class\((?<item_class>[^)]+)\).*?Port Name '(?<port_name>[^']+)',\s+Class GUID:\s+'(?<guid>[^']+)'(?:,\s+KeptId:\s+'(?<kept_id>\d+)')?/;
+
+// AttachmentReceived (player respawn - HAS player name)
+const attachmentReceivedRegex =
+  /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[Notice\]\s+<AttachmentReceived>\s+Player\[(?<player_name>[^\]]+)\]\s+Attachment\[(?<item_full_name>[^,]+),\s+(?<item_class>[^,]+),\s+(?<item_id>\d+)\]\s+Status\[(?<status>\w+)\]\s+Port\[(?<port>[^\]]+)\]\s+Elapsed\[(?<elapsed>[\d.]+)\]/;
+
+// FatalCollision (detailed collision data)
+const fatalCollisionRegex =
+  /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[Notice\]\s+<FatalCollision>\s+Fatal Collision occured for vehicle (?<vehicle>\S+)\s+\[Part: (?<part>[^,]+), Pos: x: (?<pos_x>[-\d.]+), y: (?<pos_y>[-\d.]+), z: (?<pos_z>[-\d.]+), Zone: (?<zone>[^,]+), PlayerPilot: (?<player_pilot>\d+)\].*?after hitting entity: (?<hit_entity>[^\[]+)\[Zone: (?<hit_zone>[^\s]+).*?\].*?Hit Pos: x: (?<hit_x>[-\d.]+), y: (?<hit_y>[-\d.]+), z: (?<hit_z>[-\d.]+), Distance: (?<distance>[-\d.]+), Relative Vel: x: (?<vel_x>[-\d.]+), y: (?<vel_y>[-\d.]+), z: (?<vel_z>[-\d.]+)/;
+
+// New Vehicle Destroyed (context-sensitive "Killed by" field)
+const newVehicleDestroyedRegex =
+  /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[VEHICLE SPAWN\]\s+Vehicle Destroyed \((?<vehicle>[^)]+)\)\.\s+Killed by \((?<killer>[^)]+)\)\.\s+Reason: (?<reason>\w+)/;
+// === END NEW FORMAT PATTERNS ===
 
 // Initialize enhanced zone system
 function initializeZoneSystem(): void {
@@ -284,6 +334,68 @@ function updateStableGameMode(newStableMode: 'PU' | 'AC' | 'Unknown') {
     }
 }
 
+// === DUAL-MODE DETECTION HELPER FUNCTIONS ===
+
+/**
+ * Checks if a death event should be processed or is a duplicate
+ * Returns true if should process, false if duplicate
+ */
+function shouldProcessDeath(
+  playerName: string,
+  timestamp: string,
+  detectionMethod: string
+): boolean {
+  const timestampSeconds = Math.floor(new Date(timestamp).getTime() / 1000);
+  const dedupKey = `${playerName.toLowerCase()}:${timestampSeconds}`;
+
+  if (recentDeaths.has(dedupKey)) {
+    const existing = recentDeaths.get(dedupKey)!;
+    const currentPriority = DETECTION_PRIORITY.indexOf(detectionMethod);
+    const existingPriority = DETECTION_PRIORITY.indexOf(existing.method);
+
+    if (currentPriority < existingPriority) {
+      logger.info(MODULE_NAME, `Upgrading death detection from ${existing.method} to ${detectionMethod} for ${playerName}`);
+      recentDeaths.set(dedupKey, { method: detectionMethod, timestamp: Date.now() });
+      return true;
+    } else {
+      logger.debug(MODULE_NAME, `Skipping duplicate death (${detectionMethod}) - already detected via ${existing.method}`);
+      detectionStats.duplicates_prevented++;
+      return false;
+    }
+  }
+
+  recentDeaths.set(dedupKey, { method: detectionMethod, timestamp: Date.now() });
+
+  // Clean up old entries
+  const now = Date.now();
+  for (const [key, value] of recentDeaths.entries()) {
+    if (now - value.timestamp > DEDUP_WINDOW_MS) {
+      recentDeaths.delete(key);
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Log detection statistics
+ */
+function logDetectionStats() {
+  logger.info(MODULE_NAME, '=== Death Detection Statistics ===');
+  logger.info(MODULE_NAME, `Old Corpse Log: ${detectionStats.old_corpse_log}`);
+  logger.info(MODULE_NAME, `New ActorState Dead: ${detectionStats.actor_state_dead_new}`);
+  logger.info(MODULE_NAME, `New CorpseUtils: ${detectionStats.corpse_utils_new}`);
+  logger.info(MODULE_NAME, `AttachmentReceived: ${detectionStats.attachment_received}`);
+  logger.info(MODULE_NAME, `Unknown Format: ${detectionStats.unknown_format}`);
+  logger.info(MODULE_NAME, `Duplicates Prevented: ${detectionStats.duplicates_prevented}`);
+
+  if (detectionStats.old_corpse_log > detectionStats.corpse_utils_new * 2) {
+    logger.warn(MODULE_NAME, 'Old format significantly higher than new - investigate!');
+  }
+}
+
+// === END DUAL-MODE DETECTION HELPER FUNCTIONS ===
+
 
 // --- Main Parsing Function ---
 
@@ -433,25 +545,85 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue; // Destruction line processed
             }
 
-            // --- Corpse Log (Player Death) ---
-            const corpseMatch = line.match(corpseLogRegex);
-            if (corpseMatch?.groups) {
-                const { timestamp, playerName } = corpseMatch.groups;
-                logger.info(MODULE_NAME, 'Player death detected:', { victim: playerName }, 'at', timestamp);
-                const deathTimeMs = new Date(timestamp).getTime();
+            // === DUAL-MODE PLAYER DEATH DETECTION ===
+            let deathDetected = false;
+            let detectionMethod: string | null = null;
+            let victimName: string | null = null;
+            let deathTimestamp: string | null = null;
+
+            // 1. Try OLD FORMAT: Corpse Log (most reliable - has player name)
+            if (ENABLE_OLD_FORMAT) {
+                const corpseMatch = line.match(corpseLogRegex);
+                if (corpseMatch?.groups) {
+                    detectionMethod = 'corpse_log_old';
+                    victimName = corpseMatch.groups.playerName;
+                    deathTimestamp = corpseMatch.groups.timestamp;
+                    deathDetected = true;
+
+                    logger.info(MODULE_NAME, 'OLD FORMAT Corpse Log detected:', { victim: victimName });
+                    detectionStats.old_corpse_log++;
+                }
+            }
+
+            // 2. Try NEW FORMAT: ActorState Dead (has player name, vehicle context)
+            if (!deathDetected && ENABLE_NEW_FORMAT) {
+                const newActorDeadMatch = line.match(newActorStateDeadRegex);
+                if (newActorDeadMatch?.groups) {
+                    detectionMethod = 'actor_state_dead_new';
+                    victimName = newActorDeadMatch.groups.actor;
+                    deathTimestamp = newActorDeadMatch.groups.timestamp;
+                    deathDetected = true;
+
+                    logger.info(MODULE_NAME, 'NEW FORMAT ActorState Dead detected:', {
+                        victim: victimName,
+                        fromZone: newActorDeadMatch.groups.from_zone,
+                        toZone: newActorDeadMatch.groups.to_zone
+                    });
+                    detectionStats.actor_state_dead_new++;
+                }
+            }
+
+            // 3. Try NEW FORMAT: CSCActorCorpseUtils (NO player name - use currentUsername)
+            if (!deathDetected && ENABLE_NEW_FORMAT) {
+                const corpseUtilsMatch = line.match(corpseUtilsRegex);
+                if (corpseUtilsMatch?.groups) {
+                    // Only process first item (body) to avoid duplicates
+                    if (corpseUtilsMatch.groups.item_class.includes('body_01')) {
+                        detectionMethod = 'corpse_utils_new';
+                        victimName = currentUsername; // Use current logged-in username
+                        deathTimestamp = corpseUtilsMatch.groups.timestamp;
+                        deathDetected = true;
+
+                        logger.info(MODULE_NAME, 'NEW FORMAT CSCActorCorpseUtils detected, resolved to:', { victim: victimName });
+                        detectionStats.corpse_utils_new++;
+                    }
+                }
+            }
+
+            // Process death event if detected
+            if (deathDetected && victimName && deathTimestamp && detectionMethod) {
+                // Check for duplicates
+                if (!shouldProcessDeath(victimName, deathTimestamp, detectionMethod)) {
+                    continue; // Skip duplicate
+                }
+
+                logger.info(MODULE_NAME, 'Player death detected:', { victim: victimName }, 'via', detectionMethod);
+                const deathTimeMs = new Date(deathTimestamp).getTime();
 
                 // Add to recent deaths for correlation
-                recentPlayerDeaths.push({ timestamp: deathTimeMs, playerName, processed: false });
+                recentPlayerDeaths.push({ timestamp: deathTimeMs, playerName: victimName, processed: false });
+
                 // Clean up old entries (keep last 60 seconds)
                 const cutoffTime = Date.now() - 60000;
                 while (recentPlayerDeaths.length > 0 && recentPlayerDeaths[0].timestamp < cutoffTime) {
                     recentPlayerDeaths.shift();
                 }
 
-                // Attempt correlation within the event processor
-                await correlateDeathWithDestruction(timestamp, playerName, silentMode);
-                continue; // Corpse log processed
+                // Attempt correlation
+                await correlateDeathWithDestruction(deathTimestamp, victimName, silentMode);
+                continue;
             }
+            // === END DUAL-MODE PLAYER DEATH DETECTION ===
 
             // --- Detailed Kill (Actor Death) ---
             const killMatch = line.match(killPatternRegex);
@@ -609,6 +781,11 @@ export async function parseLogContent(content: string, silentMode = false) {
              // win?.webContents.send('log-status', `Error parsing line: ${error.message}`);
         }
     } // End line loop
+
+    // Log detection stats every ~100 parses (random sampling to avoid spam)
+    if (Math.random() < 0.01) {
+        logDetectionStats();
+    }
 }
 
 // Function to reset parser state (e.g., on rescan)
@@ -634,7 +811,18 @@ export function resetParserState() {
     }
     isZoneSystemInitialized = false;
     zoneHistoryManager = null;
-    
+
+    // Reset dual-mode detection state
+    recentDeaths.clear();
+    detectionStats = {
+        old_corpse_log: 0,
+        actor_state_dead_new: 0,
+        corpse_utils_new: 0,
+        attachment_received: 0,
+        unknown_format: 0,
+        duplicates_prevented: 0,
+    };
+
     // Event lists are cleared in event-processor
 }
 
