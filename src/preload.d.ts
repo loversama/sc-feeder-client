@@ -71,7 +71,13 @@ export interface LogMonitorApi {
 
   // Launch on Startup
   getLaunchOnStartup: () => Promise<boolean>;
-  setLaunchOnStartup: (value: boolean) => Promise<boolean>;
+  setLaunchOnStartup: (value: boolean) => Promise<{
+    success: boolean;
+    enabled: boolean;
+    method?: string;
+    errors?: string[];
+    warnings?: string[];
+  }>;
 
   // Window Actions
   openSettingsWindow: () => Promise<void>;
