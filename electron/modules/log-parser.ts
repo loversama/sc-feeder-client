@@ -545,6 +545,103 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue; // Destruction line processed
             }
 
+            // === NEW FORMAT: Vehicle Destroyed (SC 4.4+) ===
+            if (ENABLE_NEW_FORMAT) {
+                const newVehicleMatch = line.match(newVehicleDestroyedRegex);
+                if (newVehicleMatch?.groups) {
+                    const { timestamp, vehicle, killer, reason } = newVehicleMatch.groups;
+                    const vehicleCleanupMatch = vehicle.match(cleanupPattern);
+                    const vehicleBaseName = vehicleCleanupMatch?.[1] || vehicle;
+
+                    logger.info(MODULE_NAME, 'NEW FORMAT Vehicle Destroyed:', {
+                        vehicle: vehicleBaseName,
+                        killer,
+                        reason
+                    });
+
+                    // Context-sensitive "Killed by" field:
+                    // - reason === "Collision" → killer = VICTIM (pilot who died)
+                    // - reason === "Combat" → killer = ATTACKER (player who got kill)
+                    // - reason === "Explosion" → killer = ATTACKER (who caused explosion)
+
+                    let actualKiller: string;
+                    let actualVictim: string;
+                    let deathType: KillEvent['deathType'];
+
+                    if (reason === 'Collision') {
+                        actualVictim = killer; // Killer field is actually the victim
+                        actualKiller = 'Environment'; // Environmental/self-inflicted
+                        deathType = 'Collision';
+                    } else if (reason === 'Combat') {
+                        actualKiller = killer; // Killer field is correct
+                        actualVictim = vehicleBaseName; // Vehicle/pilot is victim
+                        deathType = 'Combat';
+                    } else if (reason === 'Explosion') {
+                        actualKiller = killer; // Killer field is correct
+                        actualVictim = vehicleBaseName; // Vehicle/pilot is victim
+                        deathType = 'Explosion';
+                    } else {
+                        actualKiller = killer;
+                        actualVictim = vehicleBaseName;
+                        deathType = 'Unknown';
+                    }
+
+                    logger.debug(MODULE_NAME, `NEW FORMAT - Reason: ${reason}, ActualKiller: ${actualKiller}, ActualVictim: ${actualVictim}`);
+
+                    // Check if player is involved
+                    const isPlayerInvolved = actualKiller === currentUsername || actualVictim === currentUsername;
+
+                    if (isPlayerInvolved) {
+                        // Process location data
+                        const locationData = processLocationDataEnhanced(
+                            undefined, // No zone in new format
+                            undefined, // No coordinates in new format
+                            'new_vehicle_destroyed',
+                            timestamp
+                        );
+
+                        // Resolve vehicle type
+                        const vehicleResolution = resolveEntityName(vehicleBaseName);
+                        let resolvedVehicleType: string;
+
+                        if (vehicleResolution.category === 'npc') {
+                            resolvedVehicleType = "NPC";
+                        } else if (vehicleResolution.category === 'ship') {
+                            resolvedVehicleType = vehicleResolution.displayName;
+                        } else {
+                            resolvedVehicleType = vehicleResolution.displayName;
+                        }
+
+                        const stableId = `v_kill_new_${vehicle}`.replace(/[^a-zA-Z0-9_]/g, '');
+                        const partialEvent: Partial<KillEvent> = {
+                            id: stableId,
+                            timestamp: timestamp,
+                            killers: actualKiller === 'Environment' ? [] : [actualKiller],
+                            victims: [actualVictim],
+                            deathType: deathType,
+                            vehicleType: resolvedVehicleType,
+                            vehicleModel: vehicleBaseName,
+                            vehicleId: vehicle,
+                            location: locationData.location,
+                            weapon: reason, // Use reason as weapon/cause
+                            damageType: reason,
+                            gameMode: stableGameMode,
+                            gameVersion: currentGameVersion,
+                            playerShip: currentPlayerShip,
+                            coordinates: locationData.coordinates,
+                            isPlayerInvolved: isPlayerInvolved
+                        };
+
+                        logger.debug(MODULE_NAME, `Processing NEW FORMAT vehicle destruction - user involved: ${currentUsername}`);
+                        await processKillEvent(partialEvent, silentMode, 2); // Treat as level 2 destruction
+                    } else {
+                        logger.debug(MODULE_NAME, `Skipping NEW FORMAT vehicle destruction - user not involved. ActualKiller: ${actualKiller}, ActualVictim: ${actualVictim}, current user: ${currentUsername || 'none'}`);
+                    }
+
+                    continue;
+                }
+            }
+
             // === DUAL-MODE PLAYER DEATH DETECTION ===
             let deathDetected = false;
             let detectionMethod: string | null = null;
