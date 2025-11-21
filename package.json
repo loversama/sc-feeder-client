@@ -4,7 +4,7 @@
   "description": "VOIDLOG.GG Client - Star Citizen Kill Feed Monitor",
   "author": "VOIDLOG.GG Team",
   "private": true,
-  "version": "0.1.9-alpha",
+  "version": "0.2.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "cross-env NODE_ENV=development FORCE_COLOR=1 vite",
