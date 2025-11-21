@@ -791,18 +791,18 @@ const playKillSound = async (killEvent?: KillEvent) => {
     if (!audioPlayed && soundConfig.type === 'default') {
       // Try multiple sound formats in order of preference
       const soundFormats = ['mp3', 'm4a', 'wav'];
-      
+
       for (const format of soundFormats) {
         if (audioPlayed) break;
-        
+
         // Define soundPath outside the try block so it's accessible in catch
         let soundPath = soundConfig.path;
-        
+
         try {
           // Handle sound variations
           if (!soundPath) continue;  // Skip if no path is defined
           let volumeMultiplier = 1.0;
-          
+
           // Map sound variations to the base sound file
           if (soundPath.endsWith('-low')) {
             soundPath = soundPath.replace('-low', '');
@@ -811,8 +811,22 @@ const playKillSound = async (killEvent?: KillEvent) => {
             soundPath = soundPath.replace('-high', '');
             volumeMultiplier = 1.5; // Increase volume for intense effect
           }
-          
-          const soundUrl = new URL(`/sounds/${soundPath}.${format}`, window.location.href).href;
+
+          // Get the proper sound URL for both dev and production
+          let soundUrl: string;
+          try {
+            const resourcePath = await window.logMonitorApi.getResourcePath();
+            // Normalize path separators for file:// URLs (use forward slashes)
+            const normalizedPath = resourcePath.replace(/\\/g, '/');
+            // In production, use file:// protocol with resource path
+            soundUrl = `file://${normalizedPath}/sounds/${soundPath}.${format}`;
+            console.debug(`Using production sound path: ${soundUrl}`);
+          } catch (error) {
+            // Fallback to development path if getResourcePath fails
+            soundUrl = new URL(`/sounds/${soundPath}.${format}`, window.location.href).href;
+            console.debug(`Using development sound path: ${soundUrl}`);
+          }
+
           console.debug(`Attempting to play sound from: ${soundUrl}`);
           
           const audio = new Audio(soundUrl);

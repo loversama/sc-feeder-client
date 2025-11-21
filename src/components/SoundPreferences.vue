@@ -338,28 +338,43 @@ const testSound = async (eventType: keyof typeof eventTypes) => {
       // For default sounds, try multiple formats
       const formats = ['mp3', 'm4a', 'wav'];
       let audioCreated = false;
-      
+
       for (const format of formats) {
         try {
           const soundPath = config.path;
-          const soundUrl = new URL(`/sounds/${soundPath}.${format}`, window.location.href).href;
+
+          // Get the proper sound URL for both dev and production
+          let soundUrl: string;
+          try {
+            const resourcePath = await window.logMonitorApi.getResourcePath();
+            // Normalize path separators for file:// URLs (use forward slashes)
+            const normalizedPath = resourcePath.replace(/\\/g, '/');
+            // In production, use file:// protocol with resource path
+            soundUrl = `file://${normalizedPath}/sounds/${soundPath}.${format}`;
+            console.debug(`Testing production sound path: ${soundUrl}`);
+          } catch (error) {
+            // Fallback to development path if getResourcePath fails
+            soundUrl = new URL(`/sounds/${soundPath}.${format}`, window.location.href).href;
+            console.debug(`Testing development sound path: ${soundUrl}`);
+          }
+
           audio = new Audio(soundUrl);
           audio.volume = config.volume || 0.5;
-          
+
           // Test if the file exists
           await new Promise((resolve, reject) => {
             audio!.addEventListener('canplaythrough', resolve, { once: true });
             audio!.addEventListener('error', reject, { once: true });
             audio!.load();
           });
-          
+
           audioCreated = true;
           break;
         } catch (e) {
           // Continue to next format
         }
       }
-      
+
       if (!audioCreated) {
         ElMessage.error('Failed to play sound - file may be missing');
         return;
