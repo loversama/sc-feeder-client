@@ -579,7 +579,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     } else if (reason === 'Explosion') {
                         actualKiller = killer; // Killer field is correct
                         actualVictim = vehicleBaseName; // Vehicle/pilot is victim
-                        deathType = 'Explosion';
+                        deathType = 'Hard'; // Explosions are hard deaths
                     } else {
                         actualKiller = killer;
                         actualVictim = vehicleBaseName;
