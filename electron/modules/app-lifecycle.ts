@@ -184,65 +184,34 @@ async function loadHistoricData(mainWindow: BrowserWindow) {
 function registerGlobalShortcuts(mainWindow: BrowserWindow) {
   // Only register DevTools shortcuts in development mode
   const isDevelopment = !app.isPackaged && !process.env.CI;
-  
+
   if (!isDevelopment) {
     logger.info(MODULE_NAME, 'Production mode detected - DevTools shortcuts disabled for security');
     return;
   }
 
-  logger.info(MODULE_NAME, 'Development mode detected - registering DevTools shortcuts');
+  logger.info(MODULE_NAME, 'Development mode detected - registering DevTools shortcuts (window-scoped, not global)');
 
-  // DevTools Toggle (CmdOrCtrl+Shift+I)
-  const devToolsRet = globalShortcut.register('CommandOrCtrl+Shift+I', () => {
-      const focusedWindow = BrowserWindow.getFocusedWindow();
-      if (focusedWindow) {
-          logger.debug(MODULE_NAME, 'DevTools shortcut pressed.');
-          focusedWindow.webContents.toggleDevTools();
-      }
-  });
-  if (!devToolsRet) {
-      logger.warn(MODULE_NAME, 'Failed to register DevTools shortcut (CmdOrCtrl+Shift+I).');
-  }
+  // Use before-input-event instead of globalShortcut to avoid hijacking
+  // system-wide keyboard shortcuts from other applications
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
 
-  // Try multiple DevTools shortcuts since F12 often fails on Windows
-  const shortcuts = [
-    { key: 'F12', name: 'F12' },
-    { key: 'CommandOrCtrl+Shift+J', name: 'Ctrl+Shift+J' },
-    { key: 'CommandOrCtrl+Alt+I', name: 'Ctrl+Alt+I' },
-    { key: 'CommandOrCtrl+F12', name: 'Ctrl+F12' },
-    { key: 'Alt+F12', name: 'Alt+F12' }
-  ];
+    const isDevToolsShortcut =
+      (input.control && input.shift && input.key === 'I') ||
+      (input.control && input.shift && input.key === 'J') ||
+      (input.control && input.alt && input.key === 'I') ||
+      (input.key === 'F12') ||
+      (input.control && input.key === 'F12') ||
+      (input.alt && input.key === 'F12');
 
-  let successCount = 0;
-  shortcuts.forEach(({ key, name }) => {
-    const success = globalShortcut.register(key, () => {
-      const focusedWindow = BrowserWindow.getFocusedWindow();
-      if (focusedWindow) {
-        logger.info(MODULE_NAME, `${name} pressed - forcing DevTools open`);
-        try {
-          // Force open DevTools - stick with docked mode for visibility
-          focusedWindow.webContents.openDevTools({ mode: 'right', activate: true });
-          focusedWindow.focus();
-          logger.info(MODULE_NAME, `${name} DevTools opened in docked mode (should be visible)`);
-        } catch (e) {
-          logger.error(MODULE_NAME, `Error opening DevTools with ${name}:`, e);
-        }
-      }
-    });
-    
-    if (success) {
-      logger.info(MODULE_NAME, `Successfully registered ${name} shortcut for DevTools`);
-      successCount++;
-    } else {
-      logger.warn(MODULE_NAME, `Failed to register ${name} shortcut`);
+    if (isDevToolsShortcut) {
+      logger.debug(MODULE_NAME, `DevTools shortcut pressed: ${input.key}`);
+      mainWindow.webContents.toggleDevTools();
     }
   });
 
-  if (successCount === 0) {
-    logger.error(MODULE_NAME, 'CRITICAL: No DevTools shortcuts could be registered!');
-  } else {
-    logger.info(MODULE_NAME, `Successfully registered ${successCount}/${shortcuts.length} DevTools shortcuts`);
-  }
+  logger.info(MODULE_NAME, 'DevTools shortcuts registered on window (Ctrl+Shift+I, F12, etc.)');
 }
 
 // Enhanced startup initialization with comprehensive error handling
