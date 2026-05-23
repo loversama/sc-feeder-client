@@ -2423,6 +2423,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
             </span>
           </div>
           
+          <!-- Privacy indicator for private events -->
+          <span v-if="event.visibility === 'private'" class="privacy-indicator" title="Private — only visible to you">🔒</span>
+
           <div class="event-header">
           <!-- <span class="event-icon">{{ getEventIcon(event.deathType, event.eventType) }}</span> -->
           <span class="event-icon-blank"></span>
@@ -3160,6 +3163,16 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .server-source-pip svg {
   width: 8px;
   height: 8px;
+}
+
+.privacy-indicator {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 10px;
+  opacity: 0.4;
+  z-index: 2;
+  cursor: help;
 }
 
 /* Subtle animation when pip appears (server confirmation) */

@@ -19,6 +19,41 @@ export type GameEventType =
   | 'respawn'            // Player respawned (AttachmentReceived body)
   | 'session_event';     // Login / logout / quit
 
+// Event visibility — controls who can see an event on the global feed
+export type EventVisibility = 'public' | 'private';
+
+// Maps event types to their default visibility
+export const EVENT_VISIBILITY_MAP: Record<GameEventType, EventVisibility> = {
+  kill: 'public',
+  vehicle_destruction: 'public',
+  death: 'public',
+  mission_accepted: 'private',
+  mission_complete: 'public',
+  mission_failed: 'public',
+  mission_shared: 'private',
+  objective_update: 'private',
+  party_join: 'private',
+  party_leave: 'private',
+  party_disband: 'private',
+  location_change: 'private',
+  quantum_travel: 'private',
+  voip_channel: 'private',
+  respawn: 'public',
+  session_event: 'private',
+};
+
+// Mission category classification
+export type MissionCategory = 'bounty' | 'cargo' | 'investigation' | 'maintenance' | 'other';
+
+export function classifyMission(missionName: string): MissionCategory {
+  const lower = missionName.toLowerCase();
+  if (lower.includes('bounty') || lower.includes('strike') || lower.includes('neutralize') || lower.includes('threat') || lower.includes('terrorist')) return 'bounty';
+  if (lower.includes('delivery') || lower.includes('cargo') || lower.includes('transport')) return 'cargo';
+  if (lower.includes('investigation') || lower.includes('missing') || lower.includes('search')) return 'investigation';
+  if (lower.includes('maintenance') || lower.includes('repair')) return 'maintenance';
+  return 'other';
+}
+
 // CIG log format availability — tracks what data CIG still writes to game.log
 export type FeatureAvailability = 'available' | 'unavailable' | 'unknown';
 
@@ -152,6 +187,9 @@ export interface KillEvent {
   partyMember?: string;       // Player name for party/VOIP events
   destination?: string;       // QT destination or location name
   channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : LoVeRSaMa")
+  visibility?: EventVisibility; // Whether event is public or private on global feed
+  missionCategory?: MissionCategory; // Classified mission type (bounty, cargo, etc.)
+  missionDuration?: number;   // Seconds from accept to complete/fail
   vehicleType?: string;       // Type of vehicle involved (e.g., "AEGS_Gladius", "Player")
   vehicleModel?: string;      // Model name if different from type (often same for ships)
   vehicleId?: string;         // Specific ID of the vehicle (if available, e.g., "AEGS_Gladius_12345")

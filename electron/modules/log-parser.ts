@@ -5,7 +5,7 @@ import { startNewSession } from './session-manager.ts'; // Add .ts
 import { fetchRsiProfileData, defaultProfileData } from './rsi-scraper.ts'; // Add .ts
 import { processKillEvent, addOrUpdateEvent, correlateDeathWithDestruction, formatKillEventDescription, determineDeathType, getKillEvents, getGlobalKillEvents, clearEvents } from './event-processor.ts'; // Import addOrUpdateEvent instead of addOrUpdateGlobalEvent
 import { resolveEntityName, getEntityName, isNpcEntity } from './definitionsService.ts'; // Import entity resolution functions
-import { KillEvent, PlayerDeath, GameEventType } from '../../shared/types';
+import { KillEvent, PlayerDeath, GameEventType, EVENT_VISIBILITY_MAP, classifyMission } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
 // Enhanced zone hierarchy imports
@@ -174,6 +174,9 @@ const refuelRequestRegex = /Added notification "Refuel Request Accepted/;
 
 // Notification dedup — tracks which notification IDs we've already processed
 const processedNotificationIds = new Set<string>();
+
+// Mission lifecycle tracking — maps mission name → accept timestamp for duration calculation
+const activeMissions = new Map<string, { acceptTime: string; category: string }>();
 // === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 
 // Initialize enhanced zone system
@@ -928,7 +931,9 @@ export async function parseLogContent(content: string, silentMode = false) {
                 if (!processedNotificationIds.has(notifId)) {
                     processedNotificationIds.add(notifId);
                     const cleaned = cleanMissionName(missionName);
-                    logger.info(MODULE_NAME, 'Mission accepted:', { mission: cleaned });
+                    const category = classifyMission(cleaned);
+                    activeMissions.set(cleaned, { acceptTime: lineTs, category });
+                    logger.info(MODULE_NAME, 'Mission accepted:', { mission: cleaned, category });
                     const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_accepted');
                     const eventId = `mission_accept_${notifId}`;
                     const partialEvent: Partial<KillEvent> = {
@@ -939,6 +944,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: 'Unknown',
                         eventType: 'mission_accepted' as GameEventType,
                         missionName: cleaned,
+                        missionCategory: category,
+                        visibility: EVENT_VISIBILITY_MAP['mission_accepted'],
                         location: locationData.location,
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
@@ -957,7 +964,16 @@ export async function parseLogContent(content: string, silentMode = false) {
                 if (!processedNotificationIds.has(notifId)) {
                     processedNotificationIds.add(notifId);
                     const cleaned = cleanMissionName(missionName);
-                    logger.info(MODULE_NAME, 'Mission complete:', { mission: cleaned });
+                    const active = activeMissions.get(cleaned);
+                    let duration: number | undefined;
+                    let category = classifyMission(cleaned);
+                    if (active) {
+                        duration = Math.round((new Date(lineTs).getTime() - new Date(active.acceptTime).getTime()) / 1000);
+                        category = active.category as any || category;
+                        activeMissions.delete(cleaned);
+                    }
+                    const durationStr = duration ? ` (${Math.floor(duration / 60)}m ${duration % 60}s)` : '';
+                    logger.info(MODULE_NAME, 'Mission complete:', { mission: cleaned, duration, category });
                     const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_complete');
                     const eventId = `mission_complete_${notifId}`;
                     const partialEvent: Partial<KillEvent> = {
@@ -968,11 +984,14 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: 'Unknown',
                         eventType: 'mission_complete' as GameEventType,
                         missionName: cleaned,
+                        missionCategory: category,
+                        missionDuration: duration,
+                        visibility: EVENT_VISIBILITY_MAP['mission_complete'],
                         location: locationData.location,
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
-                        eventDescription: `Contract Complete: ${cleaned}`,
+                        eventDescription: `Contract Complete: ${cleaned}${durationStr}`,
                         isPlayerInvolved: true,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
@@ -996,6 +1015,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: 'Unknown',
                         eventType: 'mission_shared' as GameEventType,
                         missionName: cleaned,
+                        missionCategory: classifyMission(cleaned),
+                        visibility: EVENT_VISIBILITY_MAP['mission_shared'],
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
@@ -1023,6 +1044,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: 'Unknown',
                         eventType: 'objective_update' as GameEventType,
                         objectiveText: objectiveText.trim(),
+                        visibility: EVENT_VISIBILITY_MAP['objective_update'],
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
@@ -1048,6 +1070,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     deathType: 'Unknown',
                     eventType: 'party_join' as GameEventType,
                     partyMember: playerName,
+                    visibility: EVENT_VISIBILITY_MAP['party_join'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
@@ -1071,6 +1094,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     deathType: 'Unknown',
                     eventType: 'party_leave' as GameEventType,
                     partyMember: playerName,
+                    visibility: EVENT_VISIBILITY_MAP['party_leave'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
@@ -1091,6 +1115,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     victims: [],
                     deathType: 'Unknown',
                     eventType: 'party_disband' as GameEventType,
+                    visibility: EVENT_VISIBILITY_MAP['party_disband'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
@@ -1116,6 +1141,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     eventType: 'voip_channel' as GameEventType,
                     partyMember: playerName,
                     channelName: channelName,
+                    visibility: EVENT_VISIBILITY_MAP['voip_channel'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
@@ -1143,6 +1169,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         victims: [],
                         deathType: 'Unknown',
                         eventType: 'location_change' as GameEventType,
+                        visibility: EVENT_VISIBILITY_MAP['location_change'],
                         location: locationData.location,
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
@@ -1169,6 +1196,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     deathType: 'Unknown',
                     eventType: 'quantum_travel' as GameEventType,
                     destination: destination,
+                    visibility: EVENT_VISIBILITY_MAP['quantum_travel'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
@@ -1229,6 +1257,7 @@ export function resetParserState() {
     // Reset dual-mode detection state
     recentDeaths.clear();
     processedNotificationIds.clear();
+    activeMissions.clear();
     detectionStats = {
         old_corpse_log: 0,
         actor_state_dead_new: 0,

@@ -242,10 +242,13 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         eventType: partialEvent.eventType,
         missionName: partialEvent.missionName,
         missionType: partialEvent.missionType,
+        missionCategory: partialEvent.missionCategory,
+        missionDuration: partialEvent.missionDuration,
         objectiveText: partialEvent.objectiveText,
         partyMember: partialEvent.partyMember,
         destination: partialEvent.destination,
         channelName: partialEvent.channelName,
+        visibility: partialEvent.visibility,
     };
 
     // 3. FIXED: Preserve raw entity IDs for consistent frontend resolution
