@@ -5,7 +5,7 @@ import { startNewSession } from './session-manager.ts'; // Add .ts
 import { fetchRsiProfileData, defaultProfileData } from './rsi-scraper.ts'; // Add .ts
 import { processKillEvent, addOrUpdateEvent, correlateDeathWithDestruction, formatKillEventDescription, determineDeathType, getKillEvents, getGlobalKillEvents, clearEvents } from './event-processor.ts'; // Import addOrUpdateEvent instead of addOrUpdateGlobalEvent
 import { resolveEntityName, getEntityName, isNpcEntity } from './definitionsService.ts'; // Import entity resolution functions
-import { KillEvent, PlayerDeath } from '../../shared/types';
+import { KillEvent, PlayerDeath, GameEventType } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
 // Enhanced zone hierarchy imports
@@ -121,6 +121,60 @@ const fatalCollisionRegex =
 const newVehicleDestroyedRegex =
   /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>\s+\[VEHICLE SPAWN\]\s+Vehicle Destroyed \((?<vehicle>[^)]+)\)\.\s+Killed by \((?<killer>[^)]+)\)\.\s+Reason: (?<reason>\w+)/;
 // === END NEW FORMAT PATTERNS ===
+
+// Extract timestamp from any log line: <2026-05-22T22:33:58.036Z>
+const lineTimestampRegex = /^<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>/;
+function extractLineTimestamp(line: string): string {
+    const match = line.match(lineTimestampRegex);
+    return match ? match[1] : new Date().toISOString();
+}
+
+// Clean unresolved CIG template variables like ~mission(TargetName)
+function cleanMissionName(name: string): string {
+    return name.replace(/~mission\([^)]+\)/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// === SC 4.8+ GAMEPLAY EVENT PATTERNS ===
+// Mission/Contract notifications (parsed from SHUDEvent_OnNotification lines)
+const missionAcceptedRegex = /Added notification "Contract Accepted:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionCompleteRegex = /Added notification "Contract Complete:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionFailedRegex = /Added notification "Contract Failed:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionSharedRegex = /Added notification "Contract Shared:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionObjectiveRegex = /Added notification "New Objective:\s+(?<objectiveText>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionObjectiveCompleteRegex = /Added notification "Objective Complete:\s+(?<objectiveText>[^"]+)"/;
+const missionObjectiveWithdrawnRegex = /Added notification "Objective Withdrawn:\s+(?<objectiveText>[^:]+):\s*"/;
+
+// Party events (from notification text — may span multiple lines so match partial)
+// Party "connected" notifications span 2 lines; match the 2nd line with "to queue" to dedup
+const partyMemberConnectedRegex = /(?<playerName>\w+) connected\.\: "\s*\[\d+\] to queue/;
+// Party "left" notifications: match with "to queue" suffix to only catch first occurrence
+const partyMemberLeftRegex = /(?<playerName>\w+) has left the party\.\: "\s*\[\d+\] to queue/;
+const partyDisbandedRegex = /Party Disbanded/;
+const partyInviteRegex = /(?<playerName>\w+)\s*\n?\s*Party Invite Received/;
+const memberLeftNotifRegex = /Added notification "Member Left/;
+
+// VOIP channel events
+const voipChannelLeftRegex = /(?<playerName>\w+) has left the channel '(?<channelName>[^']+)'/;
+
+// Location/jurisdiction changes (from notifications)
+const jurisdictionEnteredRegex = /Added notification "Entered (?<jurisdiction>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
+const monitoredSpaceRegex = /Added notification "(?<action>Entered|Exited) Monitored Space:\s*"\s*\[(?<notifId>\d+)\]/;
+
+// Quantum travel
+const qtFuelRequestRegex = /Player Requested Fuel to Quantum Target.*?destination (?<destination>\S+)/;
+const qtRouteSuccessRegex = /Successfully calculated route to (?<destination>\S+) fuel estimate (?<fuel>[\d.]+)/;
+const qtStartLocationRegex = /Projected Start Location is (?<startLocation>.+?) for route to destination/;
+
+// Mission lifecycle (lower-level server state — used for correlation, not primary display)
+const missionEndedRegex = /<MissionEnded>.*?mission_id (?<missionId>\S+) - mission_state (?<state>\S+)/;
+
+// Hangar/services
+const hangarRequestRegex = /Added notification "Hangar Request Completed/;
+const refuelRequestRegex = /Added notification "Refuel Request Accepted/;
+
+// Notification dedup — tracks which notification IDs we've already processed
+const processedNotificationIds = new Set<string>();
+// === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 
 // Initialize enhanced zone system
 function initializeZoneSystem(): void {
@@ -864,6 +918,269 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue; // Env death line processed
             }
 
+            // === SC 4.8+ GAMEPLAY EVENT DETECTION ===
+            const lineTs = extractLineTimestamp(line);
+
+            // --- Mission Contract Events (from HUD notifications) ---
+            const missionAcceptMatch = line.match(missionAcceptedRegex);
+            if (missionAcceptMatch?.groups) {
+                const { missionName, notifId } = missionAcceptMatch.groups;
+                if (!processedNotificationIds.has(notifId)) {
+                    processedNotificationIds.add(notifId);
+                    const cleaned = cleanMissionName(missionName);
+                    logger.info(MODULE_NAME, 'Mission accepted:', { mission: cleaned });
+                    const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_accepted');
+                    const eventId = `mission_accept_${notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'mission_accepted' as GameEventType,
+                        missionName: cleaned,
+                        location: locationData.location,
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `Contract Accepted: ${cleaned}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
+            const missionCompleteMatch = line.match(missionCompleteRegex);
+            if (missionCompleteMatch?.groups) {
+                const { missionName, notifId } = missionCompleteMatch.groups;
+                if (!processedNotificationIds.has(notifId)) {
+                    processedNotificationIds.add(notifId);
+                    const cleaned = cleanMissionName(missionName);
+                    logger.info(MODULE_NAME, 'Mission complete:', { mission: cleaned });
+                    const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_complete');
+                    const eventId = `mission_complete_${notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'mission_complete' as GameEventType,
+                        missionName: cleaned,
+                        location: locationData.location,
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `Contract Complete: ${cleaned}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
+            const missionSharedMatch = line.match(missionSharedRegex);
+            if (missionSharedMatch?.groups) {
+                const { missionName, notifId } = missionSharedMatch.groups;
+                if (!processedNotificationIds.has(notifId)) {
+                    processedNotificationIds.add(notifId);
+                    const cleaned = cleanMissionName(missionName);
+                    logger.info(MODULE_NAME, 'Mission shared:', { mission: cleaned });
+                    const eventId = `mission_shared_${notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'mission_shared' as GameEventType,
+                        missionName: cleaned,
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `Contract Shared: ${cleaned}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
+            // --- Mission Objective Events ---
+            const objectiveMatch = line.match(missionObjectiveRegex);
+            if (objectiveMatch?.groups) {
+                const { objectiveText, notifId } = objectiveMatch.groups;
+                if (!processedNotificationIds.has(`obj_${notifId}`)) {
+                    processedNotificationIds.add(`obj_${notifId}`);
+                    logger.info(MODULE_NAME, 'New objective:', { objective: objectiveText.trim() });
+                    const eventId = `objective_new_${notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'objective_update' as GameEventType,
+                        objectiveText: objectiveText.trim(),
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `New Objective: ${objectiveText.trim()}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
+            // --- Party Events ---
+            const partyConnectMatch = line.match(partyMemberConnectedRegex);
+            if (partyConnectMatch?.groups) {
+                const { playerName } = partyConnectMatch.groups;
+                logger.info(MODULE_NAME, 'Party member connected:', { player: playerName });
+                const eventId = `party_join_${playerName}_${Date.now()}`;
+                const partialEvent: Partial<KillEvent> = {
+                    id: eventId,
+                    timestamp: lineTs,
+                    killers: [],
+                    victims: [],
+                    deathType: 'Unknown',
+                    eventType: 'party_join' as GameEventType,
+                    partyMember: playerName,
+                    gameMode: stableGameMode,
+                    gameVersion: currentGameVersion,
+                    playerShip: currentPlayerShip,
+                    eventDescription: `${playerName} connected to party`,
+                    isPlayerInvolved: true,
+                };
+                await processKillEvent(partialEvent, silentMode, 0);
+                continue;
+            }
+
+            const partyLeaveMatch = line.match(partyMemberLeftRegex);
+            if (partyLeaveMatch?.groups) {
+                const { playerName } = partyLeaveMatch.groups;
+                logger.info(MODULE_NAME, 'Party member left:', { player: playerName });
+                const eventId = `party_leave_${playerName}_${Date.now()}`;
+                const partialEvent: Partial<KillEvent> = {
+                    id: eventId,
+                    timestamp: lineTs,
+                    killers: [],
+                    victims: [],
+                    deathType: 'Unknown',
+                    eventType: 'party_leave' as GameEventType,
+                    partyMember: playerName,
+                    gameMode: stableGameMode,
+                    gameVersion: currentGameVersion,
+                    playerShip: currentPlayerShip,
+                    eventDescription: `${playerName} left the party`,
+                    isPlayerInvolved: true,
+                };
+                await processKillEvent(partialEvent, silentMode, 0);
+                continue;
+            }
+
+            if (line.match(partyDisbandedRegex) && line.includes('Added notification')) {
+                logger.info(MODULE_NAME, 'Party disbanded');
+                const eventId = `party_disband_${Date.now()}`;
+                const partialEvent: Partial<KillEvent> = {
+                    id: eventId,
+                    timestamp: lineTs,
+                    killers: [],
+                    victims: [],
+                    deathType: 'Unknown',
+                    eventType: 'party_disband' as GameEventType,
+                    gameMode: stableGameMode,
+                    gameVersion: currentGameVersion,
+                    playerShip: currentPlayerShip,
+                    eventDescription: 'Party disbanded',
+                    isPlayerInvolved: true,
+                };
+                await processKillEvent(partialEvent, silentMode, 0);
+                continue;
+            }
+
+            // --- VOIP Channel Events ---
+            const voipMatch = line.match(voipChannelLeftRegex);
+            if (voipMatch?.groups) {
+                const { playerName, channelName } = voipMatch.groups;
+                logger.info(MODULE_NAME, 'VOIP channel event:', { player: playerName, channel: channelName });
+                const eventId = `voip_${playerName}_${Date.now()}`;
+                const partialEvent: Partial<KillEvent> = {
+                    id: eventId,
+                    timestamp: lineTs,
+                    killers: [],
+                    victims: [],
+                    deathType: 'Unknown',
+                    eventType: 'voip_channel' as GameEventType,
+                    partyMember: playerName,
+                    channelName: channelName,
+                    gameMode: stableGameMode,
+                    gameVersion: currentGameVersion,
+                    playerShip: currentPlayerShip,
+                    eventDescription: `${playerName} left VOIP channel "${channelName}"`,
+                    isPlayerInvolved: true,
+                };
+                await processKillEvent(partialEvent, silentMode, 0);
+                continue;
+            }
+
+            // --- Location/Jurisdiction Changes ---
+            const jurisdictionMatch = line.match(jurisdictionEnteredRegex);
+            if (jurisdictionMatch?.groups) {
+                const { jurisdiction, notifId } = jurisdictionMatch.groups;
+                if (!processedNotificationIds.has(`loc_${notifId}`)) {
+                    processedNotificationIds.add(`loc_${notifId}`);
+                    const locationName = jurisdiction.trim();
+                    logger.info(MODULE_NAME, 'Jurisdiction entered:', { location: locationName });
+                    const locationData = processLocationDataEnhanced(locationName, undefined, 'jurisdiction_change');
+                    const eventId = `location_${notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'location_change' as GameEventType,
+                        location: locationData.location,
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `Entered ${locationName}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
+            // --- Quantum Travel ---
+            const qtSuccessMatch = line.match(qtRouteSuccessRegex);
+            if (qtSuccessMatch?.groups) {
+                const { destination, fuel } = qtSuccessMatch.groups;
+                logger.info(MODULE_NAME, 'QT route calculated:', { destination, fuel });
+                const eventId = `qt_${destination}_${Date.now()}`;
+                const partialEvent: Partial<KillEvent> = {
+                    id: eventId,
+                    timestamp: lineTs,
+                    killers: [],
+                    victims: [],
+                    deathType: 'Unknown',
+                    eventType: 'quantum_travel' as GameEventType,
+                    destination: destination,
+                    gameMode: stableGameMode,
+                    gameVersion: currentGameVersion,
+                    playerShip: currentPlayerShip,
+                    eventDescription: `Quantum route to ${destination} (fuel: ${Math.round(parseFloat(fuel))})`,
+                    isPlayerInvolved: true,
+                };
+                await processKillEvent(partialEvent, silentMode, 0);
+                continue;
+            }
+
+            // === END SC 4.8+ GAMEPLAY EVENT DETECTION ===
+
             // --- Incapacitation Log (Optional) ---
             const incapMatch = line.match(incapRegex);
             if (incapMatch?.groups) {
@@ -911,6 +1228,7 @@ export function resetParserState() {
 
     // Reset dual-mode detection state
     recentDeaths.clear();
+    processedNotificationIds.clear();
     detectionStats = {
         old_corpse_log: 0,
         actor_state_dead_new: 0,

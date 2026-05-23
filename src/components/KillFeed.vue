@@ -55,6 +55,30 @@ const containerReady = ref<boolean>(false); // Track if container is properly si
 const showScrollToTop = ref<boolean>(false);
 const SCROLL_TO_TOP_THRESHOLD = 4000; // Show button after ~50 events worth of scrolling
 
+// Combat data unavailability banner dismissed state
+const combatBannerDismissed = ref<boolean>(false);
+
+// Load combat banner dismissed state from localStorage
+const loadCombatBannerState = () => {
+  try {
+    const stored = localStorage.getItem('sc-feeder-combat-banner-dismissed');
+    if (stored === 'true') {
+      combatBannerDismissed.value = true;
+    }
+  } catch (error) {
+    // Ignore localStorage errors
+  }
+};
+
+const dismissCombatBanner = () => {
+  combatBannerDismissed.value = true;
+  try {
+    localStorage.setItem('sc-feeder-combat-banner-dismissed', 'true');
+  } catch (error) {
+    // Ignore localStorage errors
+  }
+};
+
 // Sliding window state management
 const currentWindowOffset = ref<number>(0); // Tracks position in overall event stream
 const MAX_UI_EVENTS = 250; // Maximum events in UI at once
@@ -150,6 +174,12 @@ const openEventDetails = async (event: KillEvent) => {
     gameMode: (event.gameMode === 'PU' || event.gameMode === 'AC')
       ? event.gameMode
       : 'Unknown' as KillEvent['gameMode'],
+    eventType: event.eventType || undefined,
+    missionName: event.missionName ? String(event.missionName) : undefined,
+    objectiveText: event.objectiveText ? String(event.objectiveText) : undefined,
+    partyMember: event.partyMember ? String(event.partyMember) : undefined,
+    destination: event.destination ? String(event.destination) : undefined,
+    channelName: event.channelName ? String(event.channelName) : undefined,
     eventDescription: String(event.eventDescription || ''),
     isPlayerInvolved: Boolean(event.isPlayerInvolved),
     victimEnlisted: String(event.victimEnlisted || '-'),
@@ -644,38 +674,84 @@ const loadKillEvents = async () => {
   }
 };
 
-// Get CSS class based on death type
-const getEventClass = (deathType: KillEvent['deathType']): string => {
+// --- New Event Type Styling Maps (SC 4.8+) ---
+// Maps eventType to CSS class, icon, and display label for non-combat events
+const newEventTypeStyles: Record<string, { cssClass: string; icon: string; label: string }> = {
+  mission_complete:  { cssClass: 'mission-complete-event',  icon: '✅', label: 'Mission Complete' },
+  mission_accepted:  { cssClass: 'mission-accepted-event',  icon: '📋', label: 'Mission Accepted' },
+  mission_failed:    { cssClass: 'mission-failed-event',    icon: '❌', label: 'Mission Failed' },
+  mission_shared:    { cssClass: 'mission-shared-event',    icon: '🤝', label: 'Mission Shared' },
+  objective_update:  { cssClass: 'objective-update-event',  icon: '🎯', label: 'Objective Update' },
+  party_join:        { cssClass: 'party-join-event',        icon: '👋', label: 'Party Join' },
+  party_leave:       { cssClass: 'party-leave-event',       icon: '👋', label: 'Party Leave' },
+  party_disband:     { cssClass: 'party-disband-event',     icon: '💔', label: 'Party Disband' },
+  location_change:   { cssClass: 'location-change-event',   icon: '📍', label: 'Location Change' },
+  quantum_travel:    { cssClass: 'quantum-travel-event',    icon: '⚡', label: 'Quantum Travel' },
+  voip_channel:      { cssClass: 'voip-channel-event',      icon: '🔊', label: 'VOIP Channel' },
+  respawn:           { cssClass: 'respawn-event',           icon: '🔄', label: 'Respawn' },
+  session_event:     { cssClass: 'session-event',           icon: '🔗', label: 'Session' },
+};
+
+// Check if an event uses the new eventType system (non-combat SC 4.8+ events)
+const isNewEventType = (event: KillEvent): boolean => {
+  return !!event.eventType && event.eventType in newEventTypeStyles;
+};
+
+// Get display label for new event types (e.g. "Mission Complete")
+const getNewEventTypeLabel = (event: KillEvent): string => {
+  if (event.eventType && event.eventType in newEventTypeStyles) {
+    return newEventTypeStyles[event.eventType].label;
+  }
+  return '';
+};
+
+// Get CSS class based on eventType (new) or deathType (legacy)
+const getEventClass = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): string => {
+  // Check new event types first
+  if (eventType && eventType in newEventTypeStyles) {
+    return newEventTypeStyles[eventType].cssClass;
+  }
+  // Fall back to legacy deathType styling
   switch (deathType) {
     case 'Combat': return 'combat-event';
     case 'Soft': return 'soft-death-event';
     case 'Hard': return 'hard-death-event';
     case 'Collision': return 'collision-event';
     case 'Crash': return 'crash-event';
-    case 'BleedOut': return 'bleedout-event'; // Added
-    case 'Suffocation': return 'suffocation-event'; // Added
+    case 'BleedOut': return 'bleedout-event';
+    case 'Suffocation': return 'suffocation-event';
     case 'Unknown':
     default: return 'unknown-event';
   }
 };
 
-// Get icon based on death type
-const getEventIcon = (deathType: KillEvent['deathType']): string => {
-   switch (deathType) {
-    case 'Combat': return '⚔️'; // Cross swords
-    case 'Soft': return '🔧'; // Wrench (disabled)
-    case 'Hard': return '💥'; // Explosion
-    case 'Collision': return '💥'; // Explosion
-    case 'Crash': return '💔'; // Broken heart / Impact
-    case 'BleedOut': return '🩸'; // Blood drop
-    case 'Suffocation': return '💀'; // Skull
+// Get icon based on eventType (new) or deathType (legacy)
+const getEventIcon = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): string => {
+  // Check new event types first
+  if (eventType && eventType in newEventTypeStyles) {
+    return newEventTypeStyles[eventType].icon;
+  }
+  // Fall back to legacy deathType styling
+  switch (deathType) {
+    case 'Combat': return '⚔️';
+    case 'Soft': return '🔧';
+    case 'Hard': return '💥';
+    case 'Collision': return '💥';
+    case 'Crash': return '💔';
+    case 'BleedOut': return '🩸';
+    case 'Suffocation': return '💀';
     case 'Unknown':
-    default: return '❓'; // Question mark
+    default: return '❓';
   }
 };
 
-// Get separator based on death type
-const getSeparator = (deathType: KillEvent['deathType']): string => {
+// Get separator based on eventType (new) or deathType (legacy)
+const getSeparator = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): string => {
+  // New event types don't use separators (no attacker/victim layout)
+  if (eventType && eventType in newEventTypeStyles) {
+    return '';
+  }
+  // Fall back to legacy deathType styling
   switch (deathType) {
     case 'Combat': return ' → ';
     case 'Soft': return ' 🔧 ';
@@ -1741,6 +1817,9 @@ onMounted(async () => { // Make onMounted async
     }
   }
   
+  // Load combat banner dismissed state
+  loadCombatBannerState();
+
   // Load discovered categories and selected filters
   await loadDiscoveredCategories();
   await loadSelectedCategories();
@@ -2304,10 +2383,19 @@ const getServerSourceTooltip = (event: KillEvent): string => {
     </div>
     <!-- Otherwise, render the list -->
     <!-- Apply flex/scroll properties to this wrapper div -->
-    <div v-else class="kill-feed-scroll-area" 
+    <div v-else class="kill-feed-scroll-area"
          ref="killFeedListRef"
          tabindex="0"
          style="outline: none;">
+        <!-- Combat data unavailability notice -->
+        <div v-if="!combatBannerDismissed" class="combat-unavailable-banner">
+          <div class="combat-unavailable-content">
+            <span class="combat-unavailable-text">
+              &#x26A0;&#xFE0F; Combat data unavailable &mdash; CIG removed kill logging from game logs in late 2025. Ship destruction and gameplay events are still tracked.
+            </span>
+            <button class="combat-unavailable-dismiss" @click.stop="dismissCombatBanner" title="Dismiss">&times;</button>
+          </div>
+        </div>
         <!-- Apply flex layout and gap to the transition-group's rendered div -->
         <transition-group name="feed-anim" tag="div" class="feed-items-container">
         <div
@@ -2315,7 +2403,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           :key="event.id"
           class="kill-event-item clickable"
           :class="[
-          getEventClass(event.deathType),
+          getEventClass(event.deathType, event.eventType),
           // Highlight player events when viewing global feed (if authenticated)
           { 'player-involved': event.isPlayerInvolved && isAuthenticated },
             { 'updated': recentlyUpdatedIds.has(event.id) } // Add class if ID is recently updated
@@ -2336,30 +2424,56 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           </div>
           
           <div class="event-header">
-          <!-- <span class="event-icon">{{ getEventIcon(event.deathType) }}</span> -->
+          <!-- <span class="event-icon">{{ getEventIcon(event.deathType, event.eventType) }}</span> -->
           <span class="event-icon-blank"></span>
           <span class="event-death-type">
-            {{ event.deathType }} Death
-            <!-- Display secondary death type if merged -->
-            <span v-if="event.data?.secondaryDeathType" class="secondary-death-type">
-              + {{ event.data?.secondaryDeathType }} <!-- Added optional chaining -->
-            </span>
+            <!-- New event types show their label; legacy events show deathType -->
+            <template v-if="isNewEventType(event)">
+              {{ getNewEventTypeLabel(event) }}
+            </template>
+            <template v-else>
+              {{ event.deathType }} Death
+              <!-- Display secondary death type if merged -->
+              <span v-if="event.data?.secondaryDeathType" class="secondary-death-type">
+                + {{ event.data?.secondaryDeathType }}
+              </span>
+            </template>
           </span>
           <!-- Game Mode Pill -->
-          <span v-if="event.gameMode && event.gameMode !== 'Unknown'" 
-                class="event-mode-pill" 
+          <span v-if="event.gameMode && event.gameMode !== 'Unknown'"
+                class="event-mode-pill"
                 :class="{
                   'mode-pu': event.gameMode === 'PU',
                   'mode-ac': event.gameMode === 'AC'
                 }">{{ event.gameMode }}</span>
           <span class="event-location" v-if="event.location">{{ getEntityDisplayName(event.location) }}</span>
-          <!-- Temporary debug: Show raw location -->
           <div class="event-time-container">
             <span class="event-time">{{ formatTime(event.timestamp) }}</span>
           </div>
         </div>
 
         <div class="event-content">
+          <!-- New event type rendering (no attacker/victim layout) -->
+          <template v-if="isNewEventType(event) && event.killers.length === 0 && event.victims.length === 0">
+            <div class="new-event-description">
+              <span class="new-event-icon">{{ getEventIcon(event.deathType, event.eventType) }}</span>
+              <span class="new-event-text">{{ event.eventDescription }}</span>
+            </div>
+            <!-- Show party member if present -->
+            <div class="event-details" v-if="event.partyMember">
+              <span class="detail-label">Player:</span> {{ event.partyMember }}
+            </div>
+            <!-- Show destination for quantum travel / location events -->
+            <div class="event-details" v-if="event.destination">
+              <span class="detail-label">Destination:</span> {{ getEntityDisplayName(event.destination) }}
+            </div>
+            <!-- Show VOIP channel name -->
+            <div class="event-details" v-if="event.channelName">
+              <span class="detail-label">Channel:</span> {{ event.channelName }}
+            </div>
+          </template>
+          <!-- Legacy combat/destruction event rendering -->
+          <template v-else>
           <div class="player-names">
             <!-- Special layout for environmental deaths or crashes -->
             <template v-if="event.killers[0] === 'Environment' || event.deathType === 'Crash'">
@@ -2372,7 +2486,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                   <span v-if="index < event.victims.length - 1" class="operator"> + </span>
                 </template>
               </div>
-              <span class="separator">{{ getSeparator(event.deathType) }}</span>
+              <span class="separator">{{ getSeparator(event.deathType, event.eventType) }}</span>
               <!-- Show death type for environment/crash -->
               <div class="env-cause">
                 <span>{{ event.deathType }}</span>
@@ -2389,7 +2503,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
                   <span v-if="index < event.killers.length - 1" class="operator"> + </span>
                 </span>
               </div>
-              <span class="separator">{{ getSeparator(event.deathType) }}</span>
+              <span class="separator">{{ getSeparator(event.deathType, event.eventType) }}</span>
               <div class="victims player-info">
                 <template v-for="(victim, index) in event.victims" :key="victim">
                   <span class="player-entry">
@@ -2418,6 +2532,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
               <span v-if="event.victimOrg && event.victimOrg !== '-'">[ {{ event.victimOrg }} ]</span>
               <span v-if="event.victimRsiRecord && event.victimRsiRecord !== '-'">{{ event.victimRsiRecord }}</span>
            </div>
+          </template>
          </div>
        </div> <!-- End of v-for element -->
        </transition-group> <!-- Close transition-group here -->
@@ -3072,6 +3187,81 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .bleedout-event { border-left-color: #a94442; } /* Dark Red/Brown */
 .suffocation-event { border-left-color: #31708f; } /* Dark Blue/Teal */
 .unknown-event { border-left-color: #7f8c8d; } /* Gray */
+
+/* New SC 4.8+ Event Type Styling */
+.mission-complete-event { border-left-color: #27ae60; } /* Green */
+.mission-accepted-event { border-left-color: #3498db; } /* Blue */
+.mission-failed-event { border-left-color: #e74c3c; } /* Red */
+.mission-shared-event { border-left-color: #1abc9c; } /* Cyan */
+.objective-update-event { border-left-color: #2ecc71; } /* Light Green */
+.party-join-event { border-left-color: #16a085; } /* Teal */
+.party-leave-event { border-left-color: #95a5a6; } /* Gray */
+.party-disband-event { border-left-color: #7f8c8d; } /* Dark Gray */
+.location-change-event { border-left-color: #8e44ad; } /* Indigo */
+.quantum-travel-event { border-left-color: #2980b9; } /* Electric Blue */
+.voip-channel-event { border-left-color: #34495e; } /* Slate */
+.respawn-event { border-left-color: #27ae60; } /* Green */
+.session-event { border-left-color: #34495e; } /* Slate */
+
+/* New event type description layout */
+.new-event-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.new-event-icon {
+  font-size: 1.2em;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.new-event-text {
+  color: #ccc;
+  font-size: 0.95em;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Combat data unavailability banner */
+.combat-unavailable-banner {
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.combat-unavailable-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background-color: #2a2a1e;
+  border-left: 3px solid #f59e0b;
+  border-radius: 3px;
+  padding: 8px 10px;
+}
+
+.combat-unavailable-text {
+  color: #b0a070;
+  font-size: 0.8em;
+  line-height: 1.4;
+  flex: 1;
+}
+
+.combat-unavailable-dismiss {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.1em;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.2s;
+}
+
+.combat-unavailable-dismiss:hover {
+  color: #ccc;
+}
 
 .event-header {
   display: flex;

@@ -1,5 +1,51 @@
 // Shared type definitions used across main process modules and potentially renderer
 
+// Top-level event type discriminator — covers both legacy combat and new SC 4.8+ events
+export type GameEventType =
+  | 'kill'               // Legacy combat kill (unavailable since SC 4.0)
+  | 'vehicle_destruction' // Ship/vehicle destroyed
+  | 'death'              // Player death (ejected from destroyed vehicle, etc.)
+  | 'mission_accepted'   // Contract accepted
+  | 'mission_complete'   // Contract completed
+  | 'mission_failed'     // Contract failed/abandoned
+  | 'mission_shared'     // Contract shared by party member
+  | 'objective_update'   // Mission objective state change
+  | 'party_join'         // Player joined party / connected
+  | 'party_leave'        // Player left party
+  | 'party_disband'      // Party disbanded
+  | 'location_change'    // Entered jurisdiction / zone change
+  | 'quantum_travel'     // QT route calculated / jumped
+  | 'voip_channel'       // Player joined/left ship VOIP channel
+  | 'respawn'            // Player respawned (AttachmentReceived body)
+  | 'session_event';     // Login / logout / quit
+
+// CIG log format availability — tracks what data CIG still writes to game.log
+export type FeatureAvailability = 'available' | 'unavailable' | 'unknown';
+
+export interface LogFormatStatus {
+  combatKills: 'unavailable';
+  playerKills: 'unavailable';
+  playerDowns: 'unknown';
+  shipDestruction: 'available';
+  missions: 'available';
+  party: 'available';
+  location: 'available';
+  quantumTravel: 'available';
+  playerDeaths: 'available';
+}
+
+export const LOG_FORMAT_STATUS: LogFormatStatus = {
+  combatKills: 'unavailable',
+  playerKills: 'unavailable',
+  playerDowns: 'unknown',
+  shipDestruction: 'available',
+  missions: 'available',
+  party: 'available',
+  location: 'available',
+  quantumTravel: 'available',
+  playerDeaths: 'available',
+};
+
 // Type definition for cached profile data
 export interface ProfileData {
   // Victim fields
@@ -70,9 +116,13 @@ export interface SoundPreferences {
   eventSounds: {
     vehicleDestruction: SoundConfig;
     crash: SoundConfig;
-    playerKill: SoundConfig;
-    npcKill: SoundConfig;
+    playerKill: SoundConfig;        // Legacy — CIG removed combat kills
+    npcKill: SoundConfig;           // Legacy — CIG removed combat kills
     playerDeath: SoundConfig;
+    missionComplete: SoundConfig;
+    missionAccepted: SoundConfig;
+    partyJoin: SoundConfig;
+    partyLeave: SoundConfig;
   };
 }
 
@@ -95,6 +145,13 @@ export interface KillEvent {
   killers: string[];          // Names of players/entities who caused the kill/destruction
   victims: string[];          // Names of players/entities who were killed/destroyed
   deathType: 'Soft' | 'Hard' | 'Combat' | 'Collision' | 'Crash' | 'BleedOut' | 'Suffocation' | 'Unknown'; // Added new death types
+  eventType?: GameEventType;  // High-level event category (SC 4.8+ expanded events)
+  missionName?: string;       // Contract/mission display name (e.g. "Preemptive Strike On Fredrick Kirkman")
+  missionType?: string;       // Contract definition type (e.g. "InterSec_Bounty_Nyx_Hard")
+  objectiveText?: string;     // Objective description text
+  partyMember?: string;       // Player name for party/VOIP events
+  destination?: string;       // QT destination or location name
+  channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : LoVeRSaMa")
   vehicleType?: string;       // Type of vehicle involved (e.g., "AEGS_Gladius", "Player")
   vehicleModel?: string;      // Model name if different from type (often same for ships)
   vehicleId?: string;         // Specific ID of the vehicle (if available, e.g., "AEGS_Gladius_12345")

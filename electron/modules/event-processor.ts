@@ -236,7 +236,16 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         attackerPfpUrl: attackerRsiData.attackerPfpUrl || defaultProfileData.attackerPfpUrl,
 
         // Added for details window context
-        playerName: currentUsername || ''
+        playerName: currentUsername || '',
+
+        // SC 4.8+ expanded event fields
+        eventType: partialEvent.eventType,
+        missionName: partialEvent.missionName,
+        missionType: partialEvent.missionType,
+        objectiveText: partialEvent.objectiveText,
+        partyMember: partialEvent.partyMember,
+        destination: partialEvent.destination,
+        channelName: partialEvent.channelName,
     };
 
     // 3. FIXED: Preserve raw entity IDs for consistent frontend resolution
@@ -252,14 +261,19 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     // For now, assuming only killers and victims are entity IDs needing resolution.
 
     // 4. Format Description
-    fullEvent.eventDescription = formatKillEventDescription(
-        fullEvent.killers, // Raw entity IDs (for consistent data)
-        fullEvent.victims, // Raw entity IDs (for consistent data)
-        fullEvent.vehicleType || 'Unknown',
-        fullEvent.vehicleModel || 'Unknown',
-        fullEvent.deathType,
-        destructionLevel // Pass destruction level for context
-    );
+    // For new SC 4.8+ events, use the pre-set eventDescription from the parser
+    if (partialEvent.eventType && partialEvent.eventDescription) {
+        fullEvent.eventDescription = partialEvent.eventDescription;
+    } else {
+        fullEvent.eventDescription = formatKillEventDescription(
+            fullEvent.killers, // Raw entity IDs (for consistent data)
+            fullEvent.victims, // Raw entity IDs (for consistent data)
+            fullEvent.vehicleType || 'Unknown',
+            fullEvent.vehicleModel || 'Unknown',
+            fullEvent.deathType,
+            destructionLevel // Pass destruction level for context
+        );
+    }
 
     // Discover and track event category if present
     if (partialEvent.metadata?.category) {

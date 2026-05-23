@@ -22,7 +22,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'bindings', 'node-gyp-build'],
+              external: ['better-sqlite3', 'bindings', 'node-gyp-build', 'undici'],
             },
           },
         },
