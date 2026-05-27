@@ -122,6 +122,10 @@ const eventTypes = {
   playerKill: { label: 'Player Kill', icon: 'crosshairs' },
   npcKill: { label: 'NPC Kill', icon: 'robot' },
   playerDeath: { label: 'Your Death', icon: 'skull' },
+  missionComplete: { label: 'Mission Complete', icon: 'check-circle' },
+  missionAccepted: { label: 'Mission Accepted', icon: 'clipboard' },
+  partyJoin: { label: 'Party Join', icon: 'user-plus' },
+  partyLeave: { label: 'Party Leave', icon: 'user-minus' },
 } as const;
 
 // State
@@ -133,6 +137,10 @@ const soundPreferences = ref<SoundPreferences>({
     playerKill: { type: 'default', path: 'metallic_din_1', volume: 0.5 },
     npcKill: { type: 'default', path: 'metallic_din_npc', volume: 0.4 },
     playerDeath: { type: 'default', path: 'cranial_snap', volume: 0.8 },
+    missionComplete: { type: 'default', path: 'crispy_ping_1', volume: 0.5 },
+    missionAccepted: { type: 'default', path: 'crispy_ping_2', volume: 0.3 },
+    partyJoin: { type: 'default', path: 'arcade_pop', volume: 0.3 },
+    partyLeave: { type: 'default', path: 'arcade_pop', volume: 0.2 },
   }
 });
 

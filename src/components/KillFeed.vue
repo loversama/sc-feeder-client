@@ -4,6 +4,13 @@ import UpdateBanner from './UpdateBanner.vue'; // Import the new UpdateBanner co
 import ConnectionBanner from './ConnectionBanner.vue'; // Import the connection status banner
 import type { IpcRendererEvent } from 'electron'; // Import IpcRendererEvent
 import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, QuestionFilled } from '@element-plus/icons-vue'; // Import icons
+import {
+  CheckCircle2, ClipboardList, XCircle, Share2, Target,
+  UserPlus, UserMinus, UsersRound, MapPin, Zap,
+  Volume2, RotateCcw, Link,
+  Swords, Wrench, Flame, Car, AlertTriangle, Droplets, Skull, HelpCircle,
+} from 'lucide-vue-next';
+import type { Component } from 'vue';
 import { useEntityResolver, type ResolvedEntity } from '../composables/useEntityResolver';
 import { useNavigationState } from '../composables/useNavigationState';
 import { navigationEventBus } from '../utils/navigation-event-bus';
@@ -675,21 +682,21 @@ const loadKillEvents = async () => {
 };
 
 // --- New Event Type Styling Maps (SC 4.8+) ---
-// Maps eventType to CSS class, icon, and display label for non-combat events
-const newEventTypeStyles: Record<string, { cssClass: string; icon: string; label: string }> = {
-  mission_complete:  { cssClass: 'mission-complete-event',  icon: '✅', label: 'Mission Complete' },
-  mission_accepted:  { cssClass: 'mission-accepted-event',  icon: '📋', label: 'Mission Accepted' },
-  mission_failed:    { cssClass: 'mission-failed-event',    icon: '❌', label: 'Mission Failed' },
-  mission_shared:    { cssClass: 'mission-shared-event',    icon: '🤝', label: 'Mission Shared' },
-  objective_update:  { cssClass: 'objective-update-event',  icon: '🎯', label: 'Objective Update' },
-  party_join:        { cssClass: 'party-join-event',        icon: '👋', label: 'Party Join' },
-  party_leave:       { cssClass: 'party-leave-event',       icon: '👋', label: 'Party Leave' },
-  party_disband:     { cssClass: 'party-disband-event',     icon: '💔', label: 'Party Disband' },
-  location_change:   { cssClass: 'location-change-event',   icon: '📍', label: 'Location Change' },
-  quantum_travel:    { cssClass: 'quantum-travel-event',    icon: '⚡', label: 'Quantum Travel' },
-  voip_channel:      { cssClass: 'voip-channel-event',      icon: '🔊', label: 'VOIP Channel' },
-  respawn:           { cssClass: 'respawn-event',           icon: '🔄', label: 'Respawn' },
-  session_event:     { cssClass: 'session-event',           icon: '🔗', label: 'Session' },
+// Maps eventType to CSS class, Lucide icon component, and display label
+const newEventTypeStyles: Record<string, { cssClass: string; icon: Component; label: string }> = {
+  mission_complete:  { cssClass: 'mission-complete-event',  icon: CheckCircle2,  label: 'Mission Complete' },
+  mission_accepted:  { cssClass: 'mission-accepted-event',  icon: ClipboardList, label: 'Mission Accepted' },
+  mission_failed:    { cssClass: 'mission-failed-event',    icon: XCircle,       label: 'Mission Failed' },
+  mission_shared:    { cssClass: 'mission-shared-event',    icon: Share2,        label: 'Mission Shared' },
+  objective_update:  { cssClass: 'objective-update-event',  icon: Target,        label: 'Objective Update' },
+  party_join:        { cssClass: 'party-join-event',        icon: UserPlus,      label: 'Party Join' },
+  party_leave:       { cssClass: 'party-leave-event',       icon: UserMinus,     label: 'Party Leave' },
+  party_disband:     { cssClass: 'party-disband-event',     icon: UsersRound,    label: 'Party Disband' },
+  location_change:   { cssClass: 'location-change-event',   icon: MapPin,        label: 'Location' },
+  quantum_travel:    { cssClass: 'quantum-travel-event',    icon: Zap,           label: 'Quantum Travel' },
+  voip_channel:      { cssClass: 'voip-channel-event',      icon: Volume2,       label: 'VOIP Channel' },
+  respawn:           { cssClass: 'respawn-event',           icon: RotateCcw,     label: 'Respawn' },
+  session_event:     { cssClass: 'session-event',           icon: Link,          label: 'Session' },
 };
 
 // Check if an event uses the new eventType system (non-combat SC 4.8+ events)
@@ -725,44 +732,30 @@ const getEventClass = (deathType: KillEvent['deathType'], eventType?: KillEvent[
   }
 };
 
-// Get icon based on eventType (new) or deathType (legacy)
-const getEventIcon = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): string => {
-  // Check new event types first
+// Get Lucide icon component based on eventType (new) or deathType (legacy)
+const getEventIcon = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): Component => {
   if (eventType && eventType in newEventTypeStyles) {
     return newEventTypeStyles[eventType].icon;
   }
-  // Fall back to legacy deathType styling
   switch (deathType) {
-    case 'Combat': return '⚔️';
-    case 'Soft': return '🔧';
-    case 'Hard': return '💥';
-    case 'Collision': return '💥';
-    case 'Crash': return '💔';
-    case 'BleedOut': return '🩸';
-    case 'Suffocation': return '💀';
+    case 'Combat': return Swords;
+    case 'Soft': return Wrench;
+    case 'Hard': return Flame;
+    case 'Collision': return Car;
+    case 'Crash': return AlertTriangle;
+    case 'BleedOut': return Droplets;
+    case 'Suffocation': return Skull;
     case 'Unknown':
-    default: return '❓';
+    default: return HelpCircle;
   }
 };
 
-// Get separator based on eventType (new) or deathType (legacy)
+// Get separator between attacker and victim
 const getSeparator = (deathType: KillEvent['deathType'], eventType?: KillEvent['eventType']): string => {
-  // New event types don't use separators (no attacker/victim layout)
   if (eventType && eventType in newEventTypeStyles) {
     return '';
   }
-  // Fall back to legacy deathType styling
-  switch (deathType) {
-    case 'Combat': return ' → ';
-    case 'Soft': return ' 🔧 ';
-    case 'Hard': return ' 💥 ';
-    case 'Collision': return ' 💥 ';
-    case 'Crash': return ' 💔 ';
-    case 'BleedOut': return ' 🩸 ';
-    case 'Suffocation': return ' 💀 ';
-    case 'Unknown':
-    default: return ' ? ';
-  }
+  return ' → ';
 };
 
 // Function to play sound effect for new kill events
@@ -798,32 +791,47 @@ const playKillSound = async (killEvent?: KillEvent) => {
   let eventType: keyof typeof soundPrefs.eventSounds = 'playerKill'; // default
   
   if (killEvent) {
-    const currentUser = await window.logMonitorApi?.getLastLoggedInUser() || '';
-    const isPlayerDeath = killEvent.victims?.includes(currentUser);
-    const isPlayerKill = killEvent.killers?.includes(currentUser);
-    
-    // Check if NPC is involved
-    let hasNpc = false;
-    if (window.logMonitorApi?.filterNpcs) {
-      const allEntities = [...(killEvent.killers || []), ...(killEvent.victims || [])];
-      const npcs = await window.logMonitorApi.filterNpcs(allEntities);
-      hasNpc = npcs.length > 0;
+    // Silent event types — no sound at all
+    const silentEventTypes = ['location_change', 'quantum_travel', 'voip_channel', 'objective_update', 'session_event', 'respawn'];
+    if (killEvent.eventType && silentEventTypes.includes(killEvent.eventType)) {
+      return;
     }
-    
-    // Determine event type based on death type and involvement
-    if (killEvent.deathType === 'Crash' || killEvent.damageType === 'Crash') {
-      eventType = 'crash';
-    } else if (isPlayerDeath) {
-      eventType = 'playerDeath';
-    } else if (killEvent.vehicleType && killEvent.vehicleType !== 'Player') {
-      eventType = 'vehicleDestruction';
-    } else if (hasNpc && isPlayerKill) {
-      eventType = 'npcKill';
-    } else if (isPlayerKill) {
-      eventType = 'playerKill';
-    } else if (killEvent.isPlayerInvolved) {
-      // For assists or other player-involved events, use player kill sound
-      eventType = 'playerKill';
+
+    // New SC 4.8+ event type sound routing
+    if (killEvent.eventType === 'mission_complete') {
+      eventType = 'missionComplete';
+    } else if (killEvent.eventType === 'mission_accepted') {
+      eventType = 'missionAccepted';
+    } else if (killEvent.eventType === 'party_join') {
+      eventType = 'partyJoin';
+    } else if (killEvent.eventType === 'party_leave' || killEvent.eventType === 'party_disband') {
+      eventType = 'partyLeave';
+    } else {
+      // Legacy combat/destruction sound routing
+      const currentUser = await window.logMonitorApi?.getLastLoggedInUser() || '';
+      const isPlayerDeath = killEvent.victims?.includes(currentUser);
+      const isPlayerKill = killEvent.killers?.includes(currentUser);
+
+      let hasNpc = false;
+      if (window.logMonitorApi?.filterNpcs) {
+        const allEntities = [...(killEvent.killers || []), ...(killEvent.victims || [])];
+        const npcs = await window.logMonitorApi.filterNpcs(allEntities);
+        hasNpc = npcs.length > 0;
+      }
+
+      if (killEvent.deathType === 'Crash' || killEvent.damageType === 'Crash') {
+        eventType = 'crash';
+      } else if (isPlayerDeath) {
+        eventType = 'playerDeath';
+      } else if (killEvent.vehicleType && killEvent.vehicleType !== 'Player') {
+        eventType = 'vehicleDestruction';
+      } else if (hasNpc && isPlayerKill) {
+        eventType = 'npcKill';
+      } else if (isPlayerKill) {
+        eventType = 'playerKill';
+      } else if (killEvent.isPlayerInvolved) {
+        eventType = 'playerKill';
+      }
     }
   }
   
@@ -2412,17 +2420,28 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           @mousedown="console.log('KillFeed: mousedown on event', event.id)"
           @mouseup="console.log('KillFeed: mouseup on event', event.id)"
         >
+          <!-- Compact single-line rendering for low-priority events -->
+          <template v-if="event.eventType === 'location_change' || event.eventType === 'party_join' || event.eventType === 'party_leave' || event.eventType === 'party_disband'">
+            <div class="compact-event-row">
+              <component :is="getEventIcon(event.deathType, event.eventType)" :size="12" class="compact-event-icon" />
+              <span class="compact-event-text">{{ event.eventDescription }}</span>
+              <span class="compact-event-time">{{ formatTime(event.timestamp) }}</span>
+            </div>
+          </template>
+
+          <!-- Full event rendering for all other event types -->
+          <template v-else>
           <!-- Server Source Indicator (positioned at mid-height of event item) -->
-          <div v-if="(event.metadata?.source?.server || event.metadata?.source?.external) || (event.isPlayerInvolved && isAuthenticated)" 
+          <div v-if="(event.metadata?.source?.server || event.metadata?.source?.external) || (event.isPlayerInvolved && isAuthenticated)"
                class="server-source-pip-container">
-            <span class="server-source-pip" 
+            <span class="server-source-pip"
                   :title="getServerSourceTooltip(event)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zM6.838 12.434c.068 1.217.347 2.358.784 3.364l.952-.952c-.225-.627-.359-1.329-.41-2.102h-1.326zm1.326-1.668c.051-.773.185-1.475.41-2.102l-.952-.952c-.437 1.006-.716 2.147-.784 3.364h1.326zm1.979-4.515l.952.952c.627-.225 1.329-.359 2.102-.41V5.467c-1.217.068-2.358.347-3.364.784zm3.857.41c.773.051 1.475.185 2.102.41l.952-.952c-1.006-.437-2.147-.716-3.364-.784v1.326zm4.515 1.979l-.952.952c.225.627.359 1.329.41 2.102h1.326c-.068-1.217-.347-2.358-.784-3.364zm-.41 3.857c-.051.773-.185 1.475-.41 2.102l.952.952c.437-1.006.716-2.147.784-3.364h-1.326zm-1.979 4.515l-.952-.952c-.627.225-1.329.359-2.102.41v1.326c1.217-.068 2.358-.347 3.364-.784zm-3.857-.41c-.773-.051-1.475-.185-2.102-.41l-.952.952c1.006.437 2.147.716 3.364.784v-1.326zM12 8c-2.206 0-4 1.794-4 4s1.794 4 4 4 4-1.794 4-4-1.794-4-4-4z"/>
               </svg>
             </span>
           </div>
-          
+
           <!-- Privacy indicator for private events -->
           <span v-if="event.visibility === 'private'" class="privacy-indicator" title="Private — only visible to you">🔒</span>
 
@@ -2459,7 +2478,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           <!-- New event type rendering (no attacker/victim layout) -->
           <template v-if="isNewEventType(event) && event.killers.length === 0 && event.victims.length === 0">
             <div class="new-event-description">
-              <span class="new-event-icon">{{ getEventIcon(event.deathType, event.eventType) }}</span>
+              <component :is="getEventIcon(event.deathType, event.eventType)" :size="15" class="new-event-icon" />
               <span class="new-event-text">{{ event.eventDescription }}</span>
             </div>
             <!-- Show party member if present -->
@@ -2537,6 +2556,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
            </div>
           </template>
          </div>
+          </template> <!-- End of v-else (full event rendering) -->
        </div> <!-- End of v-for element -->
        </transition-group> <!-- Close transition-group here -->
        
@@ -3210,7 +3230,22 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .party-join-event { border-left-color: #16a085; } /* Teal */
 .party-leave-event { border-left-color: #95a5a6; } /* Gray */
 .party-disband-event { border-left-color: #7f8c8d; } /* Dark Gray */
-.location-change-event { border-left-color: #8e44ad; } /* Indigo */
+.location-change-event {
+  border-left-color: #8e44ad;
+  border-left-width: 2px;
+  min-height: auto !important;
+  padding: 0 !important;
+  margin-bottom: 2px !important;
+}
+
+.party-join-event,
+.party-leave-event,
+.party-disband-event {
+  border-left-width: 2px;
+  min-height: auto !important;
+  padding: 0 !important;
+  margin-bottom: 2px !important;
+}
 .quantum-travel-event { border-left-color: #2980b9; } /* Electric Blue */
 .voip-channel-event { border-left-color: #34495e; } /* Slate */
 .respawn-event { border-left-color: #27ae60; } /* Green */
@@ -3225,9 +3260,9 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 }
 
 .new-event-icon {
-  font-size: 1.2em;
   flex-shrink: 0;
-  line-height: 1.4;
+  color: #999;
+  margin-top: 2px;
 }
 
 .new-event-text {
@@ -3235,6 +3270,41 @@ const getServerSourceTooltip = (event: KillEvent): string => {
   font-size: 0.95em;
   line-height: 1.4;
   word-break: break-word;
+}
+
+/* Compact single-line event row (location changes, party events) */
+.compact-event-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  width: 100%;
+}
+
+.compact-event-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.location-change-event .compact-event-icon { color: #8e44ad; }
+.party-join-event .compact-event-icon { color: #16a085; }
+.party-leave-event .compact-event-icon { color: #95a5a6; }
+.party-disband-event .compact-event-icon { color: #7f8c8d; }
+
+.compact-event-text {
+  color: #888;
+  font-size: 0.75em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.compact-event-time {
+  color: #555;
+  font-size: 0.7em;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* Combat data unavailability banner */

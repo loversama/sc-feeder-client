@@ -242,6 +242,13 @@ export interface LogMonitorApi {
   getLocationState: () => Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}>;
   clearZoneHistory: () => Promise<{success: boolean, error?: string}>;
 
+  // Log Backup Scanner API
+  checkLogBackupsAvailable: () => Promise<{ available: boolean; fileCount: number; newFileCount: number; backupsPath: string }>;
+  getBackupScanStatus: () => Promise<any>;
+  scanLogBackups: () => Promise<{ success: boolean; reason?: string }>;
+  clearBackupScanRecords: () => Promise<{ success: boolean }>;
+  onBackupScanProgress: (callback: (event: IpcRendererEvent, progress: any) => void) => () => void;
+
   // Listeners (Main to Renderer)
   onLogUpdate: (callback: (event: IpcRendererEvent, content: string) => void) => () => void;
   onLogReset: (callback: (event: IpcRendererEvent) => void) => () => void;

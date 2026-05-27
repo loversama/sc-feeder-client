@@ -1,6 +1,6 @@
 <script setup lang="ts">
 console.log('[SettingsWindow.vue] <script setup> executing...');
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { ElMessage, ElNotification } from 'element-plus';
 import { User, Tools } from '@element-plus/icons-vue';
 import DebugActions from './DebugActions.vue';
@@ -41,6 +41,26 @@ const isGuestMode = ref<boolean>(false);
 // Theme and Language State
 const themeSelection = ref<string>('dark');
 const languageSelection = ref<string>('en');
+
+// Log Backup Scanner State
+const backupInfo = ref<{ available: boolean; fileCount: number; newFileCount: number; backupsPath: string }>({
+  available: false, fileCount: 0, newFileCount: 0, backupsPath: ''
+});
+const backupScanProgress = ref<{
+  status: 'idle' | 'discovering' | 'scanning' | 'complete' | 'error';
+  currentFile: string;
+  currentFileIndex: number;
+  totalFiles: number;
+  bytesProcessed: number;
+  totalBytes: number;
+  newFiles: number;
+  skippedFiles: number;
+  errorMessage?: string;
+}>({
+  status: 'idle', currentFile: '', currentFileIndex: 0, totalFiles: 0,
+  bytesProcessed: 0, totalBytes: 0, newFiles: 0, skippedFiles: 0
+});
+let cleanupBackupListener: (() => void) | null = null;
 
 // User state - use global state instead of duplicate local state
 const { state: userState, updateAuthStatus } = useUserState();
@@ -306,6 +326,28 @@ onMounted(async () => {
 
   // Load initial location state
   await refreshLocationState();
+
+  // Load backup scan info and listen for progress
+  await refreshBackupInfo();
+  try {
+    const status = await window.logMonitorApi.getBackupScanStatus();
+    if (status) backupScanProgress.value = status;
+  } catch {}
+  if (window.logMonitorApi?.onBackupScanProgress) {
+    cleanupBackupListener = window.logMonitorApi.onBackupScanProgress((_event: any, progress: any) => {
+      backupScanProgress.value = progress;
+      if (progress.status === 'complete') {
+        refreshBackupInfo();
+      }
+    });
+  }
+});
+
+onUnmounted(() => {
+  if (cleanupBackupListener) {
+    cleanupBackupListener();
+    cleanupBackupListener = null;
+  }
 });
 
 // Account Methods - redirect to main app for authentication
@@ -411,6 +453,54 @@ const handleSoundPreferencesUpdate = (preferences: SoundPreferencesType) => {
   playSoundEffects.value = preferences.enabled;
   setStatus('Sound preferences updated');
 }
+
+// --- Log Backup Scanner Methods ---
+const refreshBackupInfo = async () => {
+  try {
+    if (window.logMonitorApi?.checkLogBackupsAvailable) {
+      backupInfo.value = await window.logMonitorApi.checkLogBackupsAvailable();
+    }
+  } catch (error) {
+    console.error('Failed to check log backups:', error);
+  }
+};
+
+const startBackupScan = async () => {
+  if (backupScanProgress.value.status === 'scanning' || backupScanProgress.value.status === 'discovering') return;
+  try {
+    const result = await window.logMonitorApi.scanLogBackups();
+    if (!result.success) {
+      setStatus(result.reason || 'Failed to start scan');
+    }
+  } catch (error) {
+    console.error('Failed to start backup scan:', error);
+    setStatus('Error starting backup scan');
+  }
+};
+
+const clearBackupRecords = async () => {
+  try {
+    await window.logMonitorApi.clearBackupScanRecords();
+    await refreshBackupInfo();
+    setStatus('Backup scan records cleared. Files will be re-scanned on next scan.');
+  } catch (error) {
+    console.error('Failed to clear backup records:', error);
+    setStatus('Error clearing backup records');
+  }
+};
+
+const backupProgressPercent = computed(() => {
+  if (backupScanProgress.value.totalBytes === 0) return 0;
+  return Math.round((backupScanProgress.value.bytesProcessed / backupScanProgress.value.totalBytes) * 100);
+});
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
 
 // Helper to set status message and clear after delay
 const setStatus = (msg: string, duration = 3000) => {
@@ -629,6 +719,122 @@ const toggleLaunchOnStartup = async () => {
                 <el-button @click="saveCsvPath" type="primary" class="px-6">
                   Save CSV Path
                 </el-button>
+              </div>
+            </div>
+
+            <!-- Historical Log Import -->
+            <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
+              <h4 class="text-lg font-semibold text-theme-text-white mb-2">Historical Log Import</h4>
+              <p class="text-gray-400 text-sm mb-4">
+                Import events from older game logs in your Star Citizen <code class="text-xs bg-theme-bg-dark px-1.5 py-0.5 rounded">logbackups</code> folder.
+                New backup files are automatically scanned on startup.
+              </p>
+
+              <!-- Status: No LogBackups folder -->
+              <div v-if="!backupInfo.available" class="flex items-center gap-3 p-4 bg-theme-bg-dark/50 rounded-lg border border-theme-border/50">
+                <svg class="w-5 h-5 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <span class="text-gray-400 text-sm">No <code class="text-xs bg-theme-bg-dark px-1 py-0.5 rounded">logbackups</code> folder found next to your Game.log</span>
+              </div>
+
+              <!-- Status: Folder found -->
+              <div v-else class="space-y-4">
+                <!-- File summary -->
+                <div class="flex items-center justify-between p-4 bg-theme-bg-dark/50 rounded-lg border border-theme-border/50">
+                  <div class="flex items-center gap-3">
+                    <svg class="w-5 h-5 text-[rgb(99,99,247)] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    <div>
+                      <span class="text-theme-text-light text-sm">
+                        {{ backupInfo.fileCount }} log file{{ backupInfo.fileCount !== 1 ? 's' : '' }} found
+                      </span>
+                      <span v-if="backupInfo.newFileCount > 0" class="ml-2 text-xs text-[rgb(99,99,247)] font-medium">
+                        ({{ backupInfo.newFileCount }} new)
+                      </span>
+                      <span v-else class="ml-2 text-xs text-green-400 font-medium">
+                        (all scanned)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2">
+                    <el-button
+                      @click="startBackupScan"
+                      type="primary"
+                      size="small"
+                      :disabled="backupScanProgress.status === 'scanning' || backupScanProgress.status === 'discovering' || backupInfo.newFileCount === 0"
+                    >
+                      {{ backupInfo.newFileCount === 0 ? 'Up to Date' : 'Scan Now' }}
+                    </el-button>
+                    <el-button
+                      @click="clearBackupRecords"
+                      size="small"
+                      :disabled="backupScanProgress.status === 'scanning' || backupScanProgress.status === 'discovering'"
+                      title="Clear scan history to re-process all files"
+                    >
+                      Reset
+                    </el-button>
+                  </div>
+                </div>
+
+                <!-- Scan Progress -->
+                <div
+                  v-if="backupScanProgress.status === 'scanning' || backupScanProgress.status === 'discovering'"
+                  class="p-4 bg-[rgb(99,99,247)]/10 border border-[rgb(99,99,247)]/20 rounded-lg space-y-3"
+                >
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-[rgb(99,99,247)] font-medium">
+                      {{ backupScanProgress.status === 'discovering' ? 'Discovering files...' : `Scanning file ${backupScanProgress.currentFileIndex} of ${backupScanProgress.totalFiles}` }}
+                    </span>
+                    <span class="text-gray-400">{{ backupProgressPercent }}%</span>
+                  </div>
+
+                  <!-- Progress bar -->
+                  <div class="w-full bg-theme-bg-dark rounded-full h-2 overflow-hidden">
+                    <div
+                      class="bg-[rgb(99,99,247)] h-2 rounded-full transition-all duration-300 ease-out"
+                      :style="{ width: backupProgressPercent + '%' }"
+                    ></div>
+                  </div>
+
+                  <div class="flex items-center justify-between text-xs text-gray-400">
+                    <span class="truncate max-w-[60%]" :title="backupScanProgress.currentFile">
+                      {{ backupScanProgress.currentFile }}
+                    </span>
+                    <span>{{ formatBytes(backupScanProgress.bytesProcessed) }} / {{ formatBytes(backupScanProgress.totalBytes) }}</span>
+                  </div>
+                </div>
+
+                <!-- Scan Complete -->
+                <div
+                  v-else-if="backupScanProgress.status === 'complete' && backupScanProgress.totalFiles > 0"
+                  class="p-4 bg-green-900/20 border border-green-500/20 rounded-lg"
+                >
+                  <div class="flex items-center gap-2 text-sm text-green-400">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>
+                      Scan complete — processed {{ backupScanProgress.totalFiles }} file{{ backupScanProgress.totalFiles !== 1 ? 's' : '' }}
+                      ({{ formatBytes(backupScanProgress.bytesProcessed) }})
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Scan Error -->
+                <div
+                  v-else-if="backupScanProgress.status === 'error'"
+                  class="p-4 bg-red-900/20 border border-red-500/20 rounded-lg"
+                >
+                  <div class="flex items-center gap-2 text-sm text-red-400">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>Scan failed: {{ backupScanProgress.errorMessage || 'Unknown error' }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

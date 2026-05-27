@@ -140,6 +140,8 @@ export interface StoreSchema {
   selectedCategoryFilters?: string[]; // Array of selected category IDs
   // Sound preferences (replaces playSoundEffects)
   soundPreferences?: SoundPreferences;
+  // Tracks which LogBackups files have already been scanned
+  scannedLogBackups?: Record<string, { size: number; mtime: number; scannedAt: string }>;
 }
 
 // Sound preferences configuration

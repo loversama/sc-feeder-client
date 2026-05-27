@@ -17,6 +17,7 @@ import { endCurrentSession } from './session-manager.ts'; // Added .ts
 import { loadHistoricKillTally } from './csv-logger.ts'; // Added .ts
 import { registerIpcHandlers } from './ipc-handlers.ts'; // Added .ts
 import { resetParserState } from './log-parser.ts'; // Import reset function - Added .ts
+import { checkLogBackupsAvailable, scanLogBackups } from './log-backup-scanner.ts';
 import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
 import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestMode, setGuestModeAndRemember, hasActiveAuthSession, getRefreshToken } from './auth-manager'; // Import initializeAuth and getPersistedClientId
@@ -179,6 +180,26 @@ async function loadHistoricData(mainWindow: BrowserWindow) {
       logger.error(MODULE_NAME, "Error starting log watcher:", err.message);
       mainWindow.webContents.send('log-status', `Error starting log monitoring: ${err.message}`);
   }
+
+  // Auto-scan LogBackups after live log is loaded (deferred, non-blocking)
+  setTimeout(async () => {
+    try {
+      const backupInfo = await checkLogBackupsAvailable();
+      if (backupInfo.available && backupInfo.newFileCount > 0) {
+        logger.info(MODULE_NAME, `Found ${backupInfo.newFileCount} new LogBackups files. Starting automatic scan...`);
+        mainWindow.webContents.send('log-status', `Scanning ${backupInfo.newFileCount} historical log backup(s)...`);
+        await scanLogBackups();
+        logger.info(MODULE_NAME, 'Automatic LogBackups scan complete.');
+        mainWindow.webContents.send('log-status', 'Log monitoring active. Historical backups imported.');
+      } else if (backupInfo.available) {
+        logger.info(MODULE_NAME, `LogBackups directory found with ${backupInfo.fileCount} files, all already scanned.`);
+      } else {
+        logger.debug(MODULE_NAME, 'No LogBackups directory found.');
+      }
+    } catch (err: any) {
+      logger.error(MODULE_NAME, 'Error during automatic LogBackups scan:', err.message);
+    }
+  }, 5000);
 }
 
 function registerGlobalShortcuts(mainWindow: BrowserWindow) {

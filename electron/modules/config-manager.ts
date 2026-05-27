@@ -97,6 +97,26 @@ const schema = {
           type: 'default',
           path: 'kill-event-high',  // Intense sound for player death
           volume: 0.8
+        },
+        missionComplete: {
+          type: 'default',
+          path: 'crispy_ping_1',
+          volume: 0.5
+        },
+        missionAccepted: {
+          type: 'default',
+          path: 'crispy_ping_2',
+          volume: 0.3
+        },
+        partyJoin: {
+          type: 'default',
+          path: 'arcade_pop',
+          volume: 0.3
+        },
+        partyLeave: {
+          type: 'default',
+          path: 'arcade_pop',
+          volume: 0.2
         }
       }
     } as SoundPreferences
@@ -116,6 +136,10 @@ const schema = {
   hasShownInitialLogin: {
     type: 'boolean',
     default: false
+  },
+  scannedLogBackups: {
+    type: 'object',
+    default: {} as Record<string, { size: number; mtime: number; scannedAt: string }>
   }
 } as const; // Use 'as const' for stronger type inference if Store supports it well, otherwise define schema type explicitly
 
@@ -336,13 +360,58 @@ export function getSoundPreferences(): SoundPreferences {
                     type: 'default',
                     path: 'kill-event-high',
                     volume: 0.8
+                },
+                missionComplete: {
+                    type: 'default',
+                    path: 'crispy_ping_1',
+                    volume: 0.5
+                },
+                missionAccepted: {
+                    type: 'default',
+                    path: 'crispy_ping_2',
+                    volume: 0.3
+                },
+                partyJoin: {
+                    type: 'default',
+                    path: 'arcade_pop',
+                    volume: 0.3
+                },
+                partyLeave: {
+                    type: 'default',
+                    path: 'arcade_pop',
+                    volume: 0.2
                 }
             }
         };
         store.set('soundPreferences', prefs);
         logger.info(MODULE_NAME, 'Migrated sound settings from playSoundEffects to soundPreferences');
     }
-    
+
+    // Ensure new sound types exist for existing users who already have preferences
+    if (prefs && prefs.eventSounds) {
+        let updated = false;
+        if (!prefs.eventSounds.missionComplete) {
+            prefs.eventSounds.missionComplete = { type: 'default', path: 'crispy_ping_1', volume: 0.5 };
+            updated = true;
+        }
+        if (!prefs.eventSounds.missionAccepted) {
+            prefs.eventSounds.missionAccepted = { type: 'default', path: 'crispy_ping_2', volume: 0.3 };
+            updated = true;
+        }
+        if (!prefs.eventSounds.partyJoin) {
+            prefs.eventSounds.partyJoin = { type: 'default', path: 'arcade_pop', volume: 0.3 };
+            updated = true;
+        }
+        if (!prefs.eventSounds.partyLeave) {
+            prefs.eventSounds.partyLeave = { type: 'default', path: 'arcade_pop', volume: 0.2 };
+            updated = true;
+        }
+        if (updated) {
+            store.set('soundPreferences', prefs);
+            logger.info(MODULE_NAME, 'Added missing sound preference types for new event types');
+        }
+    }
+
     return prefs;
 }
 

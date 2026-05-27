@@ -339,6 +339,20 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
   getLocationState: (): Promise<{currentLocation: string, locationHistory: Array<{timestamp: string, location: string, source: string}>, historyCount: number}> => ipcRenderer.invoke('get-location-state'),
   clearZoneHistory: (): Promise<{success: boolean, error?: string}> => ipcRenderer.invoke('zone:clear-history'),
 
+  // Log Backup Scanner API
+  checkLogBackupsAvailable: (): Promise<{ available: boolean; fileCount: number; newFileCount: number; backupsPath: string }> =>
+    ipcRenderer.invoke('backup:check-available'),
+  getBackupScanStatus: (): Promise<any> =>
+    ipcRenderer.invoke('backup:get-status'),
+  scanLogBackups: (): Promise<{ success: boolean; reason?: string }> =>
+    ipcRenderer.invoke('backup:scan'),
+  clearBackupScanRecords: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('backup:clear-records'),
+  onBackupScanProgress: (callback: (event: IpcRendererEvent, progress: any) => void): (() => void) => {
+    ipcRenderer.on('backup-scan-progress', callback);
+    return () => ipcRenderer.removeListener('backup-scan-progress', callback);
+  },
+
   // --- Generic IPC Message Listener ---
   onIpcMessage: (channel: string, callback: (...args: any[]) => void) => {
     const listener = (_event: IpcRendererEvent, ...args: any[]) => callback(...args);
@@ -479,7 +493,8 @@ contextBridge.exposeInMainWorld('logMonitorApi', {
       'kill-feed-event', 'auth-status-changed', 'connection-status-changed',
       'game-mode-update', 'settings-window-status', 'web-content-window-status',
       'update-checking', 'update-available', 'update-not-available',
-      'update-download-progress', 'update-downloaded', 'update-error'
+      'update-download-progress', 'update-downloaded', 'update-error',
+      'backup-scan-progress'
     ];
     channels.forEach(channel => ipcRenderer.removeAllListeners(channel));
   }

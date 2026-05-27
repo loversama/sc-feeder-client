@@ -43,6 +43,7 @@ import * as LogWatcher from './log-watcher.ts'; // Added .ts
 import * as RsiScraper from './rsi-scraper.ts'; // Added .ts
 import * as CsvLogger from './csv-logger.ts'; // Added .ts
 import { getCurrentUsername, getCurrentLocation, getLocationHistory, getLocationState, getZoneServiceState, getZoneStatistics, getCurrentZoneInfo, getZoneHistory, addZoneToHistory, isZoneSystemAvailable, clearZoneHistory } from './log-parser.ts'; // Needed for event details window and enhanced zone data - Added .ts
+import { scanLogBackups, checkLogBackupsAvailable, getBackupScanStatus, clearScannedBackupsRecord, isScanInProgress } from './log-backup-scanner.ts';
 import * as logger from './logger'; // Import the logger utility
 import * as AuthManager from './auth-manager'; // Import AuthManager
 import { resolveEntityName, isNpcEntity, getDefinitions, getDefinitionsVersion, getCacheStats, forceRefreshDefinitions, forceRefreshNpcList } from './definitionsService.ts'; // Import entity resolution functions
@@ -1280,6 +1281,36 @@ ipcMain.handle('auth:show-login', () => {
         });
         
         return results;
+    });
+
+    // --- Log Backup Scanner Handlers ---
+    ipcMain.handle('backup:check-available', async () => {
+        try {
+            return await checkLogBackupsAvailable();
+        } catch (error) {
+            logger.error(MODULE_NAME, 'Error checking log backups:', error);
+            return { available: false, fileCount: 0, newFileCount: 0, backupsPath: '' };
+        }
+    });
+
+    ipcMain.handle('backup:get-status', () => {
+        return getBackupScanStatus();
+    });
+
+    ipcMain.handle('backup:scan', async () => {
+        if (isScanInProgress()) {
+            return { success: false, reason: 'Scan already in progress' };
+        }
+        // Run scan without blocking the IPC response
+        scanLogBackups().catch(err => {
+            logger.error(MODULE_NAME, 'Background backup scan failed:', err);
+        });
+        return { success: true };
+    });
+
+    ipcMain.handle('backup:clear-records', () => {
+        clearScannedBackupsRecord();
+        return { success: true };
     });
 
     // --- Enhanced WebContentsView IPC Handlers ---
