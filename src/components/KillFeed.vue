@@ -2422,11 +2422,23 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           @mouseup="console.log('KillFeed: mouseup on event', event.id)"
         >
           <!-- Compact single-line rendering for low-priority events -->
-          <template v-if="event.eventType === 'location_change' || event.eventType === 'party_join' || event.eventType === 'party_leave' || event.eventType === 'party_disband'">
+          <template v-if="event.eventType === 'location_change' || event.eventType === 'party_join' || event.eventType === 'party_leave' || event.eventType === 'party_disband' || event.eventType === 'quantum_travel' || event.eventType === 'voip_channel'">
             <div class="compact-event-row">
               <component :is="getEventIcon(event.deathType, event.eventType)" :size="12" class="compact-event-icon" />
               <span class="compact-event-text">{{ event.eventDescription }}</span>
               <span class="compact-event-time">{{ formatTime(event.timestamp) }}</span>
+            </div>
+          </template>
+
+          <!-- Mid-size rendering for objective updates -->
+          <template v-else-if="event.eventType === 'objective_update'">
+            <div class="midsize-event-row">
+              <component :is="getEventIcon(event.deathType, event.eventType)" :size="14" class="midsize-event-icon" />
+              <div class="midsize-event-body">
+                <span class="midsize-event-label">{{ getNewEventTypeLabel(event) }}</span>
+                <span class="midsize-event-text">{{ event.eventDescription }}</span>
+              </div>
+              <span class="midsize-event-time">{{ formatTime(event.timestamp) }}</span>
             </div>
           </template>
 
@@ -3241,11 +3253,19 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 
 .party-join-event,
 .party-leave-event,
-.party-disband-event {
+.party-disband-event,
+.quantum-travel-event,
+.voip-channel-event {
   border-left-width: 2px;
   min-height: auto !important;
   padding: 0 !important;
   margin-bottom: 2px !important;
+}
+
+.objective-update-event {
+  min-height: auto !important;
+  padding: 6px 12px !important;
+  margin-bottom: 3px !important;
 }
 .quantum-travel-event { border-left-color: #2980b9; } /* Electric Blue */
 .voip-channel-event { border-left-color: #34495e; } /* Slate */
@@ -3291,6 +3311,8 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .party-join-event .compact-event-icon { color: #16a085; }
 .party-leave-event .compact-event-icon { color: #95a5a6; }
 .party-disband-event .compact-event-icon { color: #7f8c8d; }
+.quantum-travel-event .compact-event-icon { color: #2980b9; }
+.voip-channel-event .compact-event-icon { color: #34495e; }
 
 .compact-event-text {
   color: #888;
@@ -3304,6 +3326,50 @@ const getServerSourceTooltip = (event: KillEvent): string => {
 .compact-event-time {
   color: #555;
   font-size: 0.7em;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Mid-size event row (objective updates) */
+.midsize-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.midsize-event-icon {
+  flex-shrink: 0;
+  color: #2ecc71;
+  opacity: 0.8;
+}
+
+.midsize-event-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.midsize-event-label {
+  color: #888;
+  font-size: 0.65em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.midsize-event-text {
+  color: #bbb;
+  font-size: 0.85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.midsize-event-time {
+  color: #555;
+  font-size: 0.75em;
   flex-shrink: 0;
   margin-left: auto;
 }
