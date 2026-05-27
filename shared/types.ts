@@ -192,6 +192,11 @@ export interface KillEvent {
   visibility?: EventVisibility; // Whether event is public or private on global feed
   missionCategory?: MissionCategory; // Classified mission type (bounty, cargo, etc.)
   missionDuration?: number;   // Seconds from accept to complete/fail
+  missionId?: string;            // Mission instance UUID from game log
+  objectiveId?: string;          // Objective UUID within a mission
+  contractName?: string;         // Contract identifier (e.g. "InterSec_Nyx_TSG_FullStrikeOnStation")
+  contractDefinitionId?: string; // Contract template UUID
+  generatorName?: string;        // Mission generator name (e.g. "InterSec_StationAssault")
   vehicleType?: string;       // Type of vehicle involved (e.g., "AEGS_Gladius", "Player")
   vehicleModel?: string;      // Model name if different from type (often same for ships)
   vehicleId?: string;         // Specific ID of the vehicle (if available, e.g., "AEGS_Gladius_12345")

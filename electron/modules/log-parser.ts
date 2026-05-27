@@ -136,11 +136,11 @@ function cleanMissionName(name: string): string {
 
 // === SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 // Mission/Contract notifications (parsed from SHUDEvent_OnNotification lines)
-const missionAcceptedRegex = /Added notification "Contract Accepted:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
-const missionCompleteRegex = /Added notification "Contract Complete:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
-const missionFailedRegex = /Added notification "Contract Failed:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
-const missionSharedRegex = /Added notification "Contract Shared:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\]/;
-const missionObjectiveRegex = /Added notification "New Objective:\s+(?<objectiveText>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
+const missionAcceptedRegex = /Added notification "Contract Accepted:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
+const missionCompleteRegex = /Added notification "Contract Complete:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
+const missionFailedRegex = /Added notification "Contract Failed:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
+const missionSharedRegex = /Added notification "Contract Shared:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
+const missionObjectiveRegex = /Added notification "New Objective:\s+(?<objectiveText>[^:]+):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
 const missionObjectiveCompleteRegex = /Added notification "Objective Complete:\s+(?<objectiveText>[^"]+)"/;
 const missionObjectiveWithdrawnRegex = /Added notification "Objective Withdrawn:\s+(?<objectiveText>[^:]+):\s*"/;
 
@@ -167,6 +167,7 @@ const qtStartLocationRegex = /Projected Start Location is (?<startLocation>.+?) 
 
 // Mission lifecycle (lower-level server state — used for correlation, not primary display)
 const missionEndedRegex = /<MissionEnded>.*?mission_id (?<missionId>\S+) - mission_state (?<state>\S+)/;
+const missionPhaseMarkerRegex = /CLocalMissionPhaseMarker::CreateMarker.*?missionId \[(?<missionId>[^\]]+)\].*?generator name \[(?<generatorName>[^\]]+)\].*?contract \[(?<contractName>[^\]]+)\].*?contractDefinitionId\[(?<contractDefId>[^\]]+)\].*?objectiveId \[(?<objectiveId>[^\]]+)\]/;
 
 // Hangar/services
 const hangarRequestRegex = /Added notification "Hangar Request Completed/;
@@ -177,6 +178,9 @@ const processedNotificationIds = new Set<string>();
 
 // Mission lifecycle tracking — maps mission name → accept timestamp for duration calculation
 const activeMissions = new Map<string, { acceptTime: string; category: string }>();
+
+// Mission metadata cache — maps missionId to enriched data from CLocalMissionPhaseMarker
+const missionMetadataCache = new Map<string, { generatorName: string; contractName: string; contractDefinitionId: string }>();
 // === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 
 // Initialize enhanced zone system
@@ -924,10 +928,21 @@ export async function parseLogContent(content: string, silentMode = false) {
             // === SC 4.8+ GAMEPLAY EVENT DETECTION ===
             const lineTs = extractLineTimestamp(line);
 
+            // --- Mission Phase Marker (metadata enrichment) ---
+            const phaseMarkerMatch = line.match(missionPhaseMarkerRegex);
+            if (phaseMarkerMatch?.groups) {
+                const { missionId, generatorName, contractName, contractDefId } = phaseMarkerMatch.groups;
+                if (missionId && missionId !== '00000000-0000-0000-0000-000000000000') {
+                    missionMetadataCache.set(missionId, { generatorName, contractName, contractDefinitionId: contractDefId });
+                    logger.debug(MODULE_NAME, `Mission metadata cached: ${missionId} → ${contractName} (${generatorName})`);
+                }
+                continue;
+            }
+
             // --- Mission Contract Events (from HUD notifications) ---
             const missionAcceptMatch = line.match(missionAcceptedRegex);
             if (missionAcceptMatch?.groups) {
-                const { missionName, notifId } = missionAcceptMatch.groups;
+                const { missionName, notifId, missionId, objectiveId } = missionAcceptMatch.groups;
                 if (!processedNotificationIds.has(notifId)) {
                     processedNotificationIds.add(notifId);
                     const cleaned = cleanMissionName(missionName);
@@ -935,7 +950,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     activeMissions.set(cleaned, { acceptTime: lineTs, category });
                     logger.info(MODULE_NAME, 'Mission accepted:', { mission: cleaned, category });
                     const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_accepted');
-                    const eventId = `mission_accept_${notifId}`;
+                    const eventId = `mission_accept_${missionId || notifId}`;
                     const partialEvent: Partial<KillEvent> = {
                         id: eventId,
                         timestamp: lineTs,
@@ -945,6 +960,11 @@ export async function parseLogContent(content: string, silentMode = false) {
                         eventType: 'mission_accepted' as GameEventType,
                         missionName: cleaned,
                         missionCategory: category,
+                        missionId: missionId || undefined,
+                        objectiveId: objectiveId || undefined,
+                        contractName: missionMetadataCache.get(missionId || '')?.contractName,
+                        contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
+                        generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
                         visibility: EVENT_VISIBILITY_MAP['mission_accepted'],
                         location: locationData.location,
                         gameMode: stableGameMode,
@@ -960,7 +980,7 @@ export async function parseLogContent(content: string, silentMode = false) {
 
             const missionCompleteMatch = line.match(missionCompleteRegex);
             if (missionCompleteMatch?.groups) {
-                const { missionName, notifId } = missionCompleteMatch.groups;
+                const { missionName, notifId, missionId, objectiveId } = missionCompleteMatch.groups;
                 if (!processedNotificationIds.has(notifId)) {
                     processedNotificationIds.add(notifId);
                     const cleaned = cleanMissionName(missionName);
@@ -975,7 +995,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     const durationStr = duration ? ` (${Math.floor(duration / 60)}m ${duration % 60}s)` : '';
                     logger.info(MODULE_NAME, 'Mission complete:', { mission: cleaned, duration, category });
                     const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_complete');
-                    const eventId = `mission_complete_${notifId}`;
+                    const eventId = `mission_complete_${missionId || notifId}`;
                     const partialEvent: Partial<KillEvent> = {
                         id: eventId,
                         timestamp: lineTs,
@@ -986,6 +1006,11 @@ export async function parseLogContent(content: string, silentMode = false) {
                         missionName: cleaned,
                         missionCategory: category,
                         missionDuration: duration,
+                        missionId: missionId || undefined,
+                        objectiveId: objectiveId || undefined,
+                        contractName: missionMetadataCache.get(missionId || '')?.contractName,
+                        contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
+                        generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
                         visibility: EVENT_VISIBILITY_MAP['mission_complete'],
                         location: locationData.location,
                         gameMode: stableGameMode,
@@ -1001,12 +1026,12 @@ export async function parseLogContent(content: string, silentMode = false) {
 
             const missionSharedMatch = line.match(missionSharedRegex);
             if (missionSharedMatch?.groups) {
-                const { missionName, notifId } = missionSharedMatch.groups;
+                const { missionName, notifId, missionId, objectiveId } = missionSharedMatch.groups;
                 if (!processedNotificationIds.has(notifId)) {
                     processedNotificationIds.add(notifId);
                     const cleaned = cleanMissionName(missionName);
                     logger.info(MODULE_NAME, 'Mission shared:', { mission: cleaned });
-                    const eventId = `mission_shared_${notifId}`;
+                    const eventId = `mission_shared_${missionId || notifId}`;
                     const partialEvent: Partial<KillEvent> = {
                         id: eventId,
                         timestamp: lineTs,
@@ -1016,6 +1041,11 @@ export async function parseLogContent(content: string, silentMode = false) {
                         eventType: 'mission_shared' as GameEventType,
                         missionName: cleaned,
                         missionCategory: classifyMission(cleaned),
+                        missionId: missionId || undefined,
+                        objectiveId: objectiveId || undefined,
+                        contractName: missionMetadataCache.get(missionId || '')?.contractName,
+                        contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
+                        generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
                         visibility: EVENT_VISIBILITY_MAP['mission_shared'],
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
@@ -1028,14 +1058,60 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue;
             }
 
+            const missionFailedMatch = line.match(missionFailedRegex);
+            if (missionFailedMatch?.groups) {
+                const { missionName, notifId, missionId, objectiveId } = missionFailedMatch.groups;
+                if (!processedNotificationIds.has(notifId)) {
+                    processedNotificationIds.add(notifId);
+                    const cleaned = cleanMissionName(missionName);
+                    const active = activeMissions.get(cleaned);
+                    let duration: number | undefined;
+                    let category = classifyMission(cleaned);
+                    if (active) {
+                        duration = Math.round((new Date(lineTs).getTime() - new Date(active.acceptTime).getTime()) / 1000);
+                        category = active.category as any || category;
+                        activeMissions.delete(cleaned);
+                    }
+                    const durationStr = duration ? ` (${Math.floor(duration / 60)}m ${duration % 60}s)` : '';
+                    logger.info(MODULE_NAME, 'Mission failed:', { mission: cleaned, duration, category });
+                    const locationData = processLocationDataEnhanced(undefined, undefined, 'mission_failed');
+                    const eventId = `mission_failed_${missionId || notifId}`;
+                    const partialEvent: Partial<KillEvent> = {
+                        id: eventId,
+                        timestamp: lineTs,
+                        killers: [],
+                        victims: [],
+                        deathType: 'Unknown',
+                        eventType: 'mission_failed' as GameEventType,
+                        missionName: cleaned,
+                        missionCategory: category,
+                        missionDuration: duration,
+                        missionId: missionId || undefined,
+                        objectiveId: objectiveId || undefined,
+                        contractName: missionMetadataCache.get(missionId || '')?.contractName,
+                        contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
+                        generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
+                        visibility: EVENT_VISIBILITY_MAP['mission_failed'],
+                        location: locationData.location,
+                        gameMode: stableGameMode,
+                        gameVersion: currentGameVersion,
+                        playerShip: currentPlayerShip,
+                        eventDescription: `Contract Failed: ${cleaned}${durationStr}`,
+                        isPlayerInvolved: true,
+                    };
+                    await processKillEvent(partialEvent, silentMode, 0);
+                }
+                continue;
+            }
+
             // --- Mission Objective Events ---
             const objectiveMatch = line.match(missionObjectiveRegex);
             if (objectiveMatch?.groups) {
-                const { objectiveText, notifId } = objectiveMatch.groups;
+                const { objectiveText, notifId, missionId, objectiveId } = objectiveMatch.groups;
                 if (!processedNotificationIds.has(`obj_${notifId}`)) {
                     processedNotificationIds.add(`obj_${notifId}`);
                     logger.info(MODULE_NAME, 'New objective:', { objective: objectiveText.trim() });
-                    const eventId = `objective_new_${notifId}`;
+                    const eventId = `objective_new_${missionId || notifId}`;
                     const partialEvent: Partial<KillEvent> = {
                         id: eventId,
                         timestamp: lineTs,
@@ -1044,6 +1120,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                         deathType: 'Unknown',
                         eventType: 'objective_update' as GameEventType,
                         objectiveText: objectiveText.trim(),
+                        missionId: missionId || undefined,
+                        objectiveId: objectiveId || undefined,
                         visibility: EVENT_VISIBILITY_MAP['objective_update'],
                         gameMode: stableGameMode,
                         gameVersion: currentGameVersion,
@@ -1258,6 +1336,7 @@ export function resetParserState() {
     recentDeaths.clear();
     processedNotificationIds.clear();
     activeMissions.clear();
+    missionMetadataCache.clear();
     detectionStats = {
         old_corpse_log: 0,
         actor_state_dead_new: 0,
