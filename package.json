@@ -29,6 +29,7 @@
     "pinia": "^2.1.7",
     "socket.io-client": "^4.8.1",
     "tailwindcss": "^4.1.4",
+    "undici": "^7.26.0",
     "uuid": "^11.1.0",
     "vue": "^3.4.21",
     "vue-router": "^4",
