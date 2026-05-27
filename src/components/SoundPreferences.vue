@@ -213,6 +213,26 @@ const updatePreferencesImmediate = async () => {
             type: soundPreferences.value.eventSounds.playerDeath.type || 'default',
             path: soundPreferences.value.eventSounds.playerDeath.path || 'cranial_snap',
             volume: ensureValidVolume(soundPreferences.value.eventSounds.playerDeath.volume)
+          },
+          missionComplete: {
+            type: soundPreferences.value.eventSounds.missionComplete?.type || 'default',
+            path: soundPreferences.value.eventSounds.missionComplete?.path || 'crispy_ping_1',
+            volume: ensureValidVolume(soundPreferences.value.eventSounds.missionComplete?.volume)
+          },
+          missionAccepted: {
+            type: soundPreferences.value.eventSounds.missionAccepted?.type || 'default',
+            path: soundPreferences.value.eventSounds.missionAccepted?.path || 'crispy_ping_2',
+            volume: ensureValidVolume(soundPreferences.value.eventSounds.missionAccepted?.volume)
+          },
+          partyJoin: {
+            type: soundPreferences.value.eventSounds.partyJoin?.type || 'default',
+            path: soundPreferences.value.eventSounds.partyJoin?.path || 'arcade_pop',
+            volume: ensureValidVolume(soundPreferences.value.eventSounds.partyJoin?.volume)
+          },
+          partyLeave: {
+            type: soundPreferences.value.eventSounds.partyLeave?.type || 'default',
+            path: soundPreferences.value.eventSounds.partyLeave?.path || 'arcade_pop',
+            volume: ensureValidVolume(soundPreferences.value.eventSounds.partyLeave?.volume)
           }
         }
       };
@@ -263,12 +283,16 @@ const handleTypeChange = async (eventType: keyof typeof eventTypes) => {
 
 // Helper to get default path for event type
 const getDefaultPathForEventType = (eventType: keyof typeof eventTypes): string => {
-  const defaults = {
+  const defaults: Record<string, string> = {
     vehicleDestruction: 'clean_pop',
     crash: 'metallic_din_2',
     playerKill: 'metallic_din_1',
     npcKill: 'metallic_din_npc',
-    playerDeath: 'cranial_snap'
+    playerDeath: 'cranial_snap',
+    missionComplete: 'crispy_ping_1',
+    missionAccepted: 'crispy_ping_2',
+    partyJoin: 'arcade_pop',
+    partyLeave: 'arcade_pop',
   };
   return defaults[eventType] || 'metallic_din_1';
 };
