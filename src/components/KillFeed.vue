@@ -399,8 +399,9 @@ const currentEvents = computed(() => {
 // For backward compatibility, keep the same computed name but now it just returns currentEvents
 // since searching is handled separately via the EventStore
 const sortedFilteredEvents = computed(() => {
-  // Events are already sorted by the EventStore (newest first)
-  return currentEvents.value;
+  return [...currentEvents.value].sort((a, b) => {
+    return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+  });
 });
 
 // Watch for filter changes and reload events to ensure pagination consistency
