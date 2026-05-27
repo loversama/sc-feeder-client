@@ -42,6 +42,11 @@ export class EventStore extends EventEmitter {
   private memoryCache: KillEvent[] = [];
   private isInitialized = false;
   private readonly MAX_MEMORY_EVENTS = 25;
+  private _suppressRendererUpdates = false;
+
+  setSuppressRendererUpdates(suppress: boolean): void {
+    this._suppressRendererUpdates = suppress;
+  }
   
   // Pagination state
   private currentOffset = 0;
@@ -201,8 +206,10 @@ export class EventStore extends EventEmitter {
       this.emit('events-updated', this.memoryCache);
       this.emitStats();
 
-      // Send to renderer
-      this.sendEventToRenderer(targetEvent, source);
+      // Send to renderer (skip during backup scanning)
+      if (!this._suppressRendererUpdates) {
+        this.sendEventToRenderer(targetEvent, source);
+      }
 
       return { isNew, event: targetEvent };
     } catch (error) {

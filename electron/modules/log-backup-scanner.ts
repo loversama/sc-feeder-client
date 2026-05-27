@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { getCurrentLogPath, store } from './config-manager';
 import { parseLogContent, resetParserState } from './log-parser';
+import { setSuppressRendererUpdates } from './event-processor';
 import { ensureConnectedAndSendLogChunk } from './server-connection';
 import { getMainWindow } from './window-manager';
 import * as logger from './logger';
@@ -216,7 +217,9 @@ export async function scanLogBackups(): Promise<boolean> {
     const totalBytes = filesToProcess.reduce((sum, f) => sum + f.size, 0);
     logger.info(MODULE_NAME, `Found ${filesToProcess.length} new/modified files to scan (${skippedCount} skipped, ${(totalBytes / 1024 / 1024).toFixed(1)} MB total).`);
 
-    // 4. Process each file
+    // 4. Suppress live feed updates during bulk import
+    setSuppressRendererUpdates(true);
+
     let globalBytesProcessed = 0;
 
     for (let i = 0; i < filesToProcess.length; i++) {
@@ -270,7 +273,8 @@ export async function scanLogBackups(): Promise<boolean> {
       }
     }
 
-    // Reset parser state after all backups are done
+    // Resume live feed updates and reset parser state
+    setSuppressRendererUpdates(false);
     resetParserState();
 
     logger.info(MODULE_NAME, `LogBackups scan complete. Processed ${filesToProcess.length} files, ${(globalBytesProcessed / 1024 / 1024).toFixed(1)} MB.`);
@@ -289,6 +293,7 @@ export async function scanLogBackups(): Promise<boolean> {
     isScanning = false;
     return true;
   } catch (error: any) {
+    setSuppressRendererUpdates(false);
     logger.error(MODULE_NAME, 'LogBackups scan failed:', error);
     sendProgressToRenderer({
       ...currentProgress,

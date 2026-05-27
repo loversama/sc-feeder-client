@@ -23,6 +23,17 @@ const MAX_KILL_EVENTS = 25; // Maximum number of kill events to store per array 
 // EventStore instance
 let eventStore: EventStore;
 
+// When true, events are stored in the database but not pushed to the renderer live feed
+let suppressRendererUpdates = false;
+
+export function setSuppressRendererUpdates(suppress: boolean): void {
+    suppressRendererUpdates = suppress;
+    if (eventStore) {
+        eventStore.setSuppressRendererUpdates(suppress);
+    }
+    logger.info(MODULE_NAME, `Renderer updates ${suppress ? 'suppressed' : 'resumed'}`);
+}
+
 // --- Helper Functions ---
 
 /**
@@ -129,11 +140,13 @@ function addOrUpdateEventLegacy(event: KillEvent): { isNew: boolean, wasPlayerIn
         killEvents.splice(existingPlayerIndex, 1);
     }
 
-    // Send to renderer
-    win?.webContents.send('kill-feed-event', {
-        event: event,
-        source: 'local'
-    });
+    // Send to renderer (skip during backup scanning to avoid flooding the feed)
+    if (!suppressRendererUpdates) {
+        win?.webContents.send('kill-feed-event', {
+            event: event,
+            source: 'local'
+        });
+    }
 
     return { isNew, wasPlayerInvolved };
 }
