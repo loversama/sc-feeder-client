@@ -45,7 +45,7 @@
     "bufferutil": "^4.0.9",
     "cheerio": "^1.0.0",
     "cross-env": "^7.0.3",
-    "electron": "^42.3.0",
+    "electron": "~41.7.0",
     "electron-builder": "^26.8.1",
     "electron-vite": "^4.0.0",
     "node-fetch": "^2.7.0",
