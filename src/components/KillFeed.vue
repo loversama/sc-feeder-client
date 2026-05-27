@@ -2078,11 +2078,14 @@ onMounted(async () => { // Make onMounted async
         console.error('Error processing kill feed event:', error);
       }
 
-      // Scroll to top for new events
-      if (killEvent && wasNewEvent) {
-        nextTick(() => {
-          if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
-        });
+      // Only auto-scroll to top if user is already near the top
+      if (killEvent && wasNewEvent && killFeedListRef.value) {
+        const isNearTop = killFeedListRef.value.scrollTop < 100;
+        if (isNearTop) {
+          nextTick(() => {
+            if (killFeedListRef.value) killFeedListRef.value.scrollTop = 0;
+          });
+        }
       }
     })
   );
