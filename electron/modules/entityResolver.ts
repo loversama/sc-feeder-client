@@ -7,7 +7,7 @@ import { resolveEntityName, isNpcEntity, getDefinitions } from './definitionsSer
 export interface ResolvedEntity {
   displayName: string;
   isNpc: boolean;
-  category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown';
+  category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'contract' | 'unknown';
   matchMethod: 'server' | 'exact' | 'pattern' | 'fallback';
   originalId: string;
 }
@@ -122,7 +122,7 @@ export class EntityResolver {
   /**
    * Maps server category names to standard categories.
    */
-  private static mapServerCategory(serverCategory?: string): 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown' {
+  private static mapServerCategory(serverCategory?: string): 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'contract' | 'unknown' {
     if (!serverCategory) return 'unknown';
     
     const normalized = serverCategory.toLowerCase();

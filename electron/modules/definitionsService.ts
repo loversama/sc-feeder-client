@@ -18,6 +18,7 @@ interface DefinitionsData {
   npcs?: Record<string, string>;
   locations?: Record<string, any>;
   npcNamePatterns?: Array<{ regex: string; template: string; }>;
+  contracts?: Record<string, string>; // contractDefinitionId → display title
 }
 
 interface ServerDefinitionsResponse {
@@ -83,11 +84,11 @@ function updateDefinitionsCache(): void {
     try {
       for (const [category, items] of Object.entries(definitions)) {
         if (category === 'npcNamePatterns' || !items || typeof items !== 'object') continue;
-        
+
         for (const [key, value] of Object.entries(items)) {
           if (key !== '_patterns') {
             if (typeof value === 'string') {
-              // Direct string mapping (ships, weapons, objects, npcs)
+              // Direct string mapping (ships, weapons, objects, npcs, contracts)
               definitionsMap.set(key, value);
             } else if (value && typeof value === 'object' && (value as any).friendlyName) {
               // Location object with friendlyName property
@@ -281,21 +282,47 @@ async function fetchDefinitions(
 }
 
 /**
+ * Fetches contract definitions from the server.
+ */
+async function fetchContractDefinitions(serverBaseUrl: string): Promise<Record<string, string> | null> {
+  try {
+    const url = `${serverBaseUrl}/api/contracts/definitions`;
+    logger.info('DefinitionsService', `Fetching contract definitions from: ${url}`);
+
+    const response = await fetch(url, {
+      headers: { 'User-Agent': getDetailedUserAgent() },
+    });
+
+    if (!response.ok) {
+      logger.warn('DefinitionsService', `Failed to fetch contract definitions: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    logger.success('DefinitionsService', `Successfully fetched ${Object.keys(data).length} contract definitions`);
+    return data;
+  } catch (error) {
+    logger.warn('DefinitionsService', 'Failed to fetch contract definitions:', error);
+    return null;
+  }
+}
+
+/**
  * Fetches NPC ignore list from the server.
  */
 async function fetchNpcIgnoreList(serverBaseUrl: string): Promise<any> {
   const url = `${serverBaseUrl}/api/npc-ignore-list`;
-  
+
   try {
     const response = await fetch(url, {
       headers: { 'User-Agent': getDetailedUserAgent() },
     });
-    
+
     if (!response.ok) {
       logger.warn(`[DefinitionsService] Failed to fetch NPC ignore list: ${response.status}, using defaults`);
       return getDefaultNpcIgnoreList();
     }
-    
+
     const data = await response.json();
     logger.info('[DefinitionsService] Successfully fetched NPC ignore list from server');
     return data;
@@ -376,7 +403,7 @@ async function saveDefinitions(serverResponse: ServerDefinitionsResponse, server
  */
 function calculateEntityCounts(definitions: DefinitionsData): Record<string, number> {
   const counts: Record<string, number> = {};
-  
+
   for (const [category, items] of Object.entries(definitions)) {
     if (typeof items === 'object' && items !== null) {
       if (category === 'npcNamePatterns') {
@@ -390,7 +417,7 @@ function calculateEntityCounts(definitions: DefinitionsData): Record<string, num
       }
     }
   }
-  
+
   return counts;
 }
 
@@ -492,9 +519,20 @@ async function updateAndSaveDefinitions(serverBaseUrl: string): Promise<boolean>
             patternStats: { compiled: 0, failed: 0 }
           }
         };
-        
+
         logger.info('[DefinitionsService] Cached definitions object created successfully');
-        
+
+        // Fetch contract definitions separately and merge them
+        try {
+          const contractDefs = await fetchContractDefinitions(serverBaseUrl);
+          if (contractDefs && cachedDefinitions) {
+            cachedDefinitions.definitions.contracts = contractDefs;
+            logger.info('[DefinitionsService] Contract definitions merged successfully');
+          }
+        } catch (error) {
+          logger.warn('[DefinitionsService] Failed to fetch contract definitions (continuing):', error);
+        }
+
         // Update definitions cache (compile patterns, etc.)
         try {
           updateDefinitionsCache();
@@ -590,6 +628,32 @@ function startPeriodicSync(serverBaseUrl: string): void {
     } catch (error) {
       logger.warn('[DefinitionsService] Error during periodic NPC ignore list sync:', error);
     }
+
+    // Also periodically check for contract definitions updates
+    try {
+      logger.info('[DefinitionsService] Periodic contract definitions sync...');
+      const contractDefs = await fetchContractDefinitions(serverBaseUrl);
+      if (contractDefs && cachedDefinitions) {
+        const currentContractCount = Object.keys(cachedDefinitions.definitions.contracts || {}).length;
+        const newContractCount = Object.keys(contractDefs).length;
+
+        if (newContractCount !== currentContractCount) {
+          logger.info(`[DefinitionsService] Contract definitions updated: ${currentContractCount} -> ${newContractCount}`);
+          cachedDefinitions.definitions.contracts = contractDefs;
+          updateDefinitionsCache();
+
+          // Save updated definitions
+          const mockServerResponse = {
+            version: cachedDefinitions.version,
+            timestamp: cachedDefinitions.timestamp,
+            data: cachedDefinitions.definitions
+          };
+          await saveDefinitions(mockServerResponse);
+        }
+      }
+    } catch (error) {
+      logger.warn('[DefinitionsService] Error during periodic contract definitions sync:', error);
+    }
   }, SYNC_INTERVAL_MS);
   
   logger.info(`[DefinitionsService] Periodic sync started (${SYNC_INTERVAL_MS / 1000}s interval)`);
@@ -621,6 +685,19 @@ export async function initializeDefinitions(serverBaseUrl: string): Promise<void
       cachedDefinitions = await loadCachedDefinitions();
       
       if (cachedDefinitions) {
+        // Try to fetch contract definitions if they're missing from cache
+        if (!cachedDefinitions.definitions.contracts) {
+          try {
+            const contractDefs = await fetchContractDefinitions(serverBaseUrl);
+            if (contractDefs) {
+              cachedDefinitions.definitions.contracts = contractDefs;
+              logger.info('[DefinitionsService] Added contract definitions to cached data');
+            }
+          } catch (error) {
+            logger.warn('[DefinitionsService] Failed to fetch contract definitions for cached data:', error);
+          }
+        }
+
         updateDefinitionsCache();
         lastSuccessfulUpdateTimestamp = new Date(cachedDefinitions.lastUpdated);
         definitionsLoadedLocally = true;
@@ -701,6 +778,13 @@ export function getDefinitionById(entityId: string): string | undefined {
 }
 
 /**
+ * Gets the currently loaded contract definitions.
+ */
+export function getContractDefinitions(): Record<string, string> {
+  return cachedDefinitions?.definitions?.contracts || {};
+}
+
+/**
  * Checks if an entity is an NPC based on ignore patterns.
  */
 export function isNpcEntity(entityId: string): boolean {
@@ -736,7 +820,7 @@ export function isNpcEntity(entityId: string): boolean {
 export function resolveEntityName(entityId: string): {
   displayName: string;
   isNpc: boolean;
-  category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown';
+  category: 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'contract' | 'unknown';
   matchMethod: 'exact' | 'pattern' | 'fallback';
 } {
   if (!entityId) {
@@ -799,17 +883,18 @@ export function resolveEntityName(entityId: string): {
 /**
  * Determines entity category based on ID patterns and definitions structure.
  */
-function determineEntityCategory(entityId: string): 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'unknown' {
+function determineEntityCategory(entityId: string): 'ship' | 'weapon' | 'object' | 'npc' | 'location' | 'contract' | 'unknown' {
   if (!cachedDefinitions) return 'unknown';
-  
+
   const { definitions } = cachedDefinitions;
-  
+
   if (definitions.ships?.[entityId]) return 'ship';
   if (definitions.weapons?.[entityId]) return 'weapon';
   if (definitions.objects?.[entityId]) return 'object';
   if (definitions.npcs?.[entityId]) return 'npc';
   if (definitions.locations?.[entityId]) return 'location';
-  
+  if (definitions.contracts?.[entityId]) return 'contract';
+
   return 'unknown';
 }
 
