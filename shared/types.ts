@@ -228,6 +228,7 @@ export interface KillEvent {
 
   // Added for event details window
   playerName?: string; // Current player's name for comparison
+  playerHandle?: string; // The logged-in player's SC handle who reported this event
   // Optional field for additional/merged data from server
   data?: Record<string, any>;
   // Event source metadata for secure role-based filtering and duplicate tracking

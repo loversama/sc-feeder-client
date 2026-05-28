@@ -592,7 +592,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates,
-                        isPlayerInvolved: isPlayerInvolved
+                        isPlayerInvolved: isPlayerInvolved,
+                        playerHandle: currentUsername || undefined,
                     };
 
                     // Only process events where the current user is involved
@@ -690,7 +691,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                             gameVersion: currentGameVersion,
                             playerShip: currentPlayerShip,
                             coordinates: locationData.coordinates,
-                            isPlayerInvolved: isPlayerInvolved
+                            isPlayerInvolved: isPlayerInvolved,
+                            playerHandle: currentUsername || undefined,
                         };
 
                         logger.debug(MODULE_NAME, `Processing NEW FORMAT vehicle destruction - user involved: ${currentUsername}`);
@@ -848,7 +850,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                         gameVersion: currentGameVersion,
                         playerShip: currentPlayerShip,
                         coordinates: locationData.coordinates, // Will be undefined for combat deaths
-                        isPlayerInvolved: isPlayerInvolved
+                        isPlayerInvolved: isPlayerInvolved,
+                        playerHandle: currentUsername || undefined,
                     };
 
                     // Only process events where the current user is involved
@@ -912,7 +915,8 @@ export async function parseLogContent(content: string, silentMode = false) {
                     gameVersion: currentGameVersion,
                     playerShip: currentPlayerShip,
                     coordinates: locationData.coordinates, // Will be undefined for environmental deaths
-                    isPlayerInvolved: isPlayerInvolved
+                    isPlayerInvolved: isPlayerInvolved,
+                    playerHandle: currentUsername || undefined,
                 };
 
                 // Only process events where the current user is involved
@@ -972,6 +976,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `Contract Accepted: ${cleaned}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1018,6 +1023,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `Contract Complete: ${cleaned}${durationStr}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1052,6 +1058,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `Contract Shared: ${cleaned}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1098,6 +1105,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `Contract Failed: ${cleaned}${durationStr}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1128,6 +1136,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `New Objective: ${objectiveText.trim()}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1154,6 +1163,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     eventDescription: `${playerName} connected to party`,
                     isPlayerInvolved: true,
+                    playerHandle: currentUsername || undefined,
                 };
                 await processKillEvent(partialEvent, silentMode, 0);
                 continue;
@@ -1178,6 +1188,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     eventDescription: `${playerName} left the party`,
                     isPlayerInvolved: true,
+                    playerHandle: currentUsername || undefined,
                 };
                 await processKillEvent(partialEvent, silentMode, 0);
                 continue;
@@ -1199,6 +1210,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     eventDescription: 'Party disbanded',
                     isPlayerInvolved: true,
+                    playerHandle: currentUsername || undefined,
                 };
                 await processKillEvent(partialEvent, silentMode, 0);
                 continue;
@@ -1225,6 +1237,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     eventDescription: `${playerName} left VOIP channel "${channelName}"`,
                     isPlayerInvolved: true,
+                    playerHandle: currentUsername || undefined,
                 };
                 await processKillEvent(partialEvent, silentMode, 0);
                 continue;
@@ -1254,6 +1267,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         playerShip: currentPlayerShip,
                         eventDescription: `Entered ${locationName}`,
                         isPlayerInvolved: true,
+                        playerHandle: currentUsername || undefined,
                     };
                     await processKillEvent(partialEvent, silentMode, 0);
                 }
@@ -1280,6 +1294,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     playerShip: currentPlayerShip,
                     eventDescription: `Quantum route to ${destination} (fuel: ${Math.round(parseFloat(fuel))})`,
                     isPlayerInvolved: true,
+                    playerHandle: currentUsername || undefined,
                 };
                 await processKillEvent(partialEvent, silentMode, 0);
                 continue;
