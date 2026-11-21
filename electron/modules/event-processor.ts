@@ -174,9 +174,9 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     const playersToFetch = [
         ...(partialEvent.killers || []),
         ...(partialEvent.victims || [])
-    ].filter(p => p && p !== 'Environment' && !p.includes('_') && p.toLowerCase() !== 'unknown'); // Basic filter
+    ].filter(p => p && p !== 'Environment' && p !== 'Self-Destruct' && !p.includes('_') && p.toLowerCase() !== 'unknown'); // Basic filter
 
-    const attackers = (partialEvent.killers || []).filter(p => p && p !== 'Environment' && p.toLowerCase() !== 'unknown');
+    const attackers = (partialEvent.killers || []).filter(p => p && p !== 'Environment' && p !== 'Self-Destruct' && p.toLowerCase() !== 'unknown');
 
     if (playersToFetch.length > 0) {
         try {
@@ -266,6 +266,8 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         destination: partialEvent.destination,
         channelName: partialEvent.channelName,
         visibility: partialEvent.visibility,
+        missionOrganization: partialEvent.missionOrganization,
+        eventData: partialEvent.eventData,
     };
 
     // 3. FIXED: Preserve raw entity IDs for consistent frontend resolution
