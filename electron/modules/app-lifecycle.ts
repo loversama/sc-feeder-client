@@ -22,6 +22,9 @@ import * as logger from './logger'; // Import the logger utility
 import { connectToServer, disconnectFromServer } from './server-connection';
 import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuestMode, setGuestModeAndRemember, hasActiveAuthSession, getRefreshToken } from './auth-manager'; // Import initializeAuth and getPersistedClientId
 import { initializeEventProcessor } from './event-processor'; // Import EventProcessor initialization
+import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry-manager';
+import { initOverlay, destroyOverlay } from './telemetry/overlay-window';
+import { registerTelemetryIpc } from './telemetry/telemetry-ipc';
 import {
   getOfflineMode,
   getLaunchOnStartup,
@@ -370,6 +373,14 @@ async function onReady() {
     throw error; // Re-throw to prevent app from starting with broken handlers
   }
   
+  // Star Citizen game telemetry (local gRPC API) + Game.log diff tracker
+  try {
+    registerTelemetryIpc();
+    initTelemetry();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise telemetry (continuing without it):', error);
+  }
+
   try {
     registerAuthIpcHandlers();
     logger.success(MODULE_NAME, 'Auth IPC handlers registered successfully');
@@ -451,6 +462,13 @@ async function onReady() {
   // Check if app should start minimized (launched at startup)
   const startMinimized = shouldStartMinimized();
   const mainWindow = createMainWindow();
+
+  // In-game debug overlay (hidden unless enabled; follows StarCitizen.exe)
+  try {
+    initOverlay();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise overlay:', error);
+  }
   
   // If launched at startup, minimize the window after creation
   if (startMinimized && mainWindow) {
@@ -549,6 +567,10 @@ async function performCleanup() {
     // Unregister all shortcuts.
     globalShortcut.unregisterAll();
     logger.info(MODULE_NAME, 'Unregistered all global shortcuts.');
+
+    // Overlay + telemetry (saves the Game.log diff baseline)
+    destroyOverlay();
+    await shutdownTelemetry();
 
     // Stop watching log file
     await stopWatchingLogFile(); // This now also calls endCurrentSession

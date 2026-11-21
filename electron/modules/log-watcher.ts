@@ -6,6 +6,7 @@ import { getMainWindow } from './window-manager';
 import { endCurrentSession, startNewSession } from './session-manager.ts'; // Add .ts extension
 import * as logger from './logger';
 import { ensureConnectedAndSendLogChunk, isConnected as isServerConnected } from './server-connection'; // Import new function
+import { noteLogBegin, noteLogChunk } from './telemetry/telemetry-manager';
 
 const MODULE_NAME = 'LogWatcher'; // Define module name for logger
 
@@ -61,6 +62,8 @@ async function _readNewLogContent(isInitialScan: boolean = false) {
 
             if (newContent) {
                 win?.webContents.send('log-update', newContent); // Send raw content
+                if (lastReadSize === 0) noteLogBegin(logPath); // new / replaced Game.log: start a new diff session
+                noteLogChunk(newContent); // telemetry hints + Game.log diff
 
                 // Determine silent mode:
                 // - Silent if it's the initial scan AND we haven't completed the first full read yet.
@@ -245,6 +248,8 @@ export async function rescanLogFile() {
                  content += chunk;
              }
              if (content) {
+                 noteLogBegin(logPath);
+                 noteLogChunk(content);
                  // Parse with silentMode = false to process all events from the full file
                  await parseLogContent(content, false);
                  lastReadSize = stats.size; // Update size after full read

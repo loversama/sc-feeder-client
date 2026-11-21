@@ -14,6 +14,8 @@ const MODULE_NAME = 'ServerConnection';
 
 // Determine server URL based on environment
 import { SERVER_URL } from './server-config';
+import { countLogUpload, countTelemetryUpload, countDropped, pushDebugEvent } from './telemetry/debug-bus';
+import type { TelemetryUploadPayload } from './telemetry/telemetry-service';
 
 let socket: Socket | null = null;
 let isAuthenticated = false; // Track authentication status
@@ -499,6 +501,7 @@ export function sendLogChunk(chunk: string): void {
 
   // logger.debug(MODULE_NAME, `Sending log chunk for clientId: ${payload.clientId}`); // Removed as clientId is no longer sent directly
   // Add type for acknowledgement callback parameter
+  countLogUpload(chunk.length);
   socket.emit('submit_log_chunk', payload, (ack?: { error?: string; message?: string }) => {
     // Optional: Handle acknowledgement from server if implemented
     if (ack?.error) {
@@ -509,6 +512,23 @@ export function sendLogChunk(chunk: string): void {
        logger.debug(MODULE_NAME, 'Server acknowledged log chunk (no specific message).');
     }
   });
+}
+
+/**
+ * Send SC game telemetry (throttled snapshot or a batch of derived events) to the server.
+ * Only while connected AND authenticated; never buffered (snapshots are replaced every second,
+ * and stale events have no value). Returns true when emitted.
+ */
+export function sendTelemetry(payload: TelemetryUploadPayload): boolean {
+  if (!socket?.connected || !isAuthenticated) {
+    countDropped(payload.kind === 'events' ? payload.events.length : 1);
+    return false;
+  }
+  const body = { clientId: getPersistedClientId(), ...payload };
+  const bytes = JSON.stringify(body).length;
+  socket.emit('submit_telemetry', body);
+  countTelemetryUpload(payload.kind === 'snapshot' ? 'snapshot' : 'events', bytes, payload.kind === 'events' ? payload.events.length : 0);
+  return true;
 }
 
 export function isConnected(): boolean {
@@ -588,6 +608,7 @@ async function handleProcessedServerEvent(serverEvent: any) {
     
     // Convert server event format to client KillEvent format (reuse conversion logic)
     const clientEvent = convertProcessedServerEventToClient(serverEvent);
+    pushDebugEvent({ source: 'server', type: String(serverEvent?.type ?? 'event'), summary: clientEvent.eventDescription || String(serverEvent?.type ?? 'server event') });
     
     logger.info(MODULE_NAME, `✅ CONVERSION COMPLETE:`);
     logger.info(MODULE_NAME, `   Client event ID: ${clientEvent.id}`);

@@ -137,6 +137,19 @@ const schema = {
     type: 'boolean',
     default: false
   },
+  // --- Star Citizen game telemetry (5.0+ local gRPC API) ---
+  telemetryEnabled: { type: 'boolean', default: true },
+  /** Share telemetry snapshot + derived events with VOIDLOG.GG */
+  telemetryShare: { type: 'boolean', default: true },
+  /** Include the aUEC wallet balance in what is shared (off by default) */
+  telemetryShareBalance: { type: 'boolean', default: false },
+  /** In-game debug overlay (bottom-right, click-through) */
+  overlayEnabled: { type: 'boolean', default: false },
+  /** Show the overlay even when StarCitizen.exe isn't detected (for testing) */
+  overlayAlwaysShow: { type: 'boolean', default: false },
+  overlayHotkey: { type: 'string', default: 'CommandOrControl+Alt+O' },
+  /** Track Game.log line signatures and diff against the previous log */
+  logDiffEnabled: { type: 'boolean', default: true },
   scannedLogBackups: {
     type: 'object',
     default: {} as Record<string, { size: number; mtime: number; scannedAt: string }>
@@ -459,4 +472,33 @@ export function setFeedMode(mode: 'player' | 'global'): void {
         logger.warn(MODULE_NAME, `Invalid feed mode specified: ${mode}. Defaulting to 'player'.`);
         store.set('feedMode', 'player');
     }
+}
+// --- Telemetry / overlay settings ---
+export type TelemetrySettings = {
+  telemetryEnabled: boolean;
+  telemetryShare: boolean;
+  telemetryShareBalance: boolean;
+  overlayEnabled: boolean;
+  overlayAlwaysShow: boolean;
+  overlayHotkey: string;
+  logDiffEnabled: boolean;
+};
+
+const TELEMETRY_SETTING_KEYS: (keyof TelemetrySettings)[] = [
+  'telemetryEnabled', 'telemetryShare', 'telemetryShareBalance', 'overlayEnabled', 'overlayAlwaysShow', 'overlayHotkey', 'logDiffEnabled',
+];
+
+export function getTelemetrySettings(): TelemetrySettings {
+  const out: any = {};
+  for (const k of TELEMETRY_SETTING_KEYS) out[k] = (store as any).get(k);
+  return out as TelemetrySettings;
+}
+
+export function setTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {
+  for (const k of TELEMETRY_SETTING_KEYS) {
+    if (patch[k] === undefined) continue;
+    const v = patch[k];
+    if (k === 'overlayHotkey' ? typeof v === 'string' : typeof v === 'boolean') (store as any).set(k, v);
+  }
+  return getTelemetrySettings();
 }

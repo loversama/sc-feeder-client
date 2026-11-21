@@ -112,6 +112,13 @@ export interface SessionInfo {
 
 // Type definition for our store
 export interface StoreSchema {
+  telemetryEnabled: boolean;
+  telemetryShare: boolean;
+  telemetryShareBalance: boolean;
+  overlayEnabled: boolean;
+  overlayAlwaysShow: boolean;
+  overlayHotkey: string;
+  logDiffEnabled: boolean;
   logFilePath: string;
   sessions: SessionInfo[];
   lastLoggedInUser: string;

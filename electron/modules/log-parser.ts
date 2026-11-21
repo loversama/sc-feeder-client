@@ -1497,3 +1497,51 @@ export function clearZoneHistory(): void {
         logger.error(MODULE_NAME, 'Error clearing zone history:', error);
     }
 }
+/**
+ * Named registry of the line patterns this parser depends on. Used by the Game.log diff tracker
+ * (log-diff/) to report which patterns stop matching after a game patch. Read-only: matching here
+ * has no side effects on parsing.
+ */
+export const PARSER_PATTERNS: Readonly<Record<string, RegExp>> = Object.freeze({
+    login: loginRegex,
+    legacyLogin: legacyLoginRegex,
+    sessionStart: sessionStartRegex,
+    puMode: puModeRegex,
+    acMode: acModeRegex,
+    frontendMode: frontendModeRegex,
+    loadout: loadoutRegex,
+    vehicleDestruction: vehicleDestructionRegex,
+    gameVersion: versionPattern,
+    actorStateDead: newActorStateDeadRegex,
+    corpseUtils: corpseUtilsRegex,
+    attachmentReceived: attachmentReceivedRegex,
+    fatalCollision: fatalCollisionRegex,
+    newVehicleDestroyed: newVehicleDestroyedRegex,
+    missionAccepted: missionAcceptedRegex,
+    missionComplete: missionCompleteRegex,
+    missionFailed: missionFailedRegex,
+    missionShared: missionSharedRegex,
+    missionObjective: missionObjectiveRegex,
+    missionObjectiveComplete: missionObjectiveCompleteRegex,
+    missionObjectiveWithdrawn: missionObjectiveWithdrawnRegex,
+    missionEnded: missionEndedRegex,
+    missionPhaseMarker: missionPhaseMarkerRegex,
+    partyMemberConnected: partyMemberConnectedRegex,
+    partyMemberLeft: partyMemberLeftRegex,
+    partyDisbanded: partyDisbandedRegex,
+    partyInvite: partyInviteRegex,
+    memberLeftNotif: memberLeftNotifRegex,
+    voipChannelLeft: voipChannelLeftRegex,
+    jurisdictionEntered: jurisdictionEnteredRegex,
+    monitoredSpace: monitoredSpaceRegex,
+    qtFuelRequest: qtFuelRequestRegex,
+    qtRouteSuccess: qtRouteSuccessRegex,
+    qtStartLocation: qtStartLocationRegex,
+    hangarRequest: hangarRequestRegex,
+    refuelRequest: refuelRequestRegex,
+    corpseLog: corpseLogRegex,
+    kill: killPatternRegex,
+    incap: incapRegex,
+    environmentDeath: environmentDeathRegex,
+    systemQuit: systemQuitRegex,
+});
