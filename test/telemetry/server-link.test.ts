@@ -251,3 +251,42 @@ test('TelemetryService + ServerLink: snapshots and feed events resume after a se
   link.stop();
   await server.stop();
 });
+
+test('ServerLink: manual reconnect of a never-authenticated socket forces a token refresh (renderer watchdog race)', async () => {
+  const server = new FakeVoidlogServer();
+  const port = await server.start();
+  const { a, prepareAuth } = fakeAuth(server);
+  a.access = 'x.not-a-valid-token.sig';
+  const pa: typeof prepareAuth = (force) => (force ? prepareAuth(true) : Promise.resolve({ ok: true, token: a.access!, kind: 'user' }));
+  const { link } = makeLink(port, pa, { authTimeoutMs: 60_000 });
+  link.start();
+  await until(() => link.connected, 2000, 'connected (unauthenticated)');
+  link.reconnectNow(); // what KillFeed's "stuck connecting" handler does
+  await until(() => link.authenticated, 3000, 'authenticated after manual reconnect');
+  assert.equal(a.refreshes, 1);
+  link.stop();
+  await server.stop();
+});
+
+test('ServerLink: repeated re-auth backs off; exceptions without an outstanding telemetry ack are ignored', async () => {
+  const server = new FakeVoidlogServer();
+  const port = await server.start();
+  const { prepareAuth } = fakeAuth(server);
+  const { link } = makeLink(port, prepareAuth, { reconnectDelays: [50, 400, 800] });
+  link.start();
+  await until(() => link.authenticated, 3000, 'auth');
+  // uploads rejected with `exception` while no acked telemetry is in flight: no reconnect
+  server.rejectUploads = true;
+  for (let i = 0; i < 8; i++) link.socket!.emit('submit_telemetry', { fireAndForget: i });
+  await wait(200);
+  assert.equal(link.stats.reauths, 0);
+  // acked telemetry never acknowledged → re-auth #1 quickly, #2 only after the ladder delay
+  const scheduled: number[] = [];
+  link.on('reconnect-scheduled', (_n: number, delay: number) => scheduled.push(delay));
+  const pump = setInterval(() => link.sendWithAck('submit_telemetry', { kind: 'snapshot' }), 60);
+  await until(() => link.stats.reauths >= 2, 6000, 'two re-auths');
+  clearInterval(pump);
+  assert.ok(scheduled[0] <= 1000 && scheduled[1] >= 400, `re-auth delays ${scheduled}`);
+  link.stop();
+  await server.stop();
+});

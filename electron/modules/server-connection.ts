@@ -139,7 +139,6 @@ export function sendTelemetry(payload: TelemetryUploadPayload, channel?: string)
   }
   if (!link.authenticated) {
     countDropped(count);
-    connectToServer(); // no-op while connecting / waiting to retry; covers "never connected" (server was down at startup)
     return false;
   }
   const body = { clientId: getPersistedClientId(), ...(channel ? { channel } : {}), ...payload };

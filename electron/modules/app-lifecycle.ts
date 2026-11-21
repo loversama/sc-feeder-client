@@ -158,7 +158,11 @@ async function connectToLogServer(mainWindow: BrowserWindow, authAlreadyInitiali
         logger.info(MODULE_NAME, "Auth state allows connection. Connecting to server...");
         connectToServer();
       } else {
-        logger.warn(MODULE_NAME, "No auth token available. Will connect as guest if guest token obtained.");
+        // Server unreachable at startup (or no credentials yet): start the link anyway. It refreshes
+        // the token once the server is back and retries with backoff; without this nothing would
+        // reconnect until the first Game.log chunk.
+        logger.warn(MODULE_NAME, "Auth not ready (server unreachable?). Starting the connection with retries.");
+        connectToServer();
       }
     }
   } else {

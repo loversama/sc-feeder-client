@@ -141,6 +141,9 @@ export class ServerLink extends EventEmitter {
   #lastPong = 0;
   #ackFailures = 0;
   #lastGoodAck = 0;
+  #pendingAcks = 0;
+  /** Re-authentications since the last good telemetry ack (backs off when the server keeps refusing). */
+  #reauthStreak = 0;
   #handlers = new Map<string, Array<(...args: any[]) => void>>();
 
   constructor(opts: ServerLinkOptions) {
@@ -150,7 +153,8 @@ export class ServerLink extends EventEmitter {
       log: () => {},
       reconnectDelays: [3000, 5000, 10000, 15000],
       reconnectJitterMs: 15000,
-      authTimeoutMs: 10000,
+      // Shorter than the renderer's 10 s "stuck connecting" watchdog, so the link decides first.
+      authTimeoutMs: 8000,
       heartbeatMs: 20000,
       heartbeatDeadMs: 65000,
       ackTimeoutMs: 15000,
@@ -195,7 +199,8 @@ export class ServerLink extends EventEmitter {
   /** Drop the current socket and connect again right away (user action, login/logout, new token). */
   reconnectNow(opts: { forceRefresh?: boolean } = {}): void {
     this.#wanted = true;
-    if (opts.forceRefresh) this.#forceRefresh = true;
+    // Replacing a socket the server never authenticated: the same token would fail again.
+    if (opts.forceRefresh || (this.#socket?.connected && !this.authenticated)) this.#forceRefresh = true;
     this.#clearTimers();
     this.#teardown('reconnect requested');
     this.attempt = 0;
@@ -216,14 +221,17 @@ export class ServerLink extends EventEmitter {
   sendWithAck(event: string, payload: unknown, onAck?: (ack: any | undefined) => void): boolean {
     if (!this.authenticated || !this.#socket?.connected) return false;
     const s = this.#socket;
+    this.#pendingAcks++;
     s.timeout(this.#o.ackTimeoutMs).emit(event, payload, (err: unknown, ack: any) => {
       if (s !== this.#socket) return;
+      this.#pendingAcks = Math.max(0, this.#pendingAcks - 1);
       if (err) {
         this.#noteAckFailure(`no ack for ${event} within ${this.#o.ackTimeoutMs} ms`, false);
       } else if (ack && ack.ok === false && typeof ack.error === 'string' && AUTH_ERROR_RE.test(ack.error)) {
         this.#noteAckFailure(`server rejected ${event}: ${ack.error}`, true);
       } else {
         this.#ackFailures = 0;
+        this.#reauthStreak = 0;
         this.#lastGoodAck = this.#o.now();
       }
       onAck?.(err ? undefined : ack);
@@ -284,6 +292,7 @@ export class ServerLink extends EventEmitter {
       this.authenticated = true;
       this.attempt = 0;
       this.#ackFailures = 0;
+      this.#pendingAcks = 0;
       this.#lastGoodAck = this.#o.now();
       this.stats.authenticated++;
       this.#o.log('info', `Authenticated (${s.id})`);
@@ -304,7 +313,9 @@ export class ServerLink extends EventEmitter {
       this.#reauth('retry_auth');
     }));
     s.on('exception', mine((data: any) => {
-      // Nest's WS exception filter (a guard rejected a message). Treat like a failed ack.
+      // Nest's WS exception filter (a guard rejected a message). Only meaningful while an acked
+      // upload is outstanding (log chunks are fire-and-forget and may fail for other reasons).
+      if (this.#pendingAcks === 0) return;
       const msg = typeof data?.message === 'string' ? data.message : JSON.stringify(data ?? {});
       this.#noteAckFailure(`server exception: ${msg}`, AUTH_ERROR_RE.test(msg));
     }));
@@ -352,7 +363,12 @@ export class ServerLink extends EventEmitter {
     this.#teardown(reason);
     if (was) this.emit('unauthenticated');
     this.#setStatus('disconnected');
-    this.#scheduleReconnect(1000);
+    // First retry is quick; if the server keeps refusing, back off along the reconnect ladder
+    // (each forced refresh costs the server a token row and bcrypt work).
+    const d = this.#o.reconnectDelays;
+    const streak = ++this.#reauthStreak;
+    const delay = streak <= 1 ? Math.min(1000, d[0]) : d[Math.min(streak - 1, d.length - 1)] + (streak > d.length ? Math.floor(Math.random() * this.#o.reconnectJitterMs) : 0);
+    this.#scheduleReconnect(delay);
   }
 
   #noteAckFailure(why: string, authError: boolean): void {
