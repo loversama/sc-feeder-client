@@ -5,11 +5,15 @@ on:
     branches:
       - main # Trigger on push to main branch
 
+permissions:
+  contents: write # publish GitHub Releases with the built-in token (the old GH_TOKEN PAT expired)
+
 jobs:
   release:
     runs-on: ${{ matrix.os }} # Build on multiple OS
 
     strategy:
+      fail-fast: false # one platform failing must not cancel the others
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
@@ -33,7 +37,7 @@ jobs:
 
       - name: Build and Publish Electron app
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }} # Required for publishing to GitHub Releases
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required for publishing to GitHub Releases
         # Build artifacts for each OS in parallel.
         # Only publish (upload assets and create release) from the Linux job.
         run: >-
