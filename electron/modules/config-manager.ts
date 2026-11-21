@@ -12,6 +12,10 @@ const schema = {
     type: 'string',
     default: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log' // Default path - Consider making this OS-aware or prompting user
   },
+  /** Star Citizen install root (the folder holding LIVE, PTU, ...). '' = single-file mode (logFilePath only). */
+  gameRoot: { type: 'string', default: '' },
+  /** gameRoot was derived from logFilePath once (or the user chose single-file mode) */
+  gameRootMigrated: { type: 'boolean', default: false },
   sessions: {
     type: 'array',
     default: [] as SessionInfo[] // Will store session objects
@@ -137,6 +141,21 @@ const schema = {
     type: 'boolean',
     default: false
   },
+  // --- Star Citizen game telemetry (5.0+ local gRPC API) ---
+  telemetryEnabled: { type: 'boolean', default: true },
+  /** Share telemetry snapshot + derived events with VOIDLOG.GG */
+  telemetryShare: { type: 'boolean', default: true },
+  /** Include the aUEC wallet balance in what is shared (off by default) */
+  telemetryShareBalance: { type: 'boolean', default: false },
+  /** In-game debug overlay (bottom-right, click-through) */
+  overlayEnabled: { type: 'boolean', default: false },
+  /** Show the overlay even when StarCitizen.exe isn't detected (for testing) */
+  overlayAlwaysShow: { type: 'boolean', default: false },
+  overlayHotkey: { type: 'string', default: 'CommandOrControl+Alt+O' },
+  /** Track Game.log line signatures and diff against the previous log */
+  logDiffEnabled: { type: 'boolean', default: true },
+  /** Record telemetry changes to <userData>/telemetry-recordings/*.log (local only) */
+  telemetryRecord: { type: 'boolean', default: true },
   scannedLogBackups: {
     type: 'object',
     default: {} as Record<string, { size: number; mtime: number; scannedAt: string }>
@@ -149,15 +168,40 @@ export const store = new Store<StoreSchema>({ schema });
 
 // --- Helper Functions ---
 
-// Function to get the current log path from store
+// Game.log of the active Star Citizen channel (set by the channel tracker); falls back to the stored path.
+let activeLogPath: string | null = null;
+
+export function setActiveLogPath(p: string | null): void {
+  activeLogPath = p || null;
+}
+
+// Function to get the current log path: the active channel's Game.log, else the stored logFilePath
 export function getCurrentLogPath(): string {
+  return activeLogPath ?? store.get('logFilePath');
+}
+
+export function getStoredLogPath(): string {
   return store.get('logFilePath');
+}
+
+export function getGameRoot(): string {
+  return ((store as any).get('gameRoot') as string) || '';
+}
+
+/** Set the game root ('' = single-file mode). Marks the migration as done either way. */
+export function setGameRoot(root: string): void {
+  (store as any).set('gameRoot', root || '');
+  (store as any).set('gameRootMigrated', true);
+}
+
+export function isGameRootMigrated(): boolean {
+  return !!(store as any).get('gameRootMigrated');
 }
 
 // Function to set the log path in store
 // NOTE: Updating the watcher is handled separately now (e.g., in ipc-handlers or log-watcher)
 export function setLogPath(newPath: string): boolean {
-  const currentPath = getCurrentLogPath();
+  const currentPath = getStoredLogPath();
   if (typeof newPath === 'string' && newPath && newPath !== currentPath) {
     logger.info(MODULE_NAME, `Setting log file path to: ${newPath}`);
     store.set('logFilePath', newPath); // Save to store
@@ -459,4 +503,34 @@ export function setFeedMode(mode: 'player' | 'global'): void {
         logger.warn(MODULE_NAME, `Invalid feed mode specified: ${mode}. Defaulting to 'player'.`);
         store.set('feedMode', 'player');
     }
+}
+// --- Telemetry / overlay settings ---
+export type TelemetrySettings = {
+  telemetryEnabled: boolean;
+  telemetryShare: boolean;
+  telemetryShareBalance: boolean;
+  overlayEnabled: boolean;
+  overlayAlwaysShow: boolean;
+  overlayHotkey: string;
+  logDiffEnabled: boolean;
+  telemetryRecord: boolean;
+};
+
+const TELEMETRY_SETTING_KEYS: (keyof TelemetrySettings)[] = [
+  'telemetryEnabled', 'telemetryShare', 'telemetryShareBalance', 'overlayEnabled', 'overlayAlwaysShow', 'overlayHotkey', 'logDiffEnabled', 'telemetryRecord',
+];
+
+export function getTelemetrySettings(): TelemetrySettings {
+  const out: any = {};
+  for (const k of TELEMETRY_SETTING_KEYS) out[k] = (store as any).get(k);
+  return out as TelemetrySettings;
+}
+
+export function setTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {
+  for (const k of TELEMETRY_SETTING_KEYS) {
+    if (patch[k] === undefined) continue;
+    const v = patch[k];
+    if (k === 'overlayHotkey' ? typeof v === 'string' : typeof v === 'boolean') (store as any).set(k, v);
+  }
+  return getTelemetrySettings();
 }

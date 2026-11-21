@@ -1,0 +1,1 @@
+<2026-11-12T20:55:32.811Z> [Notice] <AccountLoginCharacterStatus_Character> Character: createdAt 0 - updatedAt 0 - geid 204772006105 - accountId 0 - name <player> - state STATE_CURRENT [Team_GameServices][Login]

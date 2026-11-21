@@ -10,6 +10,7 @@ import * as logger from './logger'; // Import the logger utility
 import { getEntityName } from './definitionsService'; // Import for readable names
 import { getEventStore as getEventStoreInstance, type EventStore } from './event-store';
 import { getOrInitializeEventStore, getInitializedEventStore } from './event-store-manager';
+import { pushDebugEvent } from './telemetry/debug-bus';
 
 const MODULE_NAME = 'EventProcessor'; // Define module name for logger
 
@@ -87,6 +88,9 @@ export async function addOrUpdateEvent(event: KillEvent, source: 'local' | 'serv
 
     try {
         const result = await eventStore.addEvent(event, source);
+        if (result.isNew && source === 'local') {
+            pushDebugEvent({ source: 'log', type: String(event.eventType ?? event.deathType ?? 'event'), summary: event.eventDescription || `${event.killers.join(', ')} → ${event.victims.join(', ')}` });
+        }
         
         // EventStore handles all the persistence, deduplication, and UI updates
         // Just return compatibility info for existing code
@@ -170,9 +174,9 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
     const playersToFetch = [
         ...(partialEvent.killers || []),
         ...(partialEvent.victims || [])
-    ].filter(p => p && p !== 'Environment' && !p.includes('_') && p.toLowerCase() !== 'unknown'); // Basic filter
+    ].filter(p => p && p !== 'Environment' && p !== 'Self-Destruct' && !p.includes('_') && p.toLowerCase() !== 'unknown'); // Basic filter
 
-    const attackers = (partialEvent.killers || []).filter(p => p && p !== 'Environment' && p.toLowerCase() !== 'unknown');
+    const attackers = (partialEvent.killers || []).filter(p => p && p !== 'Environment' && p !== 'Self-Destruct' && p.toLowerCase() !== 'unknown');
 
     if (playersToFetch.length > 0) {
         try {
@@ -262,6 +266,8 @@ export async function processKillEvent(partialEvent: Partial<KillEvent>, silentM
         destination: partialEvent.destination,
         channelName: partialEvent.channelName,
         visibility: partialEvent.visibility,
+        missionOrganization: partialEvent.missionOrganization,
+        eventData: partialEvent.eventData,
     };
 
     // 3. FIXED: Preserve raw entity IDs for consistent frontend resolution

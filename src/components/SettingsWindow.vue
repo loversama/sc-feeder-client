@@ -5,6 +5,8 @@ import { ElMessage, ElNotification } from 'element-plus';
 import { User, Tools } from '@element-plus/icons-vue';
 import DebugActions from './DebugActions.vue';
 import SoundPreferences from './SoundPreferences.vue';
+import TelemetrySettings from './TelemetrySettings.vue';
+import GameChannels from './GameChannels.vue';
 import { useUserState } from '../composables/useUserState';
 import type { SoundPreferences as SoundPreferencesType } from '../../shared/types';
 
@@ -20,6 +22,7 @@ const categories = ref([
   { id: 'killfeed', name: 'Kill Feed', icon: 'crosshairs' },
   { id: 'notifications', name: 'Notifications', icon: 'bell' },
   { id: 'data_api', name: 'Data & API', icon: 'database' },
+  { id: 'telemetry', name: 'Telemetry & Overlay', icon: 'pulse' },
   { id: 'account', name: 'Account', icon: 'user' },
   { id: 'debug', name: 'Debug', icon: 'bug' },
   { id: 'about', name: 'About', icon: 'info' },
@@ -182,7 +185,8 @@ const getIcon = (iconName: string) => {
     database: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
     user: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
     bug: 'M12 2l3.09 6.26L22 9l-5.09 0.74L12 16l-4.91-6.26L2 9l6.91-0.74L12 2z',
-    info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+    info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    pulse: 'M3 12h4l3-8 4 16 3-8h4'
   };
   return icons[iconName as keyof typeof icons] || icons.settings;
 };
@@ -600,15 +604,8 @@ const toggleLaunchOnStartup = async () => {
           <div class="space-y-6">
             <!-- Log File Location -->
             <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Log File Location</h4>
-              <div class="flex items-center gap-4">
-                <code class="flex-1 bg-theme-bg-dark px-4 py-3 rounded border border-theme-border font-mono text-sm text-theme-text-light overflow-hidden">
-                  {{ currentPath }}
-                </code>
-                <el-button @click="handleSelectLogDirectory" type="primary" class="px-6">
-                  Change
-                </el-button>
-              </div>
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Star Citizen Folder</h4>
+              <GameChannels @single-file="handleSelectLogDirectory" />
             </div>
 
             <!-- Theme -->
@@ -666,6 +663,11 @@ const toggleLaunchOnStartup = async () => {
               @preferences-updated="handleSoundPreferencesUpdate"
             />
           </div>
+        </section>
+
+        <!-- Telemetry & Overlay -->
+        <section v-if="activeCategory === 'telemetry'" class="space-y-6">
+          <TelemetrySettings />
         </section>
 
         <!-- Notifications Settings -->

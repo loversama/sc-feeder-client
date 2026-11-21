@@ -7,7 +7,7 @@ import { Setting, Tickets, User, MapLocation, Connection, Monitor, Filter, Quest
 import {
   CheckCircle2, ClipboardList, XCircle, Share2, Target,
   UserPlus, UserMinus, UsersRound, MapPin, Zap,
-  Volume2, RotateCcw, Link,
+  Volume2, RotateCcw, Link, ShoppingCart, Gift, HeartPulse, Siren, Mail,
   Swords, Wrench, Flame, Car, AlertTriangle, Droplets, Skull, HelpCircle,
 } from 'lucide-vue-next';
 import type { Component } from 'vue';
@@ -698,6 +698,11 @@ const newEventTypeStyles: Record<string, { cssClass: string; icon: Component; la
   voip_channel:      { cssClass: 'voip-channel-event',      icon: Volume2,       label: 'VOIP Channel' },
   respawn:           { cssClass: 'respawn-event',           icon: RotateCcw,     label: 'Respawn' },
   session_event:     { cssClass: 'session-event',           icon: Link,          label: 'Session' },
+  shop_transaction:  { cssClass: 'shop-transaction-event',  icon: ShoppingCart,  label: 'Shop' },
+  status_effect:     { cssClass: 'status-effect-event',     icon: HeartPulse,    label: 'Status Effect' },
+  reward_earned:     { cssClass: 'reward-earned-event',     icon: Gift,          label: 'Reward' },
+  emergency_services:{ cssClass: 'emergency-services-event',icon: Siren,         label: 'Emergency Services' },
+  party_invite:      { cssClass: 'party-invite-event',      icon: Mail,          label: 'Party Invite' },
 };
 
 // Check if an event uses the new eventType system (non-combat SC 4.8+ events)
@@ -793,7 +798,7 @@ const playKillSound = async (killEvent?: KillEvent) => {
   
   if (killEvent) {
     // Silent event types — no sound at all
-    const silentEventTypes = ['location_change', 'quantum_travel', 'voip_channel', 'objective_update', 'session_event', 'respawn'];
+    const silentEventTypes = ['location_change', 'quantum_travel', 'voip_channel', 'objective_update', 'session_event', 'respawn', 'shop_transaction', 'status_effect', 'reward_earned'];
     if (killEvent.eventType && silentEventTypes.includes(killEvent.eventType)) {
       return;
     }
@@ -2425,7 +2430,7 @@ const getServerSourceTooltip = (event: KillEvent): string => {
           @mouseup="console.log('KillFeed: mouseup on event', event.id)"
         >
           <!-- Compact single-line rendering for low-priority events -->
-          <template v-if="event.eventType === 'location_change' || event.eventType === 'party_join' || event.eventType === 'party_leave' || event.eventType === 'party_disband' || event.eventType === 'quantum_travel' || event.eventType === 'voip_channel'">
+          <template v-if="event.eventType === 'location_change' || event.eventType === 'party_join' || event.eventType === 'party_leave' || event.eventType === 'party_disband' || event.eventType === 'quantum_travel' || event.eventType === 'voip_channel' || event.eventType === 'shop_transaction' || event.eventType === 'status_effect' || event.eventType === 'reward_earned' || event.eventType === 'emergency_services' || event.eventType === 'party_invite'">
             <div class="compact-event-row">
               <component :is="getEventIcon(event.deathType, event.eventType)" :size="12" class="compact-event-icon" />
               <span class="compact-event-text">{{ event.eventDescription }}</span>

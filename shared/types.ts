@@ -17,7 +17,12 @@ export type GameEventType =
   | 'quantum_travel'     // QT route calculated / jumped
   | 'voip_channel'       // Player joined/left ship VOIP channel
   | 'respawn'            // Player respawned (AttachmentReceived body)
-  | 'session_event';     // Login / logout / quit
+  | 'session_event'      // Login / logout / quit
+  | 'shop_transaction'   // Shop buy / rental confirmed by RmShopFlowResponse Success (SC 4.10)
+  | 'status_effect'      // Own status effect started (Dehydrated / Starved ...)
+  | 'reward_earned'      // "You've Earned: <reward>" notification
+  | 'emergency_services' // "Local Emergency Services Are En Route" (after own death)
+  | 'party_invite';      // Party invite received (inviter in partyMember)
 
 // Event visibility — controls who can see an event on the global feed
 export type EventVisibility = 'public' | 'private';
@@ -40,6 +45,11 @@ export const EVENT_VISIBILITY_MAP: Record<GameEventType, EventVisibility> = {
   voip_channel: 'private',
   respawn: 'public',
   session_event: 'private',
+  shop_transaction: 'private',
+  status_effect: 'private',
+  reward_earned: 'private',
+  emergency_services: 'private',
+  party_invite: 'private',
 };
 
 // Mission category classification
@@ -112,7 +122,17 @@ export interface SessionInfo {
 
 // Type definition for our store
 export interface StoreSchema {
+  telemetryEnabled: boolean;
+  telemetryShare: boolean;
+  telemetryShareBalance: boolean;
+  overlayEnabled: boolean;
+  overlayAlwaysShow: boolean;
+  overlayHotkey: string;
+  logDiffEnabled: boolean;
+  telemetryRecord: boolean;
   logFilePath: string;
+  gameRoot: string;
+  gameRootMigrated: boolean;
   sessions: SessionInfo[];
   lastLoggedInUser: string;
   showNotifications: boolean;
@@ -190,6 +210,8 @@ export interface KillEvent {
   destination?: string;       // QT destination or location name
   channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : LoVeRSaMa")
   visibility?: EventVisibility; // Whether event is public or private on global feed
+  missionOrganization?: string; // Mission giver from <CommsNotifications> tags (e.g. "Navy.Baramsco")
+  eventData?: Record<string, unknown>; // Structured extras for SC 4.10 events (shop price/item, vehicle reason, zoneType, phase, ...)
   missionCategory?: MissionCategory; // Classified mission type (bounty, cargo, etc.)
   missionDuration?: number;   // Seconds from accept to complete/fail
   missionId?: string;            // Mission instance UUID from game log

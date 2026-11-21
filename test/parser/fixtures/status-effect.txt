@@ -1,0 +1,2 @@
+<2026-11-13T19:24:59.937Z> Logged a start of a status effect! nickname: <player>, status effect: Dehydrated
+<2026-11-13T19:25:09.937Z> Logged a start of a status effect! nickname: WilsonCole, status effect: Dehydrated

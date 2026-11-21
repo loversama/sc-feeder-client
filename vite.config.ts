@@ -22,7 +22,7 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'bindings', 'node-gyp-build', 'undici'],
+              external: ['better-sqlite3', 'bindings', 'node-gyp-build', 'undici', '@grpc/grpc-js', 'protobufjs', 'protobufjs/ext/descriptor/index.js'],
             },
           },
         },
@@ -38,6 +38,8 @@ export default defineConfig({
           'webcontents-header-preload': path.join(__dirname, 'electron/webcontents-header-preload.ts'),
           // Preload for WebContentsView content
           'webcontents-view-preload': path.join(__dirname, 'electron/webcontents-view-preload.ts'),
+          // Preload for the in-game telemetry overlay
+          'overlay-preload': path.join(__dirname, 'electron/overlay-preload.ts'),
         },
         vite: {
           build: {
@@ -62,6 +64,7 @@ export default defineConfig({
         settings: path.resolve(__dirname, 'settings.html'),
         webContent: path.resolve(__dirname, 'web-content.html'),
         login: path.resolve(__dirname, 'login.html'),
+        overlay: path.resolve(__dirname, 'overlay.html'),
       },
       output: {
         // Explicitly disable inlineDynamicImports for multiple inputs

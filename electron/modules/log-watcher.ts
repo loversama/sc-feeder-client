@@ -1,11 +1,14 @@
 import chokidar from 'chokidar';
 import fs from 'node:fs/promises';
 import { getCurrentLogPath } from './config-manager';
-import { parseLogContent } from './log-parser.ts'; // Ensure .ts extension
+import { parseLogContent, resetParserState } from './log-parser.ts'; // Ensure .ts extension
 import { getMainWindow } from './window-manager';
 import { endCurrentSession, startNewSession } from './session-manager.ts'; // Add .ts extension
 import * as logger from './logger';
 import { ensureConnectedAndSendLogChunk, isConnected as isServerConnected } from './server-connection'; // Import new function
+import { noteLogBegin, noteLogChunk } from './telemetry/telemetry-manager';
+import { channelsReady, getActiveChannelName, initChannels, onActiveChannelChange } from './channel-manager';
+import type { ChannelInfo } from './game-channels';
 
 const MODULE_NAME = 'LogWatcher'; // Define module name for logger
 
@@ -14,20 +17,38 @@ const MODULE_NAME = 'LogWatcher'; // Define module name for logger
 let watcher: chokidar.FSWatcher | null = null;
 let lastReadSize = 0;
 let isInitialReadComplete = false; // Track if the initial full read is done
+// The Game.log (and Star Citizen channel) being read. Reads use these, not getCurrentLogPath(), so a
+// channel switch in the middle of a read can never mix the two logs.
+let watchPath = '';
+let watchChannel = '';
+/** Bumped on every (re)start; a read that started before it is discarded. */
+let generation = 0;
+let readChain: Promise<void> = Promise.resolve();
+let switchChain: Promise<void> = Promise.resolve();
+let switchHooked = false;
 
 // --- Helper Function ---
 
 // Function to read new content from the log file
 // Renamed to avoid conflict if imported elsewhere, made internal to this module
-async function _readNewLogContent(isInitialScan: boolean = false) {
+function _readNewLogContent(isInitialScan: boolean = false): Promise<void> {
+    // Serialise reads (lastReadSize is shared state)
+    const run = readChain.then(() => _readNewLogContentImpl(isInitialScan));
+    readChain = run.catch(() => {});
+    return run;
+}
+
+async function _readNewLogContentImpl(isInitialScan: boolean = false) {
     const win = getMainWindow();
+    const gen = generation;
+    const channel = watchChannel;
     // Don't proceed if the main window isn't available (e.g., during startup/shutdown)
     if (!win || win.isDestroyed()) {
         logger.debug(MODULE_NAME, "Main window not available, skipping log read.");
         return;
     }
 
-    const logPath = getCurrentLogPath();
+    const logPath = watchPath;
 
     try {
         const fileExists = await fs.access(logPath).then(() => true).catch(() => false);
@@ -59,8 +80,11 @@ async function _readNewLogContent(isInitialScan: boolean = false) {
                 newContent += chunk;
             }
 
+            if (gen !== generation) return; // a restart / channel switch happened while reading
             if (newContent) {
                 win?.webContents.send('log-update', newContent); // Send raw content
+                if (lastReadSize === 0) noteLogBegin(logPath, channel); // new / replaced Game.log: start a new diff session
+                noteLogChunk(newContent); // telemetry hints + Game.log diff
 
                 // Determine silent mode:
                 // - Silent if it's the initial scan AND we haven't completed the first full read yet.
@@ -71,7 +95,7 @@ async function _readNewLogContent(isInitialScan: boolean = false) {
 
                 // Send the raw chunk to the server if connected
                 // Attempt to send log chunk, ensuring connection is attempted if needed
-                ensureConnectedAndSendLogChunk(newContent);
+                ensureConnectedAndSendLogChunk(newContent, channel);
 
                 if (isReadingInitialContent) {
                     win?.webContents.send('log-status', `Monitoring started. Loaded initial content (${currentSize} bytes).`);
@@ -96,7 +120,7 @@ async function _readNewLogContent(isInitialScan: boolean = false) {
             isInitialReadComplete = false; // Reset initial read flag
             win?.webContents.send('log-reset'); // Notify renderer to clear display
             win?.webContents.send('log-status', 'Log file truncated or replaced. Reading from start.');
-            await _readNewLogContent(true); // Re-read from start, treat as initial scan
+            await _readNewLogContentImpl(true); // Re-read from start, treat as initial scan
 
         } else if (isReadingInitialContent && currentSize === 0) {
             // Initial read, file exists but is empty
@@ -122,10 +146,19 @@ async function _readNewLogContent(isInitialScan: boolean = false) {
 // --- Public Functions ---
 
 export async function startWatchingLogFile() {
-    const logPath = getCurrentLogPath();
+    if (!switchHooked) {
+        switchHooked = true;
+        onActiveChannelChange(switchChannel);
+    }
+    if (!channelsReady()) await initChannels();
+    await readChain; // let a read in flight finish before the position is reset
+    generation++;
+    watchPath = getCurrentLogPath();
+    watchChannel = getActiveChannelName();
+    const logPath = watchPath;
     const win = getMainWindow();
 
-    logger.info(MODULE_NAME, `Attempting to watch: ${logPath}`);
+    logger.info(MODULE_NAME, `Attempting to watch: ${logPath} (channel ${watchChannel})`);
     win?.webContents.send('log-status', `Attempting to watch: ${logPath}`);
 
     // End current session before starting new watch/read
@@ -205,6 +238,7 @@ export async function stopWatchingLogFile() {
         logger.info(MODULE_NAME, 'File watcher stopped.');
     }
     // Also end the session when explicitly stopping the watcher
+    generation++;
     await endCurrentSession();
     lastReadSize = 0; // Reset size
     isInitialReadComplete = false;
@@ -234,7 +268,7 @@ export async function rescanLogFile() {
      win?.webContents.send('log-status', 'Rescanning log file from beginning...');
 
      // 5. Perform the full read (treat as initial scan, non-silent)
-     const logPath = getCurrentLogPath();
+     const logPath = watchPath || getCurrentLogPath();
      try {
          const fileExists = await fs.access(logPath).then(() => true).catch(() => false);
          if (fileExists) {
@@ -245,6 +279,8 @@ export async function rescanLogFile() {
                  content += chunk;
              }
              if (content) {
+                 noteLogBegin(logPath, watchChannel || getActiveChannelName());
+                 noteLogChunk(content);
                  // Parse with silentMode = false to process all events from the full file
                  await parseLogContent(content, false);
                  lastReadSize = stats.size; // Update size after full read
@@ -266,4 +302,32 @@ export async function rescanLogFile() {
 
      // 6. Restart the watcher to catch subsequent changes
      await startWatchingLogFile(); // This will re-initialize the watcher
+}
+
+/**
+ * The game root (or single-file path) changed in settings: re-pick the active channel and start
+ * watching its Game.log from the beginning.
+ */
+export async function applyGameRootChange() {
+    await initChannels({ reset: true });
+    resetParserState();
+    getMainWindow()?.webContents.send('log-reset');
+    await startWatchingLogFile();
+}
+
+/**
+ * The game moved to another channel (its Game.log is the one being written now). Same as a new
+ * Game.log: fresh parser state, fresh session, read the new log from its start. Serialised so two
+ * quick switches never overlap.
+ */
+function switchChannel(c: ChannelInfo, prev: string | null) {
+    switchChain = switchChain.then(async () => {
+        logger.info(MODULE_NAME, `Star Citizen channel changed ${prev ?? '(none)'} -> ${c.name}; watching ${c.logPath}`);
+        resetParserState();
+        const win = getMainWindow();
+        win?.webContents.send('log-reset');
+        win?.webContents.send('log-status', `Star Citizen channel: ${c.name}. Reading ${c.logPath}`);
+        win?.webContents.send('channels-changed');
+        await startWatchingLogFile();
+    }).catch((err) => logger.error(MODULE_NAME, 'Channel switch failed:', err));
 }

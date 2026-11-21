@@ -29,6 +29,14 @@ const MODULE_NAME = 'LogParser'; // Define module name for logger
 // State variables specific to parsing context
 let currentUsername: string | null = getLastLoggedInUser() || null; // Initialize from store
 let currentPlayerShip: string = "Unknown";
+let currentGeid: string | null = null; // Local player's GEID from the login line (matches owner/killer ids in 4.10 <Vehicle Destroyed>)
+// Title of a multi-line "Added notification "<title>" seen on the previous log line (party invite inviter). Survives across parse calls.
+let previousNotificationTitle: string | null = null;
+// Shop requests waiting for their RmShopFlowResponse. Module-level because log content arrives in chunks.
+interface PendingShopRequest { ms: number; ts: string; playerId: string; action: 'buy' | 'rent'; shopName: string; item: string; quantity?: number; offering?: number; price: number; currency: string; }
+const pendingShopRequests: PendingShopRequest[] = [];
+const seenObjectiveProgress = new Set<string>(); // "<objectiveId>|<raw text>" already emitted
+const missionCommsCache = new Map<string, { organization?: string; type?: string }>(); // missionId -> comms tags
 let stableGameMode: 'PU' | 'AC' | 'Unknown' = "Unknown"; // The mode we report and use for events
 let rawDetectedGameMode: 'PU' | 'AC' | 'Unknown' = "Unknown"; // Last mode seen directly in logs
 let lastRawModeDetectionTime: number = 0;
@@ -96,6 +104,7 @@ const puModeRegex = /Loading GameModeRecord='SC_Default'/; // Detects PU loading
 const acModeRegex = /Loading GameModeRecord='EA_.*?'/; // Detects AC loading (any EA mode)
 const frontendModeRegex = /Requesting game mode Frontend_Main\/SC_Frontend|Loading screen for Frontend_Main : SC_Frontend closed/; // Detects entering Frontend
 const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterior \[(?<InstancedInterior>[^\]]+)\] \[\d+\] -> Entity \[(?<Entity>[^\]]+)\] \[\d+\] --.*?m_ownerGEID\[(?<OwnerGEID>[^\[]+)\]/;
+// SUNSET: <Vehicle Destruction> not emitted since SC 4.4 (replaced by <Vehicle Destroyed>, see vehicleDestroyedRegex). Kept for old logs.
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
 const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
@@ -141,20 +150,23 @@ const missionCompleteRegex = /Added notification "Contract Complete:\s+(?<missio
 const missionFailedRegex = /Added notification "Contract Failed:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
 const missionSharedRegex = /Added notification "Contract Shared:\s+(?<missionName>.+?):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
 const missionObjectiveRegex = /Added notification "New Objective:\s+(?<objectiveText>[^:]+):\s*"\s*\[(?<notifId>\d+)\].*?MissionId:\s*\[(?<missionId>[^\]]*)\](?:.*?ObjectiveId:\s*\[(?<objectiveId>[^\]]*)\])?/;
-const missionObjectiveCompleteRegex = /Added notification "Objective Complete:\s+(?<objectiveText>[^"]+)"/;
+// Title wraps onto the next line ("Objective Complete: <text>\n: " [n]"), so a closing quote on the same line is optional
+const missionObjectiveCompleteRegex = /Added notification "Objective Complete:\s+(?<objectiveText>[^"\r\n]+?)\s*(?::\s*"|$)/;
 const missionObjectiveWithdrawnRegex = /Added notification "Objective Withdrawn:\s+(?<objectiveText>[^:]+):\s*"/;
 
 // Party events (from notification text — may span multiple lines so match partial)
 // Party "connected" notifications span 2 lines; match the 2nd line with "to queue" to dedup
-const partyMemberConnectedRegex = /(?<playerName>\w+) connected\.\: "\s*\[\d+\] to queue/;
+// Names may contain hyphens/spaces: anchor after the timestamp instead of using \w+
+const partyMemberConnectedRegex = /^<[^>]+>\s(?<playerName>[^\s<>"][^<>\r\n]*?) connected\.: "\s*\[\d+\] to queue/;
 // Party "left" notifications: match with "to queue" suffix to only catch first occurrence
-const partyMemberLeftRegex = /(?<playerName>\w+) has left the party\.\: "\s*\[\d+\] to queue/;
+const partyMemberLeftRegex = /^<[^>]+>\s(?<playerName>[^\s<>"][^<>\r\n]*?) has left the party\.: "\s*\[\d+\] to queue/;
 const partyDisbandedRegex = /Party Disbanded/;
-const partyInviteRegex = /(?<playerName>\w+)\s*\n?\s*Party Invite Received/;
+// Body line only; the inviter handle is on the previous "Added notification "<handle>" line (see previousNotificationTitle)
+const partyInviteRegex = /^<[^>]+>\s+Party Invite Received: Accept Invitation\?: "\s*\[\d+\] to queue/;
 const memberLeftNotifRegex = /Added notification "Member Left/;
 
 // VOIP channel events
-const voipChannelLeftRegex = /(?<playerName>\w+) has left the channel '(?<channelName>[^']+)'/;
+const voipChannelLeftRegex = /^<[^>]+>\s(?<playerName>[^\s<>"][^<>\r\n]*?) has left the channel '(?<channelName>[^']+)'\.: "\s*\[\d+\] to queue/;
 
 // Location/jurisdiction changes (from notifications)
 const jurisdictionEnteredRegex = /Added notification "Entered (?<jurisdiction>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
@@ -182,6 +194,33 @@ const activeMissions = new Map<string, { acceptTime: string; category: string }>
 // Mission metadata cache — maps missionId to enriched data from CLocalMissionPhaseMarker
 const missionMetadataCache = new Map<string, { generatorName: string; contractName: string; contractDefinitionId: string }>();
 // === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
+
+// === SC 4.10 PATTERNS (build 13165946+) ===
+// Local player GEID from the login line: "... geid 204772006105 - accountId ... - name <handle> - state ..."
+const loginGeidRegex = /<AccountLoginCharacterStatus_Character>.*?\bgeid\s+(?<geid>\d+)\s.*?name\s+(?<name>\S+)\s+-/;
+// <Vehicle Destroyed> replaces <Vehicle Destruction> (dead since 4.4). Owner [0] / _PU_AI_ in class = NPC ship.
+const vehicleDestroyedRegex = /<(?<ts>[^>]+)> \[Notice\] <Vehicle Destroyed> Vehicle '(?<vehicle>[^']+)' \[(?<vehicleId>\d+)\] class '(?<vehicleClass>[^']+)' \(owner player \[(?<ownerId>\d+)\], driver \[(?<driverId>\d+)\]\) destroyed: reason \[(?<reason>\w+)\] level \[(?<levelFrom>\d+)\] -> \[(?<levelTo>\d+)\] flags \[(?<flags>\d+)\] killer '(?<killer>[^']*)' \[(?<killerId>\d+)\] authority \[(?<authority>\d+)\]/;
+// Shop: a request is only a purchase once the matching RmShopFlowResponse says result[Success]
+const shopBuyRequestRegex = /<(?<ts>[^>]+)> \[Notice\] <CEntityComponentShop(?:UI|ping)Provider::Send(?:Standard[A-Za-z]*|Shop)BuyRequest> Sending SShopBuyRequest - playerId\[(?<playerId>\d+)\] shopId\[(?<shopId>\d+)\] shopName\[(?<shopName>[^\]]+)\] kioskId\[\d+\] client_price\[(?<price>[\d.]+)\] itemClassGUID\[[^\]]+\] itemName\[(?<item>[^\]]+)\] quantity\[(?<qty>\d+)\](?: currencyType\[(?<currency>\w+)\])?/;
+const shopRentalRequestRegex = /<(?<ts>[^>]+)> \[Notice\] <CEntityComponentShop(?:UI|ping)Provider::SendRentalRequest> Sending SShopRentalRequest - playerId\[(?<playerId>\d+)\] shopId\[(?<shopId>\d+)\] shopName\[(?<shopName>[^\]]+)\] kioskId\[\d+\] client_price\[(?<price>[\d.]+)\] itemClassGUID\[[^\]]+\] itemName\[(?<item>[^\]]+)\] offering\[(?<offering>\d+)\](?: currencyType\[(?<currency>\w+)\])?/;
+const shopFlowResponseRegex = /<(?<ts>[^>]+)> \[Notice\] <CEntityComponentShop(?:UI|ping)Provider::RmShopFlowResponse> (?:Received ShopFlowResponse|Shop Flow Response) - playerId\[(?<playerId>\d+)\].*?result\[(?<result>\w+)\](?: type\[(?<type>\w+)\])?/;
+const SHOP_PAIRING_WINDOW_MS = 3000;
+// Mission comms tags: +Missions.Organization.<org>,Missions.MissionType.<type>,Missions.CommsNotifications.<step>
+const commsNotificationRegex = /<CommsNotifications> SendCommsNotification \+(?<tags>[^ ]+) - \[[^\]]+\] - Mission: \[(?<missionId>[^\]]+)\], Player: (?<player>[^\[]+)\[/;
+// Objective progress (chatty: de-duplicated by id + text)
+const objectiveProgressRegex = /<CMissionLogEntry::UpdateActiveObjective> Objective updated id=(?<objectiveId>[^,]+), flags=(?<flags>[^,]*), hidden=(?<hidden>\d).*?uiDisplay\[Priority=\d+\]\[Text=(?<text>[^\]]*)\]/;
+const statusEffectRegex = /<(?<ts>[^>]+)> Logged a start of a status effect! nickname: (?<player>[^,]+), status effect: (?<effect>\w+)/;
+const rewardEarnedRegex = /Added notification "You've Earned: (?<reward>[^\r\n"]+)/;
+const emergencyServicesRegex = /Added notification "Standby, Local Emergency Services Are En Route/;
+const zoneNoticeRegex = /Added notification "(?<action>Entering|Leaving) (?<zone>Armistice Zone|Private Property)/;
+const qtSelectedRegex = /<Player Selected Quantum Target - Local>.*?\| (?<vehicle>[A-Za-z0-9_]+)\[\d+\]\|.*?selected point (?<destination>\S+) as their destination/;
+const qtArrivedRegex = /<Quantum Drive Arrived - Arrived at Final Destination>.*?\| (?<vehicle>[A-Za-z0-9_]+)\[(?<vehicleId>\d+)\]\|/;
+// Ship crew channel: own joins/leaves come from the "Added notification" line, others from the body line
+const channelSelfRegex = /Added notification "You have (?<action>joined|left)(?: the)? channel '(?<channelName>[^']+)'/;
+const channelOtherJoinedRegex = /^<[^>]+>\s(?<playerName>[^\s<>"][^<>\r\n]*?) has joined the channel '(?<channelName>[^']+)'\.: "\s*\[\d+\] to queue/;
+// Multi-line notification titles: "Added notification "<title>" with no closing quote on the line (kept as previous-line state)
+const notificationTitleOnlyRegex = /Added notification "(?<title>[^"\r\n]*?)\s*$/;
+// === END SC 4.10 PATTERNS ===
 
 // Initialize enhanced zone system
 function initializeZoneSystem(): void {
@@ -351,9 +390,12 @@ function processLocationData(rawLocation: string | undefined, coordinates?: {x: 
         locationSource: result.locationSource
     };
 }
+// SUNSET (SC 4.4+): pattern no longer emitted by the game. Kept for old logs.
 const corpseLogRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<\[ActorState\] Corpse>.*?Player '(?<playerName>[^']+)'/;
+// SUNSET (SC 4.4+): pattern no longer emitted by the game. Kept for old logs.
 const killPatternRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<Victim>[^']+)' \[\d+\] in zone '(?<Zone>[^']+)' killed by '(?<Killer>[^']+)' \[[^']+\] using '(?<Weapon>[^']+)' \[Class (?<Class>[^\]]+)\] with damage type '(?<DamageType>[^']+)'/;
 const incapRegex = /Logged an incap.! nickname: (?<playerName>[^,]+), causes: \[(?<cause>[^\]]+)\]/;
+// SUNSET (SC 4.4+): pattern no longer emitted by the game. Kept for old logs.
 const environmentDeathRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>.*?<Actor Death> CActor::Kill: '(?<playerName>[^']+)' .*? damage type '(?<damageType>BleedOut|SuffocationDamage)'/;
 const systemQuitRegex = /<SystemQuit>|System Fast Shutdown/i;
 
@@ -458,6 +500,146 @@ function logDetectionStats() {
 // === END DUAL-MODE DETECTION HELPER FUNCTIONS ===
 
 
+// --- SC 4.10 helpers ---
+
+// "SCShop_Centermass_NewBabbage" -> "Centermass New Babbage"
+function prettifyShopName(raw: string): string {
+    return raw.replace(/^SCShop_/, '').replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\s{2,}/g, ' ').trim();
+}
+
+// "RSI Galaxy : Handle" -> { shipName: "RSI Galaxy", shipOwner: "Handle" }
+function parseChannelName(channel: string): { shipName?: string; shipOwner?: string } {
+    const idx = channel.lastIndexOf(' : ');
+    if (idx < 0) return {};
+    return { shipName: channel.slice(0, idx).trim(), shipOwner: channel.slice(idx + 3).trim() };
+}
+
+// "Missions.Organization.Navy.Baramsco,Missions.MissionType.WaveAttack.SingleTarget,..." -> org/type
+function parseCommsTags(tags: string): { organization?: string; type?: string } {
+    const out: { organization?: string; type?: string } = {};
+    for (const tag of tags.split(',')) {
+        const t = tag.replace(/^\+/, '').replace(/^Missions\./, '');
+        if (t.startsWith('Organization.')) out.organization = t.slice('Organization.'.length);
+        else if (t.startsWith('MissionType.')) out.type = t.slice('MissionType.'.length);
+    }
+    return out;
+}
+
+function commsMeta(missionId: string | undefined): Partial<KillEvent> {
+    const meta = missionId ? missionCommsCache.get(missionId) : undefined;
+    return meta ? { missionOrganization: meta.organization, missionType: meta.type } : {};
+}
+
+// "Go to ~mission(Location)" / "Waves Defeated: %ls" -> cleaned objective text ('' when nothing useful)
+function cleanObjectiveText(text: string): string {
+    if (text.includes('UNINITIALIZED')) return '';
+    return text.replace(/~mission\([^)]*\)/g, '').replace(/%ls/g, '').replace(/\s{2,}/g, ' ').replace(/[:\s]+$/, '').trim();
+}
+
+function isLocalPlayerId(id: string): boolean {
+    return !currentGeid || id === currentGeid; // unknown GEID (login line not parsed yet): accept
+}
+
+/**
+ * <Vehicle Destroyed> (SC 4.10): killer/victim rules mirror the server contract.
+ * Only reason=Combat credits a killer; Collision -> Environment; SelfDestruct -> Self-Destruct.
+ * Only events where the local player is the killer or the ship owner are emitted.
+ */
+async function handleVehicleDestroyed(g: Record<string, string>, silentMode: boolean): Promise<void> {
+    const { ts, vehicle, vehicleId, vehicleClass, ownerId, reason, levelFrom, levelTo, killer, killerId } = g;
+    const isNpcTarget = ownerId === '0' || vehicleClass.includes('_PU_AI_');
+    const isOwnShip = !isNpcTarget && ((!!currentGeid && ownerId === currentGeid));
+    const killerIsMe = reason === 'Combat' && ((!!currentGeid && killerId === currentGeid) || (!!currentUsername && killer === currentUsername));
+    const isPlayerInvolved = isOwnShip || killerIsMe;
+    if (!isPlayerInvolved) {
+        logger.debug(MODULE_NAME, `Skipping Vehicle Destroyed - local player not involved (${vehicleClass}, reason ${reason}).`);
+        return;
+    }
+
+    let killers: string[];
+    let deathType: KillEvent['deathType'];
+    if (reason === 'Combat') {
+        killers = [killer && killer !== 'none' ? killer : 'Unknown'];
+        deathType = 'Combat';
+    } else if (reason === 'SelfDestruct') {
+        killers = ['Self-Destruct'];
+        deathType = 'Hard';
+    } else {
+        killers = ['Environment']; // Collision (and unknown reasons) never credit a player
+        deathType = reason === 'Collision' ? 'Collision' : 'Hard';
+    }
+    const victims = isOwnShip ? [currentUsername || 'Unknown pilot'] : isNpcTarget ? [vehicleClass] : ['Unknown pilot'];
+    const collisionWith = reason === 'Collision' && killerId !== ownerId && killerId !== '0' && killer && killer !== 'none' ? killer : undefined;
+
+    const resolution = resolveEntityName(vehicleClass);
+    const vehicleType = resolution.category === 'npc' ? 'NPC' : resolution.displayName;
+    const locationData = processLocationDataEnhanced(undefined, undefined, 'vehicle_destroyed_4_10', ts);
+    const level = parseInt(levelTo) || 2;
+
+    logger.info(MODULE_NAME, 'Vehicle Destroyed (4.10):', { ship: vehicleClass }, `reason ${reason}`, isOwnShip ? '(own ship lost)' : '(kill)');
+
+    const partialEvent: Partial<KillEvent> = {
+        id: `vd410_${vehicleId}_${levelTo}`,
+        timestamp: ts,
+        killers,
+        victims,
+        deathType,
+        vehicleType,
+        vehicleModel: vehicleClass,
+        vehicleId: vehicle,
+        location: locationData.location,
+        weapon: reason,
+        damageType: reason,
+        gameMode: stableGameMode,
+        gameVersion: currentGameVersion,
+        playerShip: currentPlayerShip,
+        coordinates: locationData.coordinates,
+        isPlayerInvolved: true,
+        playerHandle: currentUsername || undefined,
+        eventData: {
+            detectionMethod: 'vehicle_destroyed_4_10',
+            vehicleClass,
+            vehicleId,
+            reason,
+            destroyLevelFrom: parseInt(levelFrom),
+            destroyLevelTo: parseInt(levelTo),
+            isNpcTarget,
+            ownerGeid: ownerId,
+            killerGeid: killerId,
+            ...(collisionWith ? { collisionWith } : {}),
+        },
+    };
+    await processKillEvent(partialEvent, silentMode, level);
+}
+
+// Builds + emits a self-only activity event (no killers/victims) in the same shape as the other 4.8+ events.
+async function emitActivityEvent(
+    eventType: GameEventType,
+    id: string,
+    timestamp: string,
+    eventDescription: string,
+    extra: Partial<KillEvent>,
+    silentMode: boolean
+): Promise<void> {
+    const partialEvent: Partial<KillEvent> = {
+        id,
+        timestamp,
+        killers: [],
+        victims: [],
+        deathType: 'Unknown',
+        eventType,
+        visibility: EVENT_VISIBILITY_MAP[eventType],
+        gameMode: stableGameMode,
+        gameVersion: currentGameVersion,
+        playerShip: currentPlayerShip,
+        eventDescription,
+        isPlayerInvolved: true,
+        playerHandle: currentUsername || undefined,
+        ...extra,
+    };
+    await processKillEvent(partialEvent, silentMode, 0);
+}
+
 // --- Main Parsing Function ---
 
 export async function parseLogContent(content: string, silentMode = false) {
@@ -470,8 +652,15 @@ export async function parseLogContent(content: string, silentMode = false) {
     for (const line of lines) {
         if (!line.trim()) continue; // Skip empty lines
 
+        // Previous-line state for multi-line notifications (title line has no closing quote)
+        const priorNotificationTitle = previousNotificationTitle;
+        const titleMatch = line.match(notificationTitleOnlyRegex);
+        previousNotificationTitle = titleMatch?.groups?.title ? titleMatch.groups.title : null;
+
         try { // Add try-catch around line processing
             // --- Login Detection ---
+            const geidMatch = line.match(loginGeidRegex);
+            if (geidMatch?.groups) currentGeid = geidMatch.groups.geid;
             const loginMatch = line.match(loginRegex) || line.match(legacyLoginRegex);
             if (loginMatch && loginMatch[1]) {
                 const username = loginMatch[1];
@@ -538,7 +727,14 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue; // Session line processed
             }
 
-            // --- Vehicle Destruction ---
+            // --- Vehicle Destroyed (SC 4.10) ---
+            const vehicleDestroyedMatch = line.match(vehicleDestroyedRegex);
+            if (vehicleDestroyedMatch?.groups) {
+                await handleVehicleDestroyed(vehicleDestroyedMatch.groups, silentMode);
+                continue;
+            }
+
+            // --- Vehicle Destruction (SUNSET: pre-4.4 format) ---
             const destructionMatch = line.match(vehicleDestructionRegex);
             if (destructionMatch?.groups) {
                 const { timestamp, vehicle, vehicle_zone, pos_x, pos_y, pos_z, driver, destroy_level_from, destroy_level_to, caused_by, damage_type } = destructionMatch.groups;
@@ -966,6 +1162,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         missionCategory: category,
                         missionId: missionId || undefined,
                         objectiveId: objectiveId || undefined,
+                        ...commsMeta(missionId),
                         contractName: missionMetadataCache.get(missionId || '')?.contractName,
                         contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
                         generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
@@ -1013,6 +1210,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         missionDuration: duration,
                         missionId: missionId || undefined,
                         objectiveId: objectiveId || undefined,
+                        ...commsMeta(missionId),
                         contractName: missionMetadataCache.get(missionId || '')?.contractName,
                         contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
                         generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
@@ -1049,6 +1247,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         missionCategory: classifyMission(cleaned),
                         missionId: missionId || undefined,
                         objectiveId: objectiveId || undefined,
+                        ...commsMeta(missionId),
                         contractName: missionMetadataCache.get(missionId || '')?.contractName,
                         contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
                         generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
@@ -1095,6 +1294,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                         missionDuration: duration,
                         missionId: missionId || undefined,
                         objectiveId: objectiveId || undefined,
+                        ...commsMeta(missionId),
                         contractName: missionMetadataCache.get(missionId || '')?.contractName,
                         contractDefinitionId: missionMetadataCache.get(missionId || '')?.contractDefinitionId,
                         generatorName: missionMetadataCache.get(missionId || '')?.generatorName,
@@ -1142,6 +1342,176 @@ export async function parseLogContent(content: string, silentMode = false) {
                 }
                 continue;
             }
+
+            // === SC 4.10 ACTIVITY EVENTS ===
+            // Mission comms tags (cached per missionId; attached to the mission events that follow)
+            const commsMatch = line.match(commsNotificationRegex);
+            if (commsMatch?.groups) {
+                const { tags, missionId } = commsMatch.groups;
+                const parsedTags = parseCommsTags(tags);
+                if (parsedTags.organization || parsedTags.type) {
+                    missionCommsCache.set(missionId, { organization: parsedTags.organization, type: parsedTags.type });
+                }
+                continue;
+            }
+
+            // Shop request: remember it until the matching RmShopFlowResponse arrives (may be in a later chunk)
+            const shopReqMatch = line.match(shopBuyRequestRegex) || line.match(shopRentalRequestRegex);
+            if (shopReqMatch?.groups) {
+                const g = shopReqMatch.groups;
+                const ms = Date.parse(g.ts);
+                const cutoff = ms - 10000;
+                for (let i = pendingShopRequests.length - 1; i >= 0; i--) {
+                    if (pendingShopRequests[i].ms < cutoff) pendingShopRequests.splice(i, 1);
+                }
+                pendingShopRequests.push({
+                    ms, ts: g.ts, playerId: g.playerId,
+                    action: g.offering !== undefined ? 'rent' : 'buy',
+                    shopName: g.shopName, item: g.item,
+                    quantity: g.qty !== undefined ? parseInt(g.qty) : undefined,
+                    offering: g.offering !== undefined ? parseInt(g.offering) : undefined,
+                    price: parseFloat(g.price), currency: g.currency || 'UEC',
+                });
+                continue;
+            }
+
+            const shopRespMatch = line.match(shopFlowResponseRegex);
+            if (shopRespMatch?.groups) {
+                const { ts, playerId, result } = shopRespMatch.groups;
+                const ms = Date.parse(ts);
+                // Drop stale requests, then take the oldest pending request for this player (responses answer in order)
+                for (let i = pendingShopRequests.length - 1; i >= 0; i--) {
+                    if (ms - pendingShopRequests[i].ms > SHOP_PAIRING_WINDOW_MS) pendingShopRequests.splice(i, 1);
+                }
+                const idx = pendingShopRequests.findIndex(p => p.playerId === playerId && ms >= p.ms);
+                if (idx >= 0) {
+                    const req = pendingShopRequests.splice(idx, 1)[0];
+                    if (result === 'Success' && isLocalPlayerId(req.playerId)) {
+                        const shopDisplayName = prettifyShopName(req.shopName);
+                        const verb = req.action === 'buy' ? 'Bought' : 'Rented';
+                        const qty = req.action === 'buy' && (req.quantity ?? 1) > 1 ? ` x${req.quantity}` : '';
+                        await emitActivityEvent('shop_transaction', `shop_${req.ts}_${req.playerId}_${req.item}`, req.ts,
+                            `${verb} ${req.item}${qty} at ${shopDisplayName} for ${Math.round(req.price).toLocaleString('en-US')} ${req.currency}`,
+                            {
+                                eventData: {
+                                    action: req.action, shopName: req.shopName, shopDisplayName, item: req.item,
+                                    ...(req.action === 'buy' ? { quantity: req.quantity } : { offering: req.offering }),
+                                    price: req.price, currency: req.currency, result: 'Success',
+                                },
+                            }, silentMode);
+                    }
+                }
+                continue;
+            }
+
+            // Objective progress (de-duplicated by id + text)
+            const objProgressMatch = line.match(objectiveProgressRegex);
+            if (objProgressMatch?.groups) {
+                const { objectiveId, text } = objProgressMatch.groups;
+                const dedupKey = `${objectiveId}|${text}`;
+                if (!seenObjectiveProgress.has(dedupKey)) {
+                    seenObjectiveProgress.add(dedupKey);
+                    const cleaned = cleanObjectiveText(text);
+                    if (cleaned) {
+                        await emitActivityEvent('objective_update', `objective_prog_${objectiveId}_${cleaned.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                            `Objective: ${cleaned}`,
+                            { objectiveText: cleaned, objectiveId, eventData: { progress: true } }, silentMode);
+                    }
+                }
+                continue;
+            }
+
+            // Objective complete (title wraps onto the next line, so no closing quote is required)
+            const objCompleteMatch = line.match(missionObjectiveCompleteRegex);
+            if (objCompleteMatch?.groups) {
+                const objectiveText = objCompleteMatch.groups.objectiveText.trim();
+                await emitActivityEvent('objective_update', `objective_complete_${lineTs}_${objectiveText.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                    `Objective Complete: ${objectiveText}`,
+                    { objectiveText, eventData: { completed: true } }, silentMode);
+                continue;
+            }
+
+            // Party invite: inviter is on the previous "Added notification" title line
+            if (partyInviteRegex.test(line)) {
+                const inviter = priorNotificationTitle;
+                if (inviter) {
+                    await emitActivityEvent('party_invite', `party_invite_${lineTs}_${inviter.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                        `Party invite from ${inviter}`, { partyMember: inviter }, silentMode);
+                }
+                continue;
+            }
+
+            // Own status effects (the line also names other nearby players: ignore those)
+            const statusMatch = line.match(statusEffectRegex);
+            if (statusMatch?.groups) {
+                const { ts, player, effect } = statusMatch.groups;
+                if (currentUsername && player.trim() === currentUsername) {
+                    await emitActivityEvent('status_effect', `status_${ts}_${effect}`, ts, `Status effect: ${effect}`, { eventData: { effect } }, silentMode);
+                }
+                continue;
+            }
+
+            const rewardMatch = line.match(rewardEarnedRegex);
+            if (rewardMatch?.groups) {
+                const reward = rewardMatch.groups.reward.trim();
+                await emitActivityEvent('reward_earned', `reward_${lineTs}_${reward.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                    `Earned: ${reward}`, { eventData: { reward } }, silentMode);
+                continue;
+            }
+
+            if (emergencyServicesRegex.test(line)) {
+                await emitActivityEvent('emergency_services', `emergency_${lineTs}`, lineTs, 'Local Emergency Services are en route',
+                    { eventData: { message: 'Local Emergency Services Are En Route' } }, silentMode);
+                continue;
+            }
+
+            const zoneMatch = line.match(zoneNoticeRegex);
+            if (zoneMatch?.groups) {
+                const { action, zone } = zoneMatch.groups;
+                const enter = action === 'Entering';
+                const zoneType = zone === 'Armistice Zone' ? 'armistice' : 'private_property';
+                await emitActivityEvent('location_change', `zone_${zoneType}_${enter ? 'enter' : 'leave'}_${lineTs}`, lineTs,
+                    `${enter ? 'Entered' : 'Left'} ${zone}`,
+                    { destination: zone, eventData: { zoneType, action: enter ? 'enter' : 'leave' } }, silentMode);
+                continue;
+            }
+
+            const qtSelectedMatch = line.match(qtSelectedRegex);
+            if (qtSelectedMatch?.groups) {
+                const { vehicle, destination } = qtSelectedMatch.groups;
+                await emitActivityEvent('quantum_travel', `qt_selected_${lineTs}_${destination}`, lineTs,
+                    `Quantum target selected: ${destination}`,
+                    { destination, eventData: { phase: 'selected', vehicle } }, silentMode);
+                continue;
+            }
+
+            const qtArrivedMatch = line.match(qtArrivedRegex);
+            if (qtArrivedMatch?.groups) {
+                const { vehicle, vehicleId } = qtArrivedMatch.groups;
+                await emitActivityEvent('quantum_travel', `qt_arrived_${lineTs}_${vehicleId}`, lineTs,
+                    'Quantum travel: arrived at final destination',
+                    { eventData: { phase: 'arrived', vehicle, vehicleId } }, silentMode);
+                continue;
+            }
+
+            // Ship crew channel: own join/leave, crew joins
+            const channelSelfMatch = line.match(channelSelfRegex);
+            if (channelSelfMatch?.groups) {
+                const { action, channelName } = channelSelfMatch.groups;
+                await emitActivityEvent('voip_channel', `voip_self_${action}_${lineTs}_${channelName.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                    `You ${action} VOIP channel "${channelName}"`,
+                    { partyMember: currentUsername || undefined, channelName, eventData: { action, self: true, ...parseChannelName(channelName) } }, silentMode);
+                continue;
+            }
+            const channelJoinMatch = line.match(channelOtherJoinedRegex);
+            if (channelJoinMatch?.groups) {
+                const { playerName, channelName } = channelJoinMatch.groups;
+                await emitActivityEvent('voip_channel', `voip_joined_${lineTs}_${playerName.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                    `${playerName} joined VOIP channel "${channelName}"`,
+                    { partyMember: playerName, channelName, eventData: { action: 'joined', self: false, ...parseChannelName(channelName) } }, silentMode);
+                continue;
+            }
+            // === END SC 4.10 ACTIVITY EVENTS ===
 
             // --- Party Events ---
             const partyConnectMatch = line.match(partyMemberConnectedRegex);
@@ -1221,7 +1591,7 @@ export async function parseLogContent(content: string, silentMode = false) {
             if (voipMatch?.groups) {
                 const { playerName, channelName } = voipMatch.groups;
                 logger.info(MODULE_NAME, 'VOIP channel event:', { player: playerName, channel: channelName });
-                const eventId = `voip_${playerName}_${Date.now()}`;
+                const eventId = `voip_left_${lineTs}_${playerName.replace(/[^a-zA-Z0-9]+/g, '_')}`;
                 const partialEvent: Partial<KillEvent> = {
                     id: eventId,
                     timestamp: lineTs,
@@ -1231,6 +1601,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     eventType: 'voip_channel' as GameEventType,
                     partyMember: playerName,
                     channelName: channelName,
+                    eventData: { action: 'left', self: playerName === currentUsername, ...parseChannelName(channelName) },
                     visibility: EVENT_VISIBILITY_MAP['voip_channel'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
@@ -1288,6 +1659,7 @@ export async function parseLogContent(content: string, silentMode = false) {
                     deathType: 'Unknown',
                     eventType: 'quantum_travel' as GameEventType,
                     destination: destination,
+                    eventData: { phase: 'route' },
                     visibility: EVENT_VISIBILITY_MAP['quantum_travel'],
                     gameMode: stableGameMode,
                     gameVersion: currentGameVersion,
@@ -1328,6 +1700,11 @@ export function resetParserState() {
     logger.info(MODULE_NAME, "Resetting parser state.");
     currentUsername = getLastLoggedInUser() || null; // Re-initialize from store
     currentPlayerShip = "Unknown";
+    currentGeid = null;
+    previousNotificationTitle = null;
+    pendingShopRequests.length = 0;
+    seenObjectiveProgress.clear();
+    missionCommsCache.clear();
     stableGameMode = "Unknown"; // Reset stable mode
     rawDetectedGameMode = "Unknown"; // Reset raw mode
     lastRawModeDetectionTime = 0;
@@ -1497,3 +1874,132 @@ export function clearZoneHistory(): void {
         logger.error(MODULE_NAME, 'Error clearing zone history:', error);
     }
 }
+/**
+ * Named registry of the line patterns this parser depends on. Used by the Game.log diff tracker
+ * (log-diff/) to report which patterns stop matching after a game patch. Read-only: matching here
+ * has no side effects on parsing.
+ */
+export const PARSER_PATTERNS: Readonly<Record<string, RegExp>> = Object.freeze({
+    login: loginRegex,
+    legacyLogin: legacyLoginRegex,
+    sessionStart: sessionStartRegex,
+    puMode: puModeRegex,
+    acMode: acModeRegex,
+    frontendMode: frontendModeRegex,
+    loadout: loadoutRegex,
+    vehicleDestruction: vehicleDestructionRegex,
+    gameVersion: versionPattern,
+    actorStateDead: newActorStateDeadRegex,
+    corpseUtils: corpseUtilsRegex,
+    attachmentReceived: attachmentReceivedRegex,
+    fatalCollision: fatalCollisionRegex,
+    newVehicleDestroyed: newVehicleDestroyedRegex,
+    missionAccepted: missionAcceptedRegex,
+    missionComplete: missionCompleteRegex,
+    missionFailed: missionFailedRegex,
+    missionShared: missionSharedRegex,
+    missionObjective: missionObjectiveRegex,
+    missionObjectiveComplete: missionObjectiveCompleteRegex,
+    missionObjectiveWithdrawn: missionObjectiveWithdrawnRegex,
+    missionEnded: missionEndedRegex,
+    missionPhaseMarker: missionPhaseMarkerRegex,
+    partyMemberConnected: partyMemberConnectedRegex,
+    partyMemberLeft: partyMemberLeftRegex,
+    partyDisbanded: partyDisbandedRegex,
+    partyInvite: partyInviteRegex,
+    memberLeftNotif: memberLeftNotifRegex,
+    voipChannelLeft: voipChannelLeftRegex,
+    jurisdictionEntered: jurisdictionEnteredRegex,
+    monitoredSpace: monitoredSpaceRegex,
+    qtFuelRequest: qtFuelRequestRegex,
+    qtRouteSuccess: qtRouteSuccessRegex,
+    qtStartLocation: qtStartLocationRegex,
+    hangarRequest: hangarRequestRegex,
+    refuelRequest: refuelRequestRegex,
+    corpseLog: corpseLogRegex,
+    kill: killPatternRegex,
+    incap: incapRegex,
+    environmentDeath: environmentDeathRegex,
+    systemQuit: systemQuitRegex,
+    // SC 4.10
+    loginGeid: loginGeidRegex,
+    vehicleDestroyed: vehicleDestroyedRegex,
+    shopBuyRequest: shopBuyRequestRegex,
+    shopRentalRequest: shopRentalRequestRegex,
+    shopFlowResponse: shopFlowResponseRegex,
+    commsNotification: commsNotificationRegex,
+    objectiveProgress: objectiveProgressRegex,
+    statusEffect: statusEffectRegex,
+    rewardEarned: rewardEarnedRegex,
+    emergencyServices: emergencyServicesRegex,
+    zoneNotice: zoneNoticeRegex,
+    qtSelected: qtSelectedRegex,
+    qtArrived: qtArrivedRegex,
+    channelSelf: channelSelfRegex,
+    channelOtherJoined: channelOtherJoinedRegex,
+});
+
+/**
+ * Health of every PARSER_PATTERNS entry, keyed by the same names. status: 'active' (seen in the lastSeen build),
+ * 'sunset' (the game no longer emits it; the code path is kept for old logs) or 'unverified' (not exercised in
+ * recent logs). since: first game version the pattern applies to (active) or stopped being emitted (sunset).
+ */
+export type ParserPatternStatus = 'active' | 'sunset' | 'unverified';
+export const PARSER_PATTERN_META: Record<string, { status: ParserPatternStatus; since?: string; lastSeen?: string; note?: string }> = {
+    login: { status: 'active', lastSeen: '4.10.200' },
+    legacyLogin: { status: 'active', lastSeen: '4.10.200', note: 'Legacy login line still present' },
+    sessionStart: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
+    puMode: { status: 'active', lastSeen: '4.10.200' },
+    acMode: { status: 'unverified', note: 'Arena Commander not tested on 4.10.200' },
+    frontendMode: { status: 'active', lastSeen: '4.10.200' },
+    loadout: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
+    vehicleDestruction: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<Vehicle Destruction> replaced by <Vehicle Destroyed> (kept for old logs)' },
+    gameVersion: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
+    actorStateDead: { status: 'active', lastSeen: '4.10.200' },
+    corpseUtils: { status: 'active', lastSeen: '4.10.196', note: 'Only fires for non-kept (lost) gear; not exercised in 4.10.200 samples' },
+    attachmentReceived: { status: 'active', lastSeen: '4.10.200' },
+    fatalCollision: { status: 'active', lastSeen: '4.10.200' },
+    newVehicleDestroyed: { status: 'unverified', note: '[VEHICLE SPAWN] Vehicle Destroyed was Arena Commander only (last seen 4.5.167); AC untested on 4.10' },
+    missionAccepted: { status: 'active', lastSeen: '4.10.200' },
+    missionComplete: { status: 'active', lastSeen: '4.10.200' },
+    missionFailed: { status: 'active', lastSeen: '4.10.196' },
+    missionShared: { status: 'active', lastSeen: '4.10.196' },
+    missionObjective: { status: 'active', lastSeen: '4.10.200' },
+    missionObjectiveComplete: { status: 'active', lastSeen: '4.10.200', note: 'Fixed for the title wrapping onto the next line' },
+    missionObjectiveWithdrawn: { status: 'active', lastSeen: '4.10.196' },
+    missionEnded: { status: 'active', lastSeen: '4.10.200' },
+    missionPhaseMarker: { status: 'active', lastSeen: '4.10.200' },
+    partyMemberConnected: { status: 'unverified', note: '0 matches in any 4.10 sample log; anchored after the timestamp' },
+    partyMemberLeft: { status: 'active', lastSeen: '4.10.196', note: 'Anchored after the timestamp (hyphen/space names)' },
+    partyDisbanded: { status: 'active', lastSeen: '4.10.200' },
+    partyInvite: { status: 'active', lastSeen: '4.10.200', note: 'Body line only; inviter is on the previous Added notification line' },
+    memberLeftNotif: { status: 'active', lastSeen: '4.10.200' },
+    voipChannelLeft: { status: 'active', lastSeen: '4.10.200', note: 'Anchored after the timestamp (hyphen/space names)' },
+    jurisdictionEntered: { status: 'active', lastSeen: '4.10.200' },
+    monitoredSpace: { status: 'active', lastSeen: '4.10.200' },
+    qtFuelRequest: { status: 'active', lastSeen: '4.10.200' },
+    qtRouteSuccess: { status: 'active', lastSeen: '4.10.200' },
+    qtStartLocation: { status: 'active', lastSeen: '4.10.200' },
+    hangarRequest: { status: 'active', lastSeen: '4.10.200' },
+    refuelRequest: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
+    corpseLog: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<[ActorState] Corpse> replaced by <[ActorState] Dead> (kept for old logs)' },
+    kill: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<Actor Death> CActor::Kill no longer emitted: no FPS kill attribution since 4.4 (kept for old logs)' },
+    incap: { status: 'unverified', note: 'Last seen 4.6; no incaps in any 4.10 log' },
+    environmentDeath: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<Actor Death> environment deaths no longer emitted (kept for old logs)' },
+    systemQuit: { status: 'active', lastSeen: '4.10.200' },
+    loginGeid: { status: 'active', lastSeen: '4.10.200', note: 'Local GEID for <Vehicle Destroyed> owner/killer matching' },
+    vehicleDestroyed: { status: 'active', lastSeen: '4.10.200', since: '4.10.200', note: 'Replaces <Vehicle Destruction>; owner [0] or _PU_AI_ in class = NPC' },
+    shopBuyRequest: { status: 'active', lastSeen: '4.10.200' },
+    shopRentalRequest: { status: 'active', lastSeen: '4.10.200' },
+    shopFlowResponse: { status: 'active', lastSeen: '4.10.200', note: 'Request counts only when paired with result[Success]' },
+    commsNotification: { status: 'active', lastSeen: '4.10.200' },
+    objectiveProgress: { status: 'active', lastSeen: '4.10.200', note: 'Chatty; de-duplicated by id + text' },
+    statusEffect: { status: 'active', lastSeen: '4.10.200' },
+    rewardEarned: { status: 'active', lastSeen: '4.10.200' },
+    emergencyServices: { status: 'active', lastSeen: '4.10.200' },
+    zoneNotice: { status: 'active', lastSeen: '4.10.200' },
+    qtSelected: { status: 'active', lastSeen: '4.10.200' },
+    qtArrived: { status: 'active', lastSeen: '4.10.200' },
+    channelSelf: { status: 'active', lastSeen: '4.10.200' },
+    channelOtherJoined: { status: 'active', lastSeen: '4.10.200' },
+};
