@@ -57,7 +57,7 @@ function sendConnectionStatus(status: ConnectionStatus, attempts?: number, nextD
     currentStatus = status;
     getMainWindow()?.webContents.send('connection-status-changed', status, actualAttempts, nextDelay);
 }
-let logChunkBuffer: string[] = []; // Buffer for offline/unauthenticated chunks
+let logChunkBuffer: Array<{ chunk: string; channel?: string }> = []; // Buffer for offline/unauthenticated chunks (tagged with their game channel)
 
 // Function to attempt authentication when connected but not authenticated
 async function attemptAuthentication(): Promise<void> {
@@ -487,7 +487,7 @@ export function disconnectFromServer(): void {
   }
 }
 
-export function sendLogChunk(chunk: string): void {
+export function sendLogChunk(chunk: string, channel?: string): void {
   if (!socket?.connected) {
     logger.warn(MODULE_NAME, 'Cannot send log chunk, not connected to server.');
     // Optional: Queue chunks or attempt reconnect? For now, just drop.
@@ -498,6 +498,7 @@ export function sendLogChunk(chunk: string): void {
   const payload = {
     clientId: getPersistedClientId(), // Get the persistent client ID
     chunk: chunk,
+    ...(channel ? { channel } : {}), // Star Citizen channel (LIVE, PTU, ...) the chunk came from
   };
 
   // logger.debug(MODULE_NAME, `Sending log chunk for clientId: ${payload.clientId}`); // Removed as clientId is no longer sent directly
@@ -520,14 +521,14 @@ export function sendLogChunk(chunk: string): void {
  * Only while connected AND authenticated; never buffered (snapshots are replaced every second,
  * and stale events have no value). Returns true when emitted.
  */
-export function sendTelemetry(payload: TelemetryUploadPayload): boolean {
+export function sendTelemetry(payload: TelemetryUploadPayload, channel?: string): boolean {
   // The server only accepts telemetry from signed-in users (guests are rejected), so don't send
   // (and don't mark events as shared) in guest mode.
   if (!socket?.connected || !isAuthenticated || !getAuthStatus().isAuthenticated) {
     countDropped(payload.kind === 'events' ? payload.events.length : 1);
     return false;
   }
-  const body = { clientId: getPersistedClientId(), ...payload };
+  const body = { clientId: getPersistedClientId(), ...(channel ? { channel } : {}), ...payload };
   const bytes = JSON.stringify(body).length;
   socket.emit('submit_telemetry', body, (ack?: { ok?: boolean; error?: string }) => {
     if (ack && ack.ok === false) {
@@ -564,7 +565,7 @@ function flushLogBuffer(): void {
         if (index < logChunkBuffer.length) {
             if (isConnected() && isAuthenticated) { // Double-check connection before each send
                 const chunkToSend = logChunkBuffer[index];
-                sendLogChunk(chunkToSend); // Use the existing send function
+                sendLogChunk(chunkToSend.chunk, chunkToSend.channel); // Use the existing send function
                 index++;
                 setTimeout(sendNext, sendInterval);
             } else {
@@ -583,14 +584,14 @@ function flushLogBuffer(): void {
 
 
 // Updated function to ensure connection/auth before sending, buffers otherwise
-export function ensureConnectedAndSendLogChunk(chunk: string): void {
+export function ensureConnectedAndSendLogChunk(chunk: string, channel?: string): void {
   if (!isConnected()) {
     logger.info(MODULE_NAME, 'Not connected. Buffering log chunk and attempting connection...');
-    logChunkBuffer.push(chunk);
+    logChunkBuffer.push({ chunk, channel });
     connectToServer(); // Attempt connection (checks for token internally)
   } else if (!isAuthenticated) {
      logger.info(MODULE_NAME, 'Connected but not authenticated. Buffering log chunk and attempting authentication...');
-     logChunkBuffer.push(chunk);
+     logChunkBuffer.push({ chunk, channel });
      // Trigger authentication attempt for connected but unauthenticated state
      if (!isRetryingAuth) {
        attemptAuthentication();
@@ -599,7 +600,7 @@ export function ensureConnectedAndSendLogChunk(chunk: string): void {
     // Connected and authenticated, send immediately
     // Also attempt to flush buffer in case connection dropped and re-established
     flushLogBuffer(); // Try flushing first
-    sendLogChunk(chunk); // Then send the current chunk
+    sendLogChunk(chunk, channel); // Then send the current chunk
   }
 }
 

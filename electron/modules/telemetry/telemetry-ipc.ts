@@ -1,10 +1,14 @@
 /** IPC for telemetry / overlay / Game.log diff (used by the Settings page). */
-import { ipcMain, dialog, shell } from 'electron';
+import { app, ipcMain, dialog, shell } from 'electron';
 import * as logger from '../logger';
 import { getCurrentLogPath } from '../config-manager';
 import type { TelemetrySettings } from '../config-manager';
+import { getChannelsState, initChannels, selectGameRoot } from '../channel-manager';
+import { applyGameRootChange } from '../log-watcher';
+import { getGameRoot } from '../config-manager';
 import {
   applyTelemetrySettings,
+  getTelemetryRecorder,
   enableTelemetryInUserCfg,
   getLogDiffTracker,
   getOverlayState,
@@ -25,12 +29,36 @@ export function registerTelemetryIpc(): void {
     syncOverlayFeature();
     return s;
   });
-  ipcMain.handle('telemetry:get-state', () => ({ ...getOverlayState({ maxRowsPerSection: 200 }), gameRunning: isGameRunning() }));
+  ipcMain.handle('telemetry:get-state', () => ({
+    ...getOverlayState({ maxRowsPerSection: 200 }),
+    gameRunning: isGameRunning(),
+    recording: { dir: path.join(app.getPath('userData'), 'telemetry-recordings'), active: !!getTelemetryRecorder()?.active, file: getTelemetryRecorder()?.sessionFile ?? null },
+  }));
+  ipcMain.handle('telemetry:open-recordings', async () => {
+    const dir = path.join(app.getPath('userData'), 'telemetry-recordings');
+    await fsp.mkdir(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return err ? { ok: false, error: err, dir } : { ok: true, dir };
+  });
+
+  // --- Star Citizen channels (LIVE / PTU / ...) ---
+  ipcMain.handle('channels:get', () => getChannelsState());
+  ipcMain.handle('channels:select-root', async () => {
+    const r = await dialog.showOpenDialog({ title: 'Select your Star Citizen folder (the one containing LIVE, PTU, ...)', defaultPath: getGameRoot() || undefined, properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const res = await selectGameRoot(r.filePaths[0]);
+    if (res.ok) await applyGameRootChange();
+    return { ...res, state: getChannelsState() };
+  });
+  ipcMain.handle('channels:rescan', async () => {
+    await initChannels();
+    return getChannelsState();
+  });
   ipcMain.handle('telemetry:toggle-overlay', () => toggleOverlay());
   ipcMain.handle('telemetry:user-cfg-status', () => getUserCfgStatus());
-  ipcMain.handle('telemetry:enable-user-cfg', async () => {
+  ipcMain.handle('telemetry:enable-user-cfg', async (_e, channel?: string) => {
     try {
-      return { ok: true, ...(await enableTelemetryInUserCfg()) };
+      return { ok: true, ...(await enableTelemetryInUserCfg(typeof channel === 'string' && channel ? channel : 'all')) };
     } catch (err) {
       logger.error(MODULE_NAME, `enable user.cfg failed: ${err}`);
       return { ok: false, error: (err as Error).message };

@@ -126,6 +126,11 @@ export class TelemetryService extends EventEmitter {
     this.#setStatus('disabled');
   }
 
+  /** A new Game.log started: the hints read from the previous one no longer apply. */
+  resetLogHints(): void {
+    this.logHints = { cfgEnabled: null, serviceRegistered: false, serverAddress: null, componentInitialized: false, lastHintAt: null };
+  }
+
   /** Reconnect now (e.g. Game.log says the telemetry server just came up). */
   kick(reason: string): void {
     if (!this.#running) return;
@@ -217,7 +222,7 @@ export class TelemetryService extends EventEmitter {
     }
     const events = this.state.applyFrame(frame, now);
     for (const e of events) this.#recordEvent(e);
-    this.emit('frame');
+    this.emit('frame', frame);
   }
 
   #onEnd(err: Error | undefined, handle: StreamHandle): void {

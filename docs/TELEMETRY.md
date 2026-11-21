@@ -96,6 +96,25 @@ npm run log-diff -- path/to/old/Game.log path/to/new/Game.log --redact YourHandl
 Example, 4.1 (build 9659838) → 4.2 (build 9898472): 154 new kinds of lines, 60 not seen,
 parser patterns lost: `corpseLog`, `systemQuit`; now matching: `actorStateDead`, `newVehicleDestroyed`.
 
+## Channels (LIVE / PTU / EPTU / TECH-PREVIEW / HOTFIX)
+
+Settings → General → *Star Citizen Folder* holds the game root (`gameRoot`, the folder with `LIVE`, `PTU`, ...).
+It is derived once from the old `logFilePath` (parent of the channel folder); non-standard layouts stay in
+single-file mode. Channels = sub-folders with `Game.log`, `Bin64` or `StarCitizen_Launcher`, re-scanned every 30 s.
+The *active* channel is the one whose Game.log was written most recently (stat-polled every 2 s; a switch needs a
+>1 s newer write and at most one per 30 s). Only its lines are parsed/uploaded; a switch behaves like a new Game.log
+(parser reset, new session, log read from the start). `submit_log_chunk` / `submit_telemetry` carry `channel`.
+user.cfg is handled per channel (Settings → Telemetry), the Game.log diff keeps a baseline per channel
+(`log-diff/<CHANNEL>/`; the pre-channel baseline is copied to the old channel's folder).
+
+## Local recordings
+
+`<userData>/telemetry-recordings/<time>_<channel>_<version>.log`, JSON Lines, one file per game session
+(setting `telemetryRecord`, default on; never uploaded). Kinds: `session_start`, `status`, `changes` (flatten() path
+diffs `{path: [old, new]}`, null = absent, ≤4 lines/s), `event`, `game_event`, `session_end` (frames, fpsAvg,
+fieldsSeen, `neverNonDefault` = schema fields that never carried data: the accuracy signal). force_feedback is not
+recorded; files are capped at 50 MB, the newest 30 are kept.
+
 ## Tests
 
 `npm run test:telemetry` — fake game gRPC server built from the embedded schema, state/event

@@ -228,3 +228,285 @@ test('LogDiffTracker: chunks fed right after an un-awaited beginLog belong to th
   const saved = JSON.parse(fs.readFileSync(path.join(dir, 'baseline.json'), 'utf8'));
   assert.equal(saved.build.build, '200');
 });
+
+// ---------------------------------------------------------------------------------------------
+// Star Citizen channels
+// ---------------------------------------------------------------------------------------------
+
+async function mkRoot(layout: Record<string, string[]>, rootName = 'StarCitizen') {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-chan-'));
+  const root = path.join(base, rootName);
+  for (const [ch, files] of Object.entries(layout)) {
+    fs.mkdirSync(path.join(root, ch), { recursive: true });
+    for (const f of files) {
+      const p = path.join(root, ch, f);
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, f.endsWith('.log') ? 'x\n' : '');
+    }
+  }
+  return { root, fs, path };
+}
+
+test('channels: discovery finds folders with Game.log / Bin64 / StarCitizen_Launcher, LIVE first', async () => {
+  const { discoverChannels } = await import('../../electron/modules/game-channels');
+  const { root } = await mkRoot({ PTU: ['Game.log'], LIVE: ['Game.log', 'user.cfg'], 'TECH-PREVIEW': ['Bin64/x.exe'], EPTU: ['StarCitizen_Launcher/a'], Junk: ['readme.txt'] });
+  const list = await discoverChannels(root);
+  assert.deepEqual(list.map((c) => c.name), ['LIVE', 'EPTU', 'PTU', 'TECH-PREVIEW']);
+  assert.equal(list[0].hasLog, true);
+  assert.equal(list[1].hasLog, false);
+  assert.ok(list[0].userCfgPath.endsWith('user.cfg'));
+  assert.deepEqual(await discoverChannels('/nonexistent/xyz'), []);
+});
+
+test('channels: migration derives the root from the old logFilePath (windows + posix), else single-file mode', async () => {
+  const { migrateGameRoot, pathFor } = await import('../../electron/modules/game-channels');
+  const { root, path } = await mkRoot({ LIVE: ['Game.log'], PTU: ['Game.log'] });
+  assert.equal(await migrateGameRoot(path.join(root, 'LIVE', 'Game.log')), root);
+  // non-standard layout: parent is not named like Star Citizen and the folder has no Bin64
+  const odd = await mkRoot({ MyLogs: ['Game.log'] }, 'Games');
+  assert.equal(await migrateGameRoot(odd.path.join(odd.root, 'MyLogs', 'Game.log')), null);
+  // not a Game.log at all
+  assert.equal(await migrateGameRoot(path.join(root, 'LIVE', 'other.txt')), null);
+  // a Windows path is split on backslashes even on Linux
+  const w = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
+  assert.equal(pathFor(w).dirname(pathFor(w).dirname(w)), 'C:\\Program Files\\Roberts Space Industries\\StarCitizen');
+  assert.equal(await migrateGameRoot(w), 'C:\\Program Files\\Roberts Space Industries\\StarCitizen'); // root name matches even though it does not exist here
+});
+
+test('channels: picking a channel folder in the UI selects its parent as the root', async () => {
+  const { normalizeRootSelection } = await import('../../electron/modules/game-channels');
+  const { root, path } = await mkRoot({ LIVE: ['Game.log'], PTU: ['Game.log'] });
+  const a = await normalizeRootSelection(path.join(root, 'PTU'));
+  assert.equal(a.root, root);
+  assert.equal(a.channels.length, 2);
+  const b = await normalizeRootSelection(root);
+  assert.equal(b.root, root);
+  const odd = await mkRoot({ MyLogs: ['Game.log'] }, 'Games');
+  const c = await normalizeRootSelection(odd.path.join(odd.root, 'MyLogs'));
+  assert.equal(c.root, '');
+  assert.ok(c.singleFile?.endsWith('Game.log'));
+});
+
+test('channels: ChannelTracker picks the newest log, switches only on a clearly newer write, respects the dwell time', async () => {
+  const { ChannelTracker, discoverChannels } = await import('../../electron/modules/game-channels');
+  const { root, fs, path } = await mkRoot({ LIVE: ['Game.log'], PTU: ['Game.log'] });
+  const touch = (ch: string, ms: number) => fs.utimesSync(path.join(root, ch, 'Game.log'), ms / 1000, ms / 1000);
+  let clock = 1_000_000_000_000;
+  touch('LIVE', clock - 100_000);
+  touch('PTU', clock - 500_000);
+  const switches: string[] = [];
+  const t = new ChannelTracker({ discover: () => discoverChannels(root), now: () => clock, dwellMs: 30_000, marginMs: 1000 });
+  t.onActive((c, prev) => switches.push(`${prev}>${c.name}`));
+  assert.equal((await t.poll({ force: true, emit: false }))?.name, 'LIVE'); // initial pick: silent
+  assert.deepEqual(switches, []);
+  // PTU written clearly later, but inside the dwell window after start: no switch... (initial pick does not start a dwell)
+  clock += 5_000;
+  touch('PTU', clock);
+  await t.poll();
+  assert.deepEqual(switches, ['LIVE>PTU']);
+  assert.equal(t.active, 'PTU');
+  // LIVE written again right away: dwell blocks flapping
+  clock += 5_000;
+  touch('LIVE', clock);
+  await t.poll();
+  assert.equal(t.active, 'PTU');
+  // after the dwell time it may switch back
+  clock += 60_000;
+  touch('LIVE', clock);
+  await t.poll();
+  assert.deepEqual(switches, ['LIVE>PTU', 'PTU>LIVE']);
+  // a write inside the margin is not a switch
+  clock += 60_000;
+  touch('LIVE', clock);
+  touch('PTU', clock + 500);
+  await t.poll();
+  assert.equal(t.active, 'LIVE');
+});
+
+test('channels: a freshly installed channel shows up on the next scan; the active one is kept', async () => {
+  const { ChannelTracker, discoverChannels } = await import('../../electron/modules/game-channels');
+  const { root, fs, path } = await mkRoot({ LIVE: ['Game.log'] });
+  const t = new ChannelTracker({ discover: () => discoverChannels(root) });
+  const seen: string[][] = [];
+  t.onChannels((c) => seen.push(c.map((x) => x.name)));
+  await t.poll({ force: true });
+  fs.mkdirSync(path.join(root, 'PTU', 'Bin64'), { recursive: true });
+  await t.poll({ force: true });
+  assert.deepEqual(t.channels.map((c) => c.name), ['LIVE', 'PTU']);
+  assert.equal(t.active, 'LIVE'); // PTU has no Game.log yet
+  assert.deepEqual(seen.at(-1), ['LIVE', 'PTU']);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Telemetry recorder
+// ---------------------------------------------------------------------------------------------
+
+async function recorderRig(opts: Record<string, any> = {}) {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { EventEmitter } = await import('node:events');
+  const { TelemetryRecorder } = await import('../../electron/modules/telemetry/telemetry-recorder');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-rec-'));
+  let clock = Date.parse('2026-11-21T19:05:02.000Z');
+  const state = new TelemetryState();
+  const src: any = new EventEmitter();
+  src.state = state;
+  const ctx = { channel: 'LIVE', gameVersion: '4.10.200', gameBuild: '123' };
+  const rec = new TelemetryRecorder({ dir, now: () => clock, getContext: () => ({ ...ctx }), schemaBuild: 'S1', clientVersion: 'C1', changeMs: 5, flushMs: 5, universe: ['actor.vitals.health.current', 'actor.vitals.heart_rate', 'vehicle.state.name'], ...opts });
+  rec.attach(src);
+  const frame = (f: any) => {
+    const events = state.applyFrame(f, clock);
+    for (const e of events) src.emit('event', e);
+    src.emit('frame', f);
+  };
+  const status = (s: string) => {
+    const prev = src.status ?? 'disabled';
+    src.status = s;
+    src.emit('status', s, prev);
+  };
+  const lines = async () => {
+    await rec.flush();
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.log')).sort();
+    return files.map((f) => ({ f, rows: fs.readFileSync(path.join(dir, f), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) }));
+  };
+  return { rec, src, state, dir, fs, path, ctx, frame, status, lines, tick: (ms: number) => (clock += ms), setClock: (v: number) => (clock = v) };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test('recorder: one file per session named <time>_<channel>_<version>.log, session_start .. session_end', async () => {
+  const r = await recorderRig();
+  r.status('streaming');
+  r.frame({ actor: { vitals: { health: { current: 90, max: 100 }, heart_rate: 70 } } });
+  r.status('waiting_for_game');
+  const files = await r.lines();
+  assert.equal(files.length, 1);
+  assert.equal(files[0].f, '2026-11-21T19-05-02_LIVE_4.10.200.log');
+  const kinds = files[0].rows.map((x: any) => x.kind);
+  assert.equal(kinds[0], 'session_start');
+  assert.equal(kinds.at(-1), 'session_end');
+  assert.deepEqual(files[0].rows[0], { t: '2026-11-21T19:05:02.000Z', kind: 'session_start', channel: 'LIVE', gameVersion: '4.10.200', gameBuild: '123', schemaBuild: 'S1', clientVersion: 'C1' });
+  const end = files[0].rows.at(-1);
+  assert.equal(end.frames, 1);
+  assert.equal(end.reason, 'status:waiting_for_game');
+  // universe has 3 fields, health.current + heart_rate seen non-default, vehicle.state.name never
+  assert.deepEqual(end.neverNonDefault, ['vehicle.state.name']);
+  assert.equal(end.fieldsKnown, 3);
+});
+
+test('recorder: changes are field-level diffs, coalesced (many frames inside one tick = one line), removals recorded, force_feedback never', async () => {
+  const r = await recorderRig({ changeMs: 20 });
+  r.status('streaming');
+  for (let hr = 70; hr < 80; hr++) r.frame({ actor: { vitals: { heart_rate: hr } }, force_feedback: { x: hr } });
+  await sleep(60);
+  r.frame({ actor: { vitals: { heart_rate: 80, health: { current: 50, max: 100 } } } });
+  await sleep(60);
+  const f = (await r.lines())[0].rows;
+  const changes = f.filter((x: any) => x.kind === 'changes');
+  assert.equal(changes.length, 2, 'ten frames collapsed into one line, then one more');
+  assert.equal(changes[0].full, true);
+  assert.deepEqual(changes[0].changes, { 'actor.vitals.heart_rate': [null, '79'] });
+  assert.deepEqual(changes[1].changes, { 'actor.vitals.heart_rate': ['79', '80'], 'actor.vitals.health.current': [null, '50'], 'actor.vitals.health.max': [null, '100'] });
+  assert.ok(!JSON.stringify(f).includes('force_feedback'));
+  // section goes stale: its paths are recorded as removed
+  r.tick(10_000);
+  r.state.tick(Date.now() + 10_000);
+  r.src.emit('frame', undefined);
+  r.rec.sample();
+  const rows = (await r.lines())[0].rows.filter((x: any) => x.kind === 'changes');
+  assert.deepEqual(rows.at(-1).changes['actor.vitals.heart_rate'], ['80', null]);
+  await r.rec.close();
+});
+
+test('recorder: changes are throttled to at most ~4 writes/s by default', async () => {
+  const r = await recorderRig({ changeMs: 250 });
+  r.status('streaming');
+  const t0 = Date.now();
+  let n = 0;
+  while (Date.now() - t0 < 700) {
+    r.frame({ actor: { vitals: { heart_rate: ++n } } });
+    await sleep(10);
+  }
+  await sleep(300);
+  const changes = (await r.lines())[0].rows.filter((x: any) => x.kind === 'changes');
+  assert.ok(n > 40);
+  assert.ok(changes.length >= 2 && changes.length <= 4, `got ${changes.length} change lines for ${n} frames`);
+  await r.rec.close();
+});
+
+test('recorder: derived events and the game\'s own events are recorded', async () => {
+  const r = await recorderRig();
+  r.status('streaming');
+  r.frame({ actor: { state: { locomotion: 'ACTOR_LOCOMOTION_STATE_ON_FOOT' } }, events: { events: [{ type: 'GAME_EVENT_TYPE_SPAWN' }] } });
+  r.frame(vehicleFrame());
+  const rows = (await r.lines())[0].rows;
+  assert.ok(rows.some((x: any) => x.kind === 'game_event' && x.event.type === 'GAME_EVENT_TYPE_SPAWN'));
+  assert.ok(rows.some((x: any) => x.kind === 'event' && x.type === 'vehicle_entered'));
+  assert.ok(rows.some((x: any) => x.kind === 'status' && x.status === 'streaming'));
+  await r.rec.close();
+});
+
+test('recorder: file is capped, then session_end still gets written; only the newest N files are kept', async () => {
+  const r = await recorderRig({ maxFileBytes: 2000, keepFiles: 3, changeMs: 1 });
+  r.status('streaming');
+  for (let i = 0; i < 100; i++) {
+    r.frame({ actor: { vitals: { heart_rate: i + 1 }, state: { uec_balance: String(i * 1000 + 1) } } });
+    await sleep(2);
+  }
+  r.status('waiting_for_game');
+  const rows = (await r.lines())[0].rows;
+  const size = r.fs.statSync(r.path.join(r.dir, (await r.lines())[0].f)).size;
+  assert.ok(size < 2000 + 1500, `file is bounded (${size} B)`);
+  assert.ok(rows.some((x: any) => x.kind === 'truncated'));
+  const end = rows.at(-1);
+  assert.equal(end.kind, 'session_end');
+  assert.equal(end.truncated, true);
+  assert.ok(end.droppedLines > 0);
+  // rotation: 5 sessions with keepFiles=3
+  for (let i = 1; i <= 5; i++) {
+    r.tick(60_000);
+    r.status('streaming');
+    r.frame({ actor: { vitals: { heart_rate: 70 + i } } });
+    r.status('waiting_for_game');
+    await r.rec.flush();
+    await sleep(20);
+  }
+  const files = r.fs.readdirSync(r.dir).filter((f) => f.endsWith('.log')).sort();
+  assert.equal(files.length, 3);
+  assert.ok(files.at(-1)!.startsWith('2026-11-21T19-10-02'), files.join(','));
+  await r.rec.flush();
+});
+
+test('recorder: a channel switch ends the session and the next one is named after the new channel; toggling off stops recording', async () => {
+  let enabled = true;
+  const r = await recorderRig({ isEnabled: () => enabled });
+  r.status('streaming');
+  r.frame({ actor: { vitals: { heart_rate: 70 } } });
+  r.rec.endSession('channel_change'); // what noteLogBegin does when another Game.log starts
+  r.ctx.channel = 'PTU';
+  r.ctx.gameVersion = '5.0.1';
+  r.tick(1000);
+  r.frame({ actor: { vitals: { heart_rate: 71 } } }); // stream still running: a new file starts lazily
+  r.tick(1000);
+  enabled = false;
+  r.frame({ actor: { vitals: { heart_rate: 72 } } });
+  r.frame({ actor: { vitals: { heart_rate: 73 } } });
+  const files = await r.lines();
+  assert.deepEqual(files.map((f) => f.f), ['2026-11-21T19-05-02_LIVE_4.10.200.log', '2026-11-21T19-05-03_PTU_5.0.1.log']);
+  assert.equal(files[0].rows.at(-1).reason, 'channel_change');
+  assert.equal(files[1].rows.at(-1).reason, 'recording_off');
+  assert.equal(r.rec.active, false);
+});
+
+test('recorder: field universe comes from the embedded schema (no force_feedback/events, repeated messages as [])', async () => {
+  const { computeFieldUniverse } = await import('../../electron/modules/telemetry/telemetry-recorder');
+  const u = computeFieldUniverse(root);
+  assert.ok(u.length > 100, `${u.length} fields`);
+  assert.ok(u.includes('actor.vitals.heart_rate'));
+  assert.ok(u.every((p) => !p.startsWith('force_feedback') && !p.startsWith('events')));
+  assert.ok(u.some((p) => p.includes('[]')));
+});
