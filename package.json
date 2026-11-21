@@ -10,6 +10,7 @@
     "dev": "cross-env NODE_ENV=development FORCE_COLOR=1 vite",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
+    "test:telemetry": "esbuild test/telemetry/telemetry.test.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/telemetry.test.mjs && node --test test/telemetry/.out/telemetry.test.mjs",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
@@ -17,6 +18,7 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
+    "@grpc/grpc-js": "^1.14.7",
     "@tailwindcss/vite": "^4.1.4",
     "better-sqlite3": "^12.10.0",
     "chalk": "^5.4.1",
@@ -27,6 +29,7 @@
     "element-plus": "^2.9.8",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^2.1.7",
+    "protobufjs": "^8.8.1",
     "socket.io-client": "^4.8.1",
     "tailwindcss": "^4.1.4",
     "undici": "^7.26.0",
