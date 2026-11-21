@@ -181,8 +181,8 @@ test('LogDiffTracker: baseline rotation and never comparing a log with itself', 
   const { LogDiffTracker } = await import('../../electron/modules/log-diff/log-diff-tracker');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logdiff-test-'));
   const ts = '<2026-11-20T10:00:00.000Z>';
-  const logA = `${ts} BackupNameAttachment=" Build(100) x"\n${ts} Log started on A\n${ts} [Notice] <Actor Death> CActor::Kill: 'x' [1]\n${ts} [Notice] <Old Thing> gone soon\n`;
-  const logB = `${ts} BackupNameAttachment=" Build(200) x"\n${ts} Log started on B\n${ts} [Notice] <Actor Death> CActor::Kill: 'y' [2]\n${ts} [Notice] <New Thing> hello\n`;
+  const logA = `${ts} BackupNameAttachment=" Build(100) x"\n${ts} Log started on Sun Nov 20 10:00:01 2026\n${ts} [Notice] <Actor Death> CActor::Kill: 'x' [1]\n${ts} [Notice] <Old Thing> gone soon\n`;
+  const logB = `${ts} BackupNameAttachment=" Build(200) x"\n${ts} Log started on Sun Nov 21 11:00:01 2026\n${ts} [Notice] <Actor Death> CActor::Kill: 'y' [2]\n${ts} [Notice] <New Thing> hello\n`;
   const patterns = { kill: /CActor::Kill/, old: /<Old Thing>/ };
   const t1 = new LogDiffTracker({ storeDir: dir, patterns, minLinesToSave: 1 });
   await t1.beginLog('/x/Game.log');
