@@ -42,6 +42,8 @@ export type RecorderOptions = {
   clientVersion?: string;
   /** All leaf field paths of the schema (see computeFieldUniverse) for "never seen non-default". */
   universe?: string[];
+  /** Every GameEvent type name in the schema (counted as 0 in session_end when never fired). */
+  gameEventTypes?: string[];
   maxFileBytes?: number;
   keepFiles?: number;
   flushMs?: number;
@@ -62,6 +64,7 @@ type Session = {
   lastFlat: Map<string, string> | null;
   seen: Set<string>;
   nonDefault: Set<string>;
+  gameEventCounts: Record<string, number>;
 };
 
 /** `a.b[3].c` → `a.b[].c` */
@@ -94,10 +97,19 @@ export function computeFieldUniverse(root: protobuf.Root, typeName = 'sc.game.te
   return [...out].sort();
 }
 
+/** Raw GameEvent type names of the schema (e.g. GAME_EVENT_TYPE_ACTOR_DOWNED). */
+export function computeGameEventTypes(root: protobuf.Root): string[] {
+  try {
+    return Object.keys(root.lookupEnum('sc.game.telemetry.v1.GameEvent.GameEventType').values);
+  } catch {
+    return [];
+  }
+}
+
 export class TelemetryRecorder {
   readonly dir: string;
   #o: Required<Omit<RecorderOptions, 'universe' | 'schemaBuild' | 'clientVersion' | 'isEnabled' | 'log'>> &
-    Pick<RecorderOptions, 'universe' | 'schemaBuild' | 'clientVersion' | 'isEnabled' | 'log'>;
+    Pick<RecorderOptions, 'universe' | 'gameEventTypes' | 'schemaBuild' | 'clientVersion' | 'isEnabled' | 'log'>;
   #src: RecorderSource | null = null;
   #session: Session | null = null;
   #queue: Array<{ file: string; line: string }> = [];
@@ -165,7 +177,13 @@ export class TelemetryRecorder {
         if (!value || typeof value !== 'object') continue;
         if (name === 'events') {
           const list = (value as Obj).events;
-          if (Array.isArray(list)) for (const ge of list) this.#write({ kind: 'game_event', event: ge });
+          if (Array.isArray(list)) {
+            for (const ge of list) {
+              const type = String((ge as Obj)?.type ?? 'GAME_EVENT_TYPE_UNSPECIFIED'); // raw enum name
+              s.gameEventCounts[type] = (s.gameEventCounts[type] ?? 0) + 1;
+              this.#write({ kind: 'game_event', type, event: ge });
+            }
+          }
           continue;
         }
         if (SKIP_SECTIONS.has(name)) continue;
@@ -217,6 +235,7 @@ export class TelemetryRecorder {
       lastFlat: null,
       seen: new Set(),
       nonDefault: new Set(),
+      gameEventCounts: Object.fromEntries((this.#o.gameEventTypes ?? []).map((t) => [t, 0])),
     };
     this.filesWritten.push(file);
     this.#io = this.#io
@@ -238,6 +257,12 @@ export class TelemetryRecorder {
     );
     this.#o.log?.('info', `Telemetry recording to ${file}`);
     return this.#session;
+  }
+
+  /** A Game.log line that telemetry should line up with (death, vehicle destroyed...). Only while a session is open. */
+  noteLogMarker(marker: string, line: string): void {
+    if (!this.#session || !this.#enabled()) return;
+    this.#write({ kind: 'log_marker', marker, line: line.replace(/\r?\n$/, '').slice(0, 200) });
   }
 
   /** Diff the current state against the last recorded one (normally on the change timer). */
@@ -296,6 +321,7 @@ export class TelemetryRecorder {
         fieldsKnown: uni?.length ?? null,
         neverNonDefaultCount: never?.length ?? null,
         neverNonDefault: never ? never.slice(0, 2000) : null,
+        gameEventCounts: s.gameEventCounts,
         bytes: s.bytes,
         truncated: s.capped,
         droppedLines: s.dropped,

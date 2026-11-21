@@ -510,3 +510,26 @@ test('recorder: field universe comes from the embedded schema (no force_feedback
   assert.ok(u.every((p) => !p.startsWith('force_feedback') && !p.startsWith('events')));
   assert.ok(u.some((p) => p.includes('[]')));
 });
+
+test('recorder: raw game events with enum names, gameEventCounts incl. zeros, log_marker lines', async () => {
+  const { computeGameEventTypes } = await import('../../electron/modules/telemetry/telemetry-recorder');
+  const types = computeGameEventTypes(root);
+  assert.ok(types.includes('GAME_EVENT_TYPE_ACTOR_DOWNED'));
+  const r = await recorderRig({ gameEventTypes: types });
+  r.rec.noteLogMarker('actor_dead', 'ignored: no session');
+  r.status('streaming');
+  r.frame({ events: { events: [{ type: 'GAME_EVENT_TYPE_ACTOR_DOWNED' }, { type: 'GAME_EVENT_TYPE_ACTOR_DOWNED' }] } });
+  r.rec.noteLogMarker('actor_dead', '<2026> <[ActorState] Dead> ' + 'x'.repeat(300) + '\r\n');
+  r.status('waiting_for_game');
+  const rows = (await r.lines())[0].rows;
+  const ge = rows.filter((x: any) => x.kind === 'game_event');
+  assert.equal(ge.length, 2);
+  assert.equal(ge[0].type, 'GAME_EVENT_TYPE_ACTOR_DOWNED');
+  const m = rows.filter((x: any) => x.kind === 'log_marker');
+  assert.equal(m.length, 1);
+  assert.equal(m[0].line.length, 200);
+  const end = rows.at(-1);
+  assert.equal(end.gameEventCounts.GAME_EVENT_TYPE_ACTOR_DOWNED, 2);
+  assert.equal(end.gameEventCounts.GAME_EVENT_TYPE_ACTOR_DEAD, 0);
+  assert.equal(Object.keys(end.gameEventCounts).length, types.length);
+});

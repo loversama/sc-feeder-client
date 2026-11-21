@@ -20,7 +20,7 @@ import { SCHEMA_GAME_BUILD } from './schema-desc';
 import { getDebugEvents, getUploadCounters, pushDebugEvent, markDebugEventShared } from './debug-bus';
 import { LogDiffTracker, type LogDiffReport } from '../log-diff/log-diff-tracker';
 import { extractBuildInfo, type LogBuildInfo } from '../log-diff/log-signature';
-import { TelemetryRecorder, computeFieldUniverse } from './telemetry-recorder';
+import { TelemetryRecorder, computeFieldUniverse, computeGameEventTypes } from './telemetry-recorder';
 import { loadTelemetryRoot } from './telemetry-client';
 
 const MODULE_NAME = 'Telemetry';
@@ -125,6 +125,13 @@ export function initTelemetry(): void {
     schemaBuild: SCHEMA_GAME_BUILD,
     clientVersion: app.getVersion(),
     universe,
+    gameEventTypes: (() => {
+      try {
+        return computeGameEventTypes(loadTelemetryRoot());
+      } catch {
+        return [];
+      }
+    })(),
     log: (lvl, msg) => logger[lvl === 'debug' ? 'debug' : lvl](MODULE_NAME, msg),
   });
   recorder.attach(service);
@@ -174,10 +181,31 @@ export function noteLogBegin(logPath: string, channel: string = channelNow()): v
     .catch((err) => logger.warn(MODULE_NAME, `Log diff begin failed: ${err}`));
 }
 
+const LOG_MARKERS: Array<[string, string]> = [
+  ['actor_dead', '<[ActorState] Dead>'],
+  ['vehicle_destroyed', '<Vehicle Destroyed>'],
+  ['fatal_collision', '<FatalCollision>'],
+  ['emergency_services', 'Local Emergency Services Are En Route'],
+];
+
+/** Record Game.log death/vehicle lines in the telemetry recording so both can be lined up later. */
+function markLogLines(chunk: string): void {
+  if (!/Dead>|Destroyed>|FatalCollision>|Emergency Services/.test(chunk)) return;
+  for (const line of chunk.split('\n')) {
+    for (const [marker, needle] of LOG_MARKERS) {
+      if (line.includes(needle)) {
+        recorder?.noteLogMarker(marker, line);
+        break;
+      }
+    }
+  }
+}
+
 /** New Game.log content (initial scan and live) of the active channel. */
 export function noteLogChunk(chunk: string): void {
   try {
     service?.noteLogChunk(chunk);
+    if (recorder?.active) markLogLines(chunk);
     const ch = channelNow();
     if (!builds.get(ch)?.fileVersion && headerBuf.length < 200_000) {
       headerBuf += chunk.slice(0, 200_000 - headerBuf.length);
