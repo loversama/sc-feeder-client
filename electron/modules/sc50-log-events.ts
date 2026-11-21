@@ -65,6 +65,8 @@ export function prettyPlace(raw: string | undefined | null): string | undefined 
   return parts.map(cap).join(' ');
 }
 
+/** Handles are compared case-insensitively (as the server does). */
+const sameHandle = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
 const cap = (w: string) => (w ? w[0].toUpperCase() + w.slice(1) : w);
 const tsMs = (ts: string) => Date.parse(ts);
 
@@ -82,6 +84,8 @@ type Trip = {
 export class Sc50LogTracker {
   #entityNames = new Map<string, string>();
   #trip: Trip | null = null;
+  /** Ships known to be ours this session (delivered to us, or our own QT selection / fuel request). */
+  #ownVehicleIds = new Set<string>();
   #spawn: { vehicleId: string; area: string; at: string } | null = null;
   #fleetSize: number | undefined;
   #location: string | undefined;
@@ -91,6 +95,7 @@ export class Sc50LogTracker {
   reset(): void {
     this.#entityNames.clear();
     this.#trip = null;
+    this.#ownVehicleIds.clear();
     this.#spawn = null;
     this.#fleetSize = undefined;
     this.#location = undefined;
@@ -170,6 +175,7 @@ export class Sc50LogTracker {
     // --- quantum trip ---
     if ((m = line.match(RE.qtFuelRequest))) {
       const veh = line.match(RE.navVehicle)?.groups;
+      if (veh) this.#ownVehicleIds.add(veh.id);
       if (veh && (!this.#trip || this.#trip.destId !== m.groups!.dest || this.#trip.planned)) {
         this.#trip = { vehicle: veh.vehicle, vehicleId: veh.id, destId: m.groups!.dest, selectedAt: ts, planned: false };
       }
@@ -179,6 +185,7 @@ export class Sc50LogTracker {
       const veh = line.match(RE.navVehicle)?.groups;
       const dest = m.groups!.dest;
       if (!veh) return out;
+      this.#ownVehicleIds.add(veh.id);
       if (!this.#trip || this.#trip.destId !== dest || this.#trip.vehicleId !== veh.id || this.#trip.planned) {
         this.#trip = { vehicle: veh.vehicle, vehicleId: veh.id, destId: dest, selectedAt: ts, planned: false };
       }
@@ -223,22 +230,31 @@ export class Sc50LogTracker {
     }
     if ((m = line.match(RE.qtAligned))) {
       // QT errors name the user whose drive misbehaved; only our own tell us our target.
-      if (username && m.groups!.user.trim() === username && this.#trip) this.#trip.destName = m.groups!.target;
+      if (sameHandle(m.groups!.user, username) && this.#trip) this.#trip.destName = m.groups!.target;
       const spline = line.match(RE.qtSplineTo);
-      if (spline && username && m.groups!.user.trim() === username && this.#trip) this.#trip.destName = spline.groups!.dest;
+      if (spline && sameHandle(m.groups!.user, username) && this.#trip) this.#trip.destName = spline.groups!.dest;
       return out;
     }
     if (RE.qtArrived.test(line)) {
       const veh = line.match(RE.navVehicle)?.groups;
-      const t = this.#trip;
-      // Arrivals of every ship nearby are logged: only our own trip's vehicle counts.
-      if (!veh || !t || veh.id !== t.vehicleId) return out;
-      this.#trip = null;
-      const to = this.#destName(t);
-      const durationSec = Math.max(0, Math.round((tsMs(ts) - tsMs(t.selectedAt)) / 1000));
-      const summary = `Quantum travel complete${t.from ? ` from ${t.from}` : ''}${to ? ` to ${to}` : ''}`;
+      // Arrivals of every ship nearby are logged: only our own ships count. Without a selection this
+      // session (e.g. the client joined mid-trip) the arrival is still ours, with unknown origin.
+      if (!veh || !this.#ownVehicleIds.has(veh.id)) return out;
+      const t = this.#trip && this.#trip.vehicleId === veh.id && tsMs(ts) - tsMs(this.#trip.selectedAt) <= 60 * 60_000 ? this.#trip : null;
+      if (this.#trip?.vehicleId === veh.id) this.#trip = null;
+      const to = t ? this.#destName(t) : undefined;
+      const from = t?.from;
+      const durationSec = t ? Math.max(0, Math.round((tsMs(ts) - tsMs(t.selectedAt)) / 1000)) : undefined;
+      const summary = `Quantum travel complete${from ? ` from ${from}` : ''}${to ? ` to ${to}` : ''}`;
       out.push({
-        local: { eventType: 'quantum_travel', id: `qt_arrived_${ts}_${t.vehicleId}`, timestamp: ts, description: summary, destination: to, eventData: { phase: 'arrived', from: t.from, to, durationSec, vehicle: t.vehicle, vehicleId: t.vehicleId } },
+        local: {
+          eventType: 'quantum_travel',
+          id: `qt_arrived_${ts}_${veh.id}`,
+          timestamp: ts,
+          description: summary,
+          destination: to,
+          eventData: { phase: 'arrived', from, to, durationSec, vehicle: veh.vehicle, vehicleId: veh.id },
+        },
       });
       return out;
     }
@@ -250,6 +266,7 @@ export class Sc50LogTracker {
       return out;
     }
     if ((m = line.match(RE.spawnInfo))) {
+      this.#ownVehicleIds.add(m.groups!.id);
       this.#spawn = { vehicleId: m.groups!.id, area: m.groups!.area.replace(/\s*\[Team_[^\]]*\].*$/, '').trim(), at: ts };
       return out;
     }
@@ -268,7 +285,7 @@ export class Sc50LogTracker {
 
     // --- readable location ---
     if ((m = line.match(RE.locationInventory))) {
-      if (!username || m.groups!.player !== username) return out;
+      if (!sameHandle(m.groups!.player, username)) return out;
       const loc = prettyPlace(m.groups!.loc);
       if (!loc || loc === this.#location) return out;
       this.#location = loc;
@@ -288,7 +305,7 @@ export class Sc50LogTracker {
       return out;
     }
     if ((m = line.match(RE.attachment))) {
-      if (!username || m.groups!.player !== username) return out;
+      if (!sameHandle(m.groups!.player, username)) return out;
       if (!this.#loadout) this.#loadout = { first: ts, last: ts, count: 0, ports: new Set() };
       this.#loadout.last = ts;
       this.#loadout.count++;
@@ -341,6 +358,6 @@ export class Sc50LogTracker {
 /** "<handle>'s XL Hangar" → "XL Hangar". Anything not prefixed with the own handle is dropped (it could name someone else). */
 function hangarName(area: string, username: string | null): string | undefined {
   const a = area.trim();
-  if (!username || !a.startsWith(`${username}'s`)) return undefined;
-  return a.slice(username.length + 2).trim() || undefined;
+  if (!username || !a.toLowerCase().startsWith(`${username.trim().toLowerCase()}'s`)) return undefined;
+  return a.slice(username.trim().length + 2).trim() || undefined;
 }

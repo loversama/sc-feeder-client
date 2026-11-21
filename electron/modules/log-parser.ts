@@ -202,7 +202,7 @@ const sc50 = new Sc50LogTracker();
 // === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 
 // === SC 4.10 PATTERNS (build 13165946+) ===
-// Local player GEID from the login line: "... geid 204772006105 - accountId ... - name <handle> - state ..."
+// Local player GEID from the login line: "... geid 200000000001 - accountId ... - name <handle> - state ..."
 const loginGeidRegex = /<AccountLoginCharacterStatus_Character>.*?\bgeid\s+(?<geid>\d+)\s.*?name\s+(?<name>\S+)\s+-/;
 // <Vehicle Destroyed> replaces <Vehicle Destruction> (dead since 4.4). Owner [0] / _PU_AI_ in class = NPC ship.
 const vehicleDestroyedRegex = /<(?<ts>[^>]+)> \[Notice\] <Vehicle Destroyed> Vehicle '(?<vehicle>[^']+)' \[(?<vehicleId>\d+)\] class '(?<vehicleClass>[^']+)' \(owner player \[(?<ownerId>\d+)\], driver \[(?<driverId>\d+)\]\) destroyed: reason \[(?<reason>\w+)\] level \[(?<levelFrom>\d+)\] -> \[(?<levelTo>\d+)\] flags \[(?<flags>\d+)\] killer '(?<killer>[^']*)' \[(?<killerId>\d+)\] authority \[(?<authority>\d+)\]/;

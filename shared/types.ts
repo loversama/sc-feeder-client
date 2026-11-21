@@ -216,7 +216,7 @@ export interface KillEvent {
   objectiveText?: string;     // Objective description text
   partyMember?: string;       // Player name for party/VOIP events
   destination?: string;       // QT destination or location name
-  channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : LoVeRSaMa")
+  channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : Player_One")
   visibility?: EventVisibility; // Whether event is public or private on global feed
   missionOrganization?: string; // Mission giver from <CommsNotifications> tags (e.g. "Navy.Baramsco")
   eventData?: Record<string, unknown>; // Structured extras for SC 4.10 events (shop price/item, vehicle reason, zoneType, phase, ...)

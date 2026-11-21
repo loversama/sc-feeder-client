@@ -16,7 +16,7 @@ const fixtureDir = process.env.PARSER_FIXTURES ?? path.join(path.dirname(fileURL
 const fx = (name: string) => fs.readFileSync(path.join(fixtureDir, name), 'utf8').replace(/\r\n/g, '\n');
 const parse = (content: string) => parseLogContent(content, true);
 const events = () => emitted.map(e => e.event);
-const GEID = '204772006105';
+const GEID = '200000000001';
 
 beforeEach(() => {
   resetParserState();
@@ -430,4 +430,32 @@ test('5.0 addition 5: medical bed and the loadout burst after spawn (counter)', 
   assert.equal(lo.length, 1);
   assert.equal(lo[0].eventData.items, 6);
   assert.equal(lo[0].eventData.armorPieces, 5, "undersuit, arms, helmet, legs, torso");
+});
+
+test('5.0 quantum: own arrival without a selection this session is still reported (unknown origin); other ships are not', () => {
+  const t = new Sc50LogTracker();
+  const hangar = lines50('hangar-50.txt');
+  for (const l of hangar) t.handle(l, '<player>'); // ship 877604806898 delivered to us
+  const arrival = lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!;
+  const out = t.handle(arrival, '<player>').out.map(o => o.local!);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].eventData.phase, 'arrived');
+  assert.equal(out[0].eventData.from, undefined);
+  assert.equal(out[0].eventData.durationSec, undefined);
+  assert.equal(out[0].description, 'Quantum travel complete');
+  // a nearby ship we never selected / owned
+  const polaris = lines50('qt-trip-obstructed-50.txt').find(l => /Quantum Drive Arrived/.test(l))!;
+  assert.equal(t.handle(polaris, '<player>').out.length, 0);
+});
+
+test('5.0 tracker compares handles case-insensitively', () => {
+  const loc = track(['location-inventory-50.txt'], '<PLAYER>').local;
+  assert.equal(loc.length, 3);
+  const h = track(['hangar-50.txt'], '<Player>').local;
+  assert.equal(h[0].eventData.hangar, 'XL Hangar');
+  const t = new Sc50LogTracker();
+  for (const l of lines50('qt-trip-arrived-50.txt').filter(l => /Selected Quantum Target|Requested Fuel/.test(l))) t.handle(l, '<PLAYER>');
+  t.handle(lines50('qt-own-aligned-50.txt')[0], '<PLAYER>');
+  const out = t.handle(lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!, '<PLAYER>').out;
+  assert.equal(out[0].local!.eventData.to, 'Hub');
 });

@@ -11,7 +11,7 @@ for (const m of block.matchAll(/^\s+(\w+):\s*(\w+),\r?$/gm)) {
   const r = src.match(new RegExp(`const ${m[2]}\\s*=\\s*\\r?\\n?\\s*\\/(.+)\\/([a-z]*);`));
   if (r) patterns[m[1]] = new RegExp(r[1], r[2]);
 }
-const t = new LogDiffTracker({ storeDir: fs.mkdtempSync(path.join(os.tmpdir(), 'perf-')), patterns, getRedactNames: () => ['LoVeRSaMa'] });
+const t = new LogDiffTracker({ storeDir: fs.mkdtempSync(path.join(os.tmpdir(), 'perf-')), patterns, getRedactNames: () => ['Player_One'] });
 // feed like the watcher: one big initial chunk, then measure 64 KB live chunks
 let t0 = performance.now();
 t.addChunk(content);
