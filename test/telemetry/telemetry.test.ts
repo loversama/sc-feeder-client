@@ -189,6 +189,7 @@ test('LogDiffTracker: baseline rotation and never comparing a log with itself', 
   t1.addChunk(logA);
   await t1.beginLog('/x/Game.log'); // game restarted → A saved as baseline
   t1.addChunk(logB);
+  await t1.idle();
   let r = t1.report();
   assert.equal(r.baseline?.build.build, '100');
   assert.deepEqual(r.added.map((e) => e.tag).sort(), ['New Thing']);
@@ -199,7 +200,31 @@ test('LogDiffTracker: baseline rotation and never comparing a log with itself', 
   const t2 = new LogDiffTracker({ storeDir: dir, patterns, minLinesToSave: 1 });
   await t2.beginLog('/x/Game.log');
   t2.addChunk(logB);
+  await t2.idle();
   r = t2.report();
   assert.equal(r.current.build.build, '200');
   assert.equal(r.baseline?.build.build, '100');
+});
+
+test('LogDiffTracker: chunks fed right after an un-awaited beginLog belong to the new log', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { LogDiffTracker } = await import('../../electron/modules/log-diff/log-diff-tracker');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logdiff-race-'));
+  const ts = '<2026-11-20T10:00:00.000Z>';
+  const logA = `${ts} BackupNameAttachment=" Build(100) x"\n${ts} Log started on Sun Nov 20 10:00:01 2026\n${ts} [Notice] <Old Thing> a\n`;
+  const logB = `${ts} BackupNameAttachment=" Build(200) x"\n${ts} Log started on Sun Nov 21 11:00:01 2026\n${ts} [Notice] <New Thing> b\n`;
+  const t = new LogDiffTracker({ storeDir: dir, patterns: {}, minLinesToSave: 1 });
+  void t.beginLog('/x/Game.log'); // exactly how log-watcher calls it
+  t.addChunk(logA);
+  void t.beginLog('/x/Game.log');
+  t.addChunk(logB);
+  await t.finalize();
+  const r = t.report();
+  assert.equal(r.current.build.build, '200');
+  assert.equal(r.baseline?.build.build, '100', 'A is the baseline, B is never compared with itself');
+  assert.deepEqual(r.added.map((e) => e.tag), ['New Thing']);
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'baseline.json'), 'utf8'));
+  assert.equal(saved.build.build, '200');
 });

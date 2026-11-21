@@ -66,6 +66,8 @@ export type LogDiffTrackerOptions = {
 
 const BASELINE_FILE = 'baseline.json';
 const PREVIOUS_FILE = 'baseline-previous.json';
+/** Max time per processing slice on the main thread. */
+const SLICE_MS = 12;
 
 function emptySnapshot(logPath: string): LogSnapshot {
   return { logId: '', logPath, build: {}, startedLine: null, lines: 0, savedAt: '', source: 'session', set: {}, patternHits: {} };
@@ -82,7 +84,12 @@ export class LogDiffTracker {
   #baseline: LogSnapshot | null = null;
   #previous: LogSnapshot | null = null;
   #headerBuf = '';
-  #loaded = false;
+  #loadPromise: Promise<void> | null = null;
+  #queue: Array<{ snap: LogSnapshot; lines: string[]; idx: number }> = [];
+  #draining = false;
+  #idleWaiters: Array<() => void> = [];
+  /** Serialises background saves so baselines are written in order. */
+  #pending: Promise<void> = Promise.resolve();
   #version = 0;
   #cachedReport: { version: number; report: LogDiffReport } | null = null;
 
@@ -96,25 +103,42 @@ export class LogDiffTracker {
   }
 
   /** Load saved baselines (call once at startup; safe to call again). */
-  async load(): Promise<void> {
-    if (this.#loaded) return;
-    this.#loaded = true;
-    await fsp.mkdir(this.#opts.storeDir, { recursive: true }).catch(() => {});
-    this.#baseline = await this.#readSnapshot(BASELINE_FILE);
-    this.#previous = await this.#readSnapshot(PREVIOUS_FILE);
+  load(): Promise<void> {
+    if (!this.#loadPromise) {
+      this.#loadPromise = (async () => {
+        await fsp.mkdir(this.#opts.storeDir, { recursive: true }).catch(() => {});
+        this.#baseline = await this.#readSnapshot(BASELINE_FILE);
+        this.#previous = await this.#readSnapshot(PREVIOUS_FILE);
+        this.#version++;
+      })();
+    }
+    return this.#loadPromise;
   }
 
-  /** Start tracking a (new) Game.log from its beginning. Finalises the session being tracked. */
-  async beginLog(logPath: string): Promise<void> {
-    await this.load();
-    await this.finalize();
+  /**
+   * Start tracking a (new) Game.log from its beginning. The swap to a fresh session happens
+   * synchronously, so chunks fed right after this call (even without awaiting it) belong to the new
+   * log; saving the previous session happens in the background.
+   */
+  beginLog(logPath: string): Promise<void> {
+    const previous = this.#current;
     this.#current = emptySnapshot(logPath);
     this.#headerBuf = '';
     this.#version++;
-    if (!this.#baseline) await this.#loadBaselineFromLogBackups(logPath);
+    this.#pending = this.#pending.then(async () => {
+      await this.load();
+      await this.idle();
+      await this.#saveAsBaseline(previous);
+      if (!this.#baseline) await this.#loadBaselineFromLogBackups(logPath);
+    }).catch((err) => this.#opts.log('warn', `Log diff: could not start new session: ${err}`));
+    return this.#pending;
   }
 
-  /** Feed newly read Game.log content (same chunks the log watcher parses). */
+  /**
+   * Feed newly read Game.log content (same chunks the log watcher parses). Header detection is
+   * immediate; line processing is queued and done in small slices so a large initial read (a 24 MB
+   * Game.log is ~4 s of regex work) never blocks the Electron main thread.
+   */
   addChunk(chunk: string): void {
     if (!chunk) return;
     const cur = this.#current;
@@ -129,26 +153,67 @@ export class LogDiffTracker {
         this.#headerBuf = '';
       }
     }
+    this.#queue.push({ snap: cur, lines: chunk.split('\n'), idx: 0 });
+    this.#schedule();
+  }
+
+  /** Resolves once every queued line has been processed. */
+  idle(): Promise<void> {
+    if (!this.#queue.length) return Promise.resolve();
+    return new Promise((resolve) => this.#idleWaiters.push(resolve));
+  }
+
+  #schedule(): void {
+    if (this.#draining) return;
+    this.#draining = true;
+    setImmediate(() => this.#drain());
+  }
+
+  #drain(): void {
+    const deadline = performance.now() + SLICE_MS;
     const redact = this.#opts.getRedactNames?.() ?? [];
-    addLinesToSet(cur.set, chunk, { redact });
-    let lines = 0;
-    for (const line of chunk.split('\n')) {
-      if (!line.trim()) continue;
-      lines++;
-      for (const [name, re] of Object.entries(this.#opts.patterns)) {
-        if (re.test(line)) cur.patternHits[name] = (cur.patternHits[name] ?? 0) + 1;
-      }
+    const patterns = Object.entries(this.#opts.patterns);
+    while (this.#queue.length && performance.now() < deadline) {
+      const item = this.#queue[0];
+      const end = Math.min(item.idx + 150, item.lines.length);
+      for (let i = item.idx; i < end; i++) this.#processLine(item.snap, item.lines[i], redact, patterns);
+      item.idx = end;
+      if (item.idx >= item.lines.length) this.#queue.shift();
     }
-    cur.lines += lines;
     this.#version++;
+    if (this.#queue.length) {
+      setImmediate(() => this.#drain());
+      return;
+    }
+    this.#draining = false;
+    const waiters = this.#idleWaiters.splice(0);
+    for (const w of waiters) w();
+  }
+
+  #processLine(snap: LogSnapshot, line: string, redact: string[], patterns: Array<[string, RegExp]>): void {
+    if (!line.trim()) return;
+    snap.lines++;
+    addLinesToSet(snap.set, line, { redact });
+    for (const [name, re] of patterns) {
+      if (re.test(line)) snap.patternHits[name] = (snap.patternHits[name] ?? 0) + 1;
+    }
   }
 
   /**
    * Save the tracked session as the new baseline (if it has enough lines and is a different log
    * from the saved one). Called on log reset/replacement and on app quit.
    */
-  async finalize(): Promise<void> {
+  finalize(): Promise<void> {
     const cur = this.#current;
+    this.#pending = this.#pending.then(async () => {
+      await this.load();
+      await this.idle();
+      await this.#saveAsBaseline(cur);
+    }).catch((err) => this.#opts.log('warn', `Log diff: could not save baseline: ${err}`));
+    return this.#pending;
+  }
+
+  async #saveAsBaseline(cur: LogSnapshot): Promise<void> {
     if (!cur.logId || cur.lines < this.#opts.minLinesToSave) return;
     cur.savedAt = new Date().toISOString();
     cur.source = 'session';
@@ -248,6 +313,7 @@ export class LogDiffTracker {
     const t = new LogDiffTracker({ ...this.#opts, storeDir: this.#opts.storeDir });
     t.#current = emptySnapshot(file);
     t.addChunk(content);
+    await t.idle();
     const s = t.#current;
     s.source = source;
     s.savedAt = new Date().toISOString();
