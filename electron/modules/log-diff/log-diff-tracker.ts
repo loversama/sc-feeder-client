@@ -224,7 +224,8 @@ export class LogDiffTracker {
     if (!logPath) return;
     const dir = path.join(path.dirname(logPath), 'logbackups');
     try {
-      const files = (await fsp.readdir(dir)).filter((f) => f.toLowerCase().endsWith('.log'));
+      // Only game session logs (logbackups also holds e.g. 'PSOCacheGen Build(...).log').
+      const files = (await fsp.readdir(dir)).filter((f) => /^game\b.*\.log$/i.test(f));
       if (!files.length) return;
       const stats = await Promise.all(files.map(async (f) => ({ f, m: (await fsp.stat(path.join(dir, f))).mtimeMs })));
       stats.sort((a, b) => b.m - a.m);
