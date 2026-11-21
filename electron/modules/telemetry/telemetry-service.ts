@@ -36,6 +36,8 @@ export type TelemetryServiceOptions = {
   upload?: (payload: TelemetryUploadPayload) => boolean;
   isSharingEnabled?: () => boolean;
   includeBalance?: () => boolean;
+  /** Client id for event ids (`tm_<clientId>_<type>_<ms>`). */
+  clientId?: () => string;
   log?: (level: 'info' | 'warn' | 'debug', msg: string) => void;
   /** Override for tests */
   clientFactory?: (address: string) => Pick<TelemetryClient, 'openStream' | 'close'>;
@@ -49,9 +51,12 @@ export type TelemetryServiceOptions = {
 
 const MAX_RECENT_EVENTS = 100;
 const MAX_SNAPSHOT_BYTES = 16 * 1024;
+/** Feed-worthy events kept while the server is unreachable, re-sent on `resync()`. */
+const MAX_RETAINED_FEED_EVENTS = 50;
+const MAX_RETAINED_FEED_AGE_MS = 15 * 60_000;
 
 export class TelemetryService extends EventEmitter {
-  readonly state = new TelemetryState();
+  readonly state: TelemetryState;
   status: TelemetryStatus = 'disabled';
   lastError: string | null = null;
   connectAttempts = 0;
@@ -61,7 +66,7 @@ export class TelemetryService extends EventEmitter {
   recentEvents: Array<TelemetryEvent & { shared?: boolean }> = [];
   lastSharedSnapshot: { at: string; bytes: number; snapshot: Obj } | null = null;
 
-  #opts: Required<Omit<TelemetryServiceOptions, 'upload' | 'clientFactory' | 'address'>> & Pick<TelemetryServiceOptions, 'upload' | 'clientFactory'>;
+  #opts: Required<Omit<TelemetryServiceOptions, 'upload' | 'clientFactory' | 'address' | 'clientId'>> & Pick<TelemetryServiceOptions, 'upload' | 'clientFactory'>;
   #address: string;
   #client: Pick<TelemetryClient, 'openStream' | 'close'> | null = null;
   #stream: StreamHandle | null = null;
@@ -72,12 +77,14 @@ export class TelemetryService extends EventEmitter {
   #attempt = 0;
   #lastActivity = 0;
   #pendingEvents: TelemetryEvent[] = [];
+  #retainedFeed: TelemetryEvent[] = [];
   #lastSnapshotJson = '';
   #lastSnapshotSentAt = 0;
   #running = false;
 
   constructor(opts: TelemetryServiceOptions = {}) {
     super();
+    this.state = new TelemetryState({ clientId: opts.clientId });
     this.#address = opts.address ?? DEFAULT_TELEMETRY_ADDRESS;
     this.#opts = {
       upload: opts.upload,
@@ -124,6 +131,28 @@ export class TelemetryService extends EventEmitter {
     this.#client = null;
     this.state.reset();
     this.#setStatus('disabled');
+  }
+
+  /**
+   * The server (re)accepted this client (fresh socket after a restart / redeploy / network drop):
+   * push a full snapshot on the next upload tick and re-send the feed events that could not be
+   * delivered meanwhile. Live-only events missed during the outage are not replayed.
+   */
+  resync(): void {
+    this.#lastSnapshotJson = '';
+    this.#lastSnapshotSentAt = 0;
+    const cutoff = this.#opts.now() - MAX_RETAINED_FEED_AGE_MS;
+    const retained = this.#retainedFeed.filter((e) => Date.parse(e.at) >= cutoff);
+    this.#retainedFeed = [];
+    if (retained.length) {
+      this.#opts.log('info', `Re-sending ${retained.length} telemetry feed event(s) held while offline`);
+      this.#pendingEvents.unshift(...retained);
+    }
+  }
+
+  /** Feed events waiting for the server (for diagnostics / tests). */
+  get retainedFeedEvents(): readonly TelemetryEvent[] {
+    return this.#retainedFeed;
   }
 
   /** A new Game.log started: the hints read from the previous one no longer apply. */
@@ -294,6 +323,11 @@ export class TelemetryService extends EventEmitter {
     let sent = false;
     if (this.#opts.isSharingEnabled() && this.#opts.upload) {
       sent = this.#opts.upload({ kind: 'events', events: batch });
+      if (!sent) {
+        // Keep what belongs in the feed (deaths, landings, ...) until the server is back.
+        this.#retainedFeed.push(...batch.filter((e) => e.feed));
+        if (this.#retainedFeed.length > MAX_RETAINED_FEED_EVENTS) this.#retainedFeed.splice(0, this.#retainedFeed.length - MAX_RETAINED_FEED_EVENTS);
+      }
     }
     for (const e of batch) {
       const rec = this.recentEvents.find((r) => r.id === e.id);
