@@ -383,7 +383,7 @@ test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrap
   await parse(fx('hangar-50.txt'));
   const h = events().filter(e => e.eventType === 'hangar');
   // "Hangar Request Completed" (21:59:14) is the ATC request after boarding: local only
-  assert.deepEqual(h.map(e => e.eventData.action), ['retrieved', 'request_completed']);
+  assert.deepEqual(h.map(e => e.eventData.action), ['retrieved', 'atc_request_completed']);
   assert.equal(h[0].timestamp, '2026-11-21T21:54:23.138Z', 'delivered when the ship spawns');
   assert.equal(h[0].eventData.hangar, 'XL Hangar');
   assert.equal(h[0].eventData.vehicleId, '877604806898');

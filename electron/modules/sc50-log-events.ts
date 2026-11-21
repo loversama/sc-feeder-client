@@ -255,7 +255,7 @@ export class Sc50LogTracker {
     }
     if ((m = line.match(RE.hangarCompleted))) {
       if (!this.#once(`hangar_${ts}`)) return out;
-      out.push({ local: { eventType: 'hangar', id: `hangar_done_${ts}`, timestamp: ts, description: 'Hangar request completed', eventData: { action: 'request_completed' } } });
+      out.push({ local: { eventType: 'hangar', id: `hangar_done_${ts}`, timestamp: ts, description: 'ATC request completed', eventData: { action: 'atc_request_completed' } } });
       return out;
     }
     if (RE.hangarQueued.test(line)) {
