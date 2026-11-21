@@ -171,8 +171,8 @@ export function noteLogBegin(logPath: string, channel: string = channelNow()): v
   if (activeChannel && activeChannel !== channel) {
     trackers.get(activeChannel)?.finalize().catch(() => {});
   }
+  recorder?.onNewLog(channel); // before the channel changes: the old session is named after the old channel
   activeChannel = channel;
-  recorder?.endSession('new_log');
   service?.resetLogHints();
   headerBuf = '';
   builds.delete(channel);

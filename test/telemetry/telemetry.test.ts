@@ -533,3 +533,39 @@ test('recorder: raw game events with enum names, gameEventCounts incl. zeros, lo
   assert.equal(end.gameEventCounts.GAME_EVENT_TYPE_ACTOR_DEAD, 0);
   assert.equal(Object.keys(end.gameEventCounts).length, types.length);
 });
+
+test('recorder: version learned after the session started -> one file named with it; same-channel new log does not rotate an unnamed session', async () => {
+  const r = await recorderRig({ flushMs: 5 });
+  r.ctx.gameVersion = undefined as any;
+  r.ctx.gameBuild = undefined as any;
+  r.status('streaming');
+  r.frame({ actor: { vitals: { heart_rate: 70 } } });
+  await sleep(30);
+  assert.equal(r.fs.readdirSync(r.dir).filter((f) => f.endsWith('.log')).length, 0, 'nothing written while the version is unknown');
+  r.rec.onNewLog('LIVE'); // app start: the Game.log of the running game is read now
+  assert.equal(r.rec.active, true);
+  r.ctx.gameVersion = '4.10.200.58746';
+  r.tick(1000);
+  r.frame({ actor: { vitals: { heart_rate: 71 } } });
+  await sleep(30);
+  r.status('waiting_for_game');
+  const files = await r.lines();
+  assert.deepEqual(files.map((f) => f.f), ['2026-11-21T19-05-02_LIVE_4.10.200.58746.log']);
+  assert.equal(files[0].rows[0].gameVersion, '4.10.200.58746');
+  assert.equal(files[0].rows.filter((x: any) => x.kind === 'session_start').length, 1);
+  assert.equal(files[0].rows.at(-1).frames, 2);
+});
+
+test('recorder: unknown version is only waited for ~10 s, then the file is named unknown', async () => {
+  const r = await recorderRig({ flushMs: 5 });
+  r.ctx.gameVersion = undefined as any;
+  r.ctx.gameBuild = undefined as any;
+  r.status('streaming');
+  r.frame({ actor: { vitals: { heart_rate: 70 } } });
+  r.tick(11_000);
+  r.frame({ actor: { vitals: { heart_rate: 71 } } });
+  await sleep(30);
+  const names = r.fs.readdirSync(r.dir).filter((f) => f.endsWith('.log'));
+  assert.deepEqual(names, ['2026-11-21T19-05-02_LIVE_unknown.log']);
+  await r.rec.close();
+});

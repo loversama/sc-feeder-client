@@ -52,8 +52,15 @@ export type RecorderOptions = {
   log?: (level: 'info' | 'warn' | 'debug', msg: string) => void;
 };
 
+/** The file is named (and session_start written) once the game version is known, or after this long. */
+const NAME_WAIT_MS = 10_000;
+
 type Session = {
-  file: string;
+  /** null until named: lines are buffered in memory meanwhile */
+  file: string | null;
+  channel: string;
+  startIso: string;
+  closed: boolean;
   bytes: number;
   capped: boolean;
   dropped: number;
@@ -112,7 +119,7 @@ export class TelemetryRecorder {
     Pick<RecorderOptions, 'universe' | 'gameEventTypes' | 'schemaBuild' | 'clientVersion' | 'isEnabled' | 'log'>;
   #src: RecorderSource | null = null;
   #session: Session | null = null;
-  #queue: Array<{ file: string; line: string }> = [];
+  #queue: Array<{ s: Session; line?: string; make?: () => string }> = [];
   #io: Promise<void> = Promise.resolve();
   #flushTimer: NodeJS.Timeout | null = null;
   #changeTimer: NodeJS.Timeout | null = null;
@@ -217,14 +224,11 @@ export class TelemetryRecorder {
     if (this.#status !== 'streaming') return null;
     const ctx = this.#o.getContext();
     const now = this.#o.now();
-    const safe = (x: string) => x.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 40) || 'unknown';
-    const stamp = new Date(now).toISOString().replace(/\.\d+Z$/, '').replace(/:/g, '-');
-    let name = `${stamp}_${safe(ctx.channel || 'unknown')}_${safe(ctx.gameVersion || ctx.gameBuild || 'unknown')}`;
-    if (name === this.#lastFileName) name += `-${this.filesWritten.length}`;
-    this.#lastFileName = name;
-    const file = path.join(this.dir, `${name}.log`);
-    this.#session = {
-      file,
+    const s: Session = {
+      file: null,
+      channel: ctx.channel,
+      startIso: new Date(now).toISOString(),
+      closed: false,
       bytes: 0,
       capped: false,
       dropped: 0,
@@ -237,6 +241,46 @@ export class TelemetryRecorder {
       nonDefault: new Set(),
       gameEventCounts: Object.fromEntries((this.#o.gameEventTypes ?? []).map((t) => [t, 0])),
     };
+    this.#session = s;
+    // session_start is built when the file is named, so it carries the version learned meanwhile.
+    this.#queue.push({
+      s,
+      make: () => {
+        const c = this.#o.getContext();
+        const same = c.channel === s.channel;
+        return (
+          JSON.stringify({
+            t: s.startIso,
+            kind: 'session_start',
+            channel: s.channel,
+            gameVersion: (same && c.gameVersion) || null,
+            gameBuild: (same && c.gameBuild) || null,
+            schemaBuild: this.#o.schemaBuild ?? null,
+            clientVersion: this.#o.clientVersion ?? null,
+          }) + '\n'
+        );
+      },
+    });
+    this.#scheduleFlush();
+    return s;
+  }
+
+  /**
+   * Name the session's file: `<start>_<channel>_<version>.log`. Waits (buffering) until the Game.log
+   * header gave the version, up to NAME_WAIT_MS, so one session is one file.
+   */
+  #tryName(s: Session): boolean {
+    if (s.file) return true;
+    const c = this.#o.getContext();
+    const version = c.channel === s.channel ? c.gameVersion || c.gameBuild : undefined;
+    if (!version && !s.closed && this.#o.now() - s.startedAt < NAME_WAIT_MS) return false;
+    const safe = (x: string) => x.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 40) || 'unknown';
+    const stamp = s.startIso.replace(/\.\d+Z$/, '').replace(/:/g, '-');
+    let name = `${stamp}_${safe(s.channel || 'unknown')}_${safe(version || 'unknown')}`;
+    if (name === this.#lastFileName) name += `-${this.filesWritten.length}`;
+    this.#lastFileName = name;
+    const file = path.join(this.dir, `${name}.log`);
+    s.file = file;
     this.filesWritten.push(file);
     this.#io = this.#io
       .then(async () => {
@@ -244,19 +288,24 @@ export class TelemetryRecorder {
         await this.#prune(file);
       })
       .catch((err) => this.#o.log?.('warn', `Telemetry recorder: cannot prepare ${this.dir}: ${err}`));
-    this.#write(
-      {
-        kind: 'session_start',
-        channel: ctx.channel,
-        gameVersion: ctx.gameVersion ?? null,
-        gameBuild: ctx.gameBuild ?? null,
-        schemaBuild: this.#o.schemaBuild ?? null,
-        clientVersion: this.#o.clientVersion ?? null,
-      },
-      true,
-    );
     this.#o.log?.('info', `Telemetry recording to ${file}`);
-    return this.#session;
+    return true;
+  }
+
+  #scheduleFlush(): void {
+    if (this.#flushTimer) return;
+    this.#flushTimer = setTimeout(() => void this.flush(), this.#o.flushMs);
+    this.#flushTimer.unref?.();
+  }
+
+  /**
+   * A new Game.log started. Ends the session, except when it is still unnamed (the app just started
+   * and is reading the log the running game already writes): that is the same game session.
+   */
+  onNewLog(channel: string): void {
+    const s = this.#session;
+    if (s && !s.file && s.channel === channel) return;
+    this.endSession('new_log');
   }
 
   /** A Game.log line that telemetry should line up with (death, vehicle destroyed...). Only while a session is open. */
@@ -328,6 +377,7 @@ export class TelemetryRecorder {
       },
       true,
     );
+    s.closed = true;
     this.#session = null;
     this.#dirty = false;
     void this.flush();
@@ -337,7 +387,11 @@ export class TelemetryRecorder {
   flush(): Promise<void> {
     if (this.#flushTimer) clearTimeout(this.#flushTimer);
     this.#flushTimer = null;
-    const items = this.#queue.splice(0);
+    const all = this.#queue.splice(0);
+    // lines of a session that has no file name yet stay buffered
+    const items = all.filter((it) => this.#tryName(it.s));
+    this.#queue.push(...all.filter((it) => !it.s.file));
+    if (this.#queue.length) this.#scheduleFlush();
     if (items.length) {
       this.#io = this.#io.then(async () => {
         // consecutive lines of one file go in one append
@@ -345,9 +399,12 @@ export class TelemetryRecorder {
         while (i < items.length) {
           let j = i;
           let text = '';
-          while (j < items.length && items[j].file === items[i].file) text += items[j++].line;
+          while (j < items.length && items[j].s === items[i].s) {
+            text += items[j].line ?? items[j].make!();
+            j++;
+          }
           try {
-            await fsp.appendFile(items[i].file, text);
+            await fsp.appendFile(items[i].s.file!, text);
           } catch (err) {
             this.#o.log?.('warn', `Telemetry recorder write failed: ${err}`);
           }
@@ -375,17 +432,14 @@ export class TelemetryRecorder {
         s.capped = true;
         const marker = JSON.stringify({ t: this.#iso(), kind: 'truncated', maxFileBytes: this.#o.maxFileBytes }) + '\n';
         s.bytes += marker.length;
-        this.#queue.push({ file: s.file, line: marker });
+        this.#queue.push({ s, line: marker });
       }
       s.dropped++;
       return;
     }
     s.bytes += line.length;
-    this.#queue.push({ file: s.file, line });
-    if (!this.#flushTimer) {
-      this.#flushTimer = setTimeout(() => void this.flush(), this.#o.flushMs);
-      this.#flushTimer.unref?.();
-    }
+    this.#queue.push({ s, line });
+    this.#scheduleFlush();
   }
 
   /** Keep the newest `keepFiles` recordings (the file being created counts as one). */
