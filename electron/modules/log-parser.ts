@@ -107,7 +107,8 @@ const loadoutRegex = /\[InstancedInterior\] OnEntityLeaveZone - InstancedInterio
 // SUNSET: <Vehicle Destruction> not emitted since SC 4.4 (replaced by <Vehicle Destroyed>, see vehicleDestroyedRegex). Kept for old logs.
 const vehicleDestructionRegex = /<(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)> \[Notice\] <Vehicle Destruction>.*?Vehicle '(?<vehicle>[^']+)' \[\d+\] in zone '(?<vehicle_zone>[^']+)' \[pos x: (?<pos_x>[-\d\.]+), y: (?<pos_y>[-\d\.]+), z: (?<pos_z>[-\d\.]+) .*? driven by '(?<driver>[^']+)' \[\d+\] advanced from destroy level (?<destroy_level_from>\d+) to (?<destroy_level_to>\d+) caused by '(?<caused_by>[^']+)' \[\d+\] with '(?<damage_type>[^']+)'/;
 const cleanupPattern = /^(.+?)_\d+$/;
-const versionPattern = /--system-trace-env-id='pub-sc-alpha-(?<gameversion>\d{3,4}-\d{7})'/;
+// pub/ptu/eptu/tech envs, 7-9 digit builds, SC 5.0 adds extra -NNN segments after the build
+const versionPattern = /--system-trace-env-id='(?:[a-z]+)-sc-alpha-(?<gameversion>\d{3,5}-\d{7,9})(?:-\d+)*'/;
 
 // === NEW FORMAT PATTERNS (Star Citizen 4.4+) ===
 // New ActorState Dead (player death in vehicle context - HAS player name)
