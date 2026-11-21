@@ -173,3 +173,33 @@ test('log signatures: variable parts are normalised and names redacted', () => {
   assert.equal(d.common, 1);
   assert.deepEqual(extractBuildInfo('<t> FileVersion: 5.0.202.205\n<t> BackupNameAttachment=" Build(13238477) x"\n'), { fileVersion: '5.0.202.205', build: '13238477', branch: undefined });
 });
+
+test('LogDiffTracker: baseline rotation and never comparing a log with itself', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { LogDiffTracker } = await import('../../electron/modules/log-diff/log-diff-tracker');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'logdiff-test-'));
+  const ts = '<2026-11-20T10:00:00.000Z>';
+  const logA = `${ts} BackupNameAttachment=" Build(100) x"\n${ts} Log started on A\n${ts} [Notice] <Actor Death> CActor::Kill: 'x' [1]\n${ts} [Notice] <Old Thing> gone soon\n`;
+  const logB = `${ts} BackupNameAttachment=" Build(200) x"\n${ts} Log started on B\n${ts} [Notice] <Actor Death> CActor::Kill: 'y' [2]\n${ts} [Notice] <New Thing> hello\n`;
+  const patterns = { kill: /CActor::Kill/, old: /<Old Thing>/ };
+  const t1 = new LogDiffTracker({ storeDir: dir, patterns, minLinesToSave: 1 });
+  await t1.beginLog('/x/Game.log');
+  t1.addChunk(logA);
+  await t1.beginLog('/x/Game.log'); // game restarted → A saved as baseline
+  t1.addChunk(logB);
+  let r = t1.report();
+  assert.equal(r.baseline?.build.build, '100');
+  assert.deepEqual(r.added.map((e) => e.tag).sort(), ['New Thing']);
+  assert.ok(r.notSeen.some((e) => e.tag === 'Old Thing'));
+  assert.deepEqual(r.patterns.find((p) => p.name === 'old'), { name: 'old', current: 0, baseline: 1, status: 'lost' });
+  await t1.finalize(); // app quit mid-session: B saved, A becomes previous
+  // app restarts and re-reads the same Game.log (B): must compare with A, not B
+  const t2 = new LogDiffTracker({ storeDir: dir, patterns, minLinesToSave: 1 });
+  await t2.beginLog('/x/Game.log');
+  t2.addChunk(logB);
+  r = t2.report();
+  assert.equal(r.current.build.build, '200');
+  assert.equal(r.baseline?.build.build, '100');
+});
