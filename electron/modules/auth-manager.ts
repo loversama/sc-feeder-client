@@ -628,7 +628,23 @@ export async function logout(): Promise<boolean> {
     return true;
 }
 
-export async function refreshToken(): Promise<{ userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null; roles: string[] } | null> {
+type RefreshedUser = { userId: string; username: string; rsiHandle: string | null; rsiMoniker: string | null; avatar: string | null; roles: string[] };
+let refreshInFlight: Promise<RefreshedUser | null> | null = null;
+
+/**
+ * Exchange the refresh token for a new access token. Single-flight: concurrent callers (socket
+ * reconnect, embedded web views, IPC) share one request instead of racing each other.
+ */
+export function refreshToken(): Promise<RefreshedUser | null> {
+    if (!refreshInFlight) {
+        refreshInFlight = doRefreshToken().finally(() => {
+            refreshInFlight = null;
+        });
+    }
+    return refreshInFlight;
+}
+
+async function doRefreshToken(): Promise<RefreshedUser | null> {
      logger.info(MODULE_NAME, 'Attempting token refresh.');
      const currentRefreshToken = getRefreshTokenFromStore();
      if (!currentRefreshToken) {
@@ -644,7 +660,9 @@ export async function refreshToken(): Promise<{ userId: string; username: string
                  'Content-Type': 'application/json',
                  'User-Agent': getDetailedUserAgent(),
              },
-             body: JSON.stringify({ refreshToken: currentRefreshToken })
+             body: JSON.stringify({ refreshToken: currentRefreshToken }),
+             // A server that accepts the connection but never answers must not stall every reconnect.
+             signal: AbortSignal.timeout(15000),
          });
 
          if (!response.ok) {
@@ -703,7 +721,12 @@ export async function refreshToken(): Promise<{ userId: string; username: string
 
      } catch (error: any) {
          // Check if this is a network error (server offline) vs an actual authentication error
-         const isNetworkError = error.message?.includes('fetch failed') || 
+         // Network trouble, timeouts and non-JSON bodies (proxy error pages) are not a verdict on the
+         // refresh token: keep the user signed in and let the caller retry.
+         const isNetworkError = error?.name === 'TimeoutError' ||
+                               error?.name === 'AbortError' ||
+                               error instanceof SyntaxError ||
+                               error.message?.includes('fetch failed') || 
                                error.message?.includes('ECONNREFUSED') ||
                                error.message?.includes('ENOTFOUND') ||
                                error.message?.includes('ETIMEDOUT') ||
