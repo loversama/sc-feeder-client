@@ -7,6 +7,8 @@ import { processKillEvent, addOrUpdateEvent, correlateDeathWithDestruction, form
 import { resolveEntityName, getEntityName, isNpcEntity } from './definitionsService.ts'; // Import entity resolution functions
 import { KillEvent, PlayerDeath, GameEventType, EVENT_VISIBILITY_MAP, classifyMission } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
+import { Sc50LogTracker } from './sc50-log-events';
+import { publishLogFeedItem } from './telemetry/log-feed';
 
 // Enhanced zone hierarchy imports
 import { ZoneHistoryManager } from './zone-history-manager';
@@ -170,7 +172,8 @@ const memberLeftNotifRegex = /Added notification "Member Left/;
 const voipChannelLeftRegex = /^<[^>]+>\s(?<playerName>[^\s<>"][^<>\r\n]*?) has left the channel '(?<channelName>[^']+)'\.: "\s*\[\d+\] to queue/;
 
 // Location/jurisdiction changes (from notifications)
-const jurisdictionEnteredRegex = /Added notification "Entered (?<jurisdiction>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
+// "Entered Monitored Space" is not a jurisdiction (handled by monitoredSpaceRegex in sc50-log-events.ts)
+const jurisdictionEnteredRegex = /Added notification "Entered (?!Monitored Space)(?<jurisdiction>[^:]+):\s*"\s*\[(?<notifId>\d+)\]/;
 const monitoredSpaceRegex = /Added notification "(?<action>Entered|Exited) Monitored Space:\s*"\s*\[(?<notifId>\d+)\]/;
 
 // Quantum travel
@@ -194,6 +197,9 @@ const activeMissions = new Map<string, { acceptTime: string; category: string }>
 
 // Mission metadata cache — maps missionId to enriched data from CLocalMissionPhaseMarker
 const missionMetadataCache = new Map<string, { generatorName: string; contractName: string; contractDefinitionId: string }>();
+
+// SC 5.0 moments (quantum trips with names, monitored space, incapacitated, hangar, inventory location, medical bed, loadout)
+const sc50 = new Sc50LogTracker();
 // === END SC 4.8+ GAMEPLAY EVENT PATTERNS ===
 
 // === SC 4.10 PATTERNS (build 13165946+) ===
@@ -1129,6 +1135,23 @@ export async function parseLogContent(content: string, silentMode = false) {
             // === SC 4.8+ GAMEPLAY EVENT DETECTION ===
             const lineTs = extractLineTimestamp(line);
 
+            if (attachmentReceivedRegex.test(line)) detectionStats.attachment_received++;
+            const sc50Result = sc50.handle(line, currentUsername);
+            for (const o of sc50Result.out) {
+                if (o.location) currentLocation = o.location;
+                if (o.local) {
+                    const { eventType, id, timestamp, description, destination, location, eventData } = o.local;
+                    await emitActivityEvent(eventType, id, timestamp, description, {
+                        ...(destination ? { destination } : {}),
+                        ...(location ? { location } : {}),
+                        eventData,
+                    }, silentMode);
+                }
+                // Feed items only for live lines: the startup scan of an existing log must not re-send history.
+                if (o.feed && !silentMode) publishLogFeedItem(o.feed);
+            }
+            if (sc50Result.consumed) continue;
+
             // --- Mission Phase Marker (metadata enrichment) ---
             const phaseMarkerMatch = line.match(missionPhaseMarkerRegex);
             if (phaseMarkerMatch?.groups) {
@@ -1432,6 +1455,20 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue;
             }
 
+            const objWithdrawnMatch = line.match(missionObjectiveWithdrawnRegex);
+            if (objWithdrawnMatch?.groups) {
+                const objectiveText = cleanMissionName(objWithdrawnMatch.groups.objectiveText.trim());
+                await emitActivityEvent('objective_update', `objective_withdrawn_${lineTs}_${objectiveText.replace(/[^a-zA-Z0-9]+/g, '_')}`, lineTs,
+                    `Objective Withdrawn: ${objectiveText}`,
+                    { objectiveText, eventData: { withdrawn: true } }, silentMode);
+                continue;
+            }
+
+            if (refuelRequestRegex.test(line)) {
+                await emitActivityEvent('hangar', `refuel_${lineTs}`, lineTs, 'Refuel request accepted', { eventData: { action: 'refuel_accepted' } }, silentMode);
+                continue;
+            }
+
             // Party invite: inviter is on the previous "Added notification" title line
             if (partyInviteRegex.test(line)) {
                 const inviter = priorNotificationTitle;
@@ -1474,24 +1511,6 @@ export async function parseLogContent(content: string, silentMode = false) {
                 await emitActivityEvent('location_change', `zone_${zoneType}_${enter ? 'enter' : 'leave'}_${lineTs}`, lineTs,
                     `${enter ? 'Entered' : 'Left'} ${zone}`,
                     { destination: zone, eventData: { zoneType, action: enter ? 'enter' : 'leave' } }, silentMode);
-                continue;
-            }
-
-            const qtSelectedMatch = line.match(qtSelectedRegex);
-            if (qtSelectedMatch?.groups) {
-                const { vehicle, destination } = qtSelectedMatch.groups;
-                await emitActivityEvent('quantum_travel', `qt_selected_${lineTs}_${destination}`, lineTs,
-                    `Quantum target selected: ${destination}`,
-                    { destination, eventData: { phase: 'selected', vehicle } }, silentMode);
-                continue;
-            }
-
-            const qtArrivedMatch = line.match(qtArrivedRegex);
-            if (qtArrivedMatch?.groups) {
-                const { vehicle, vehicleId } = qtArrivedMatch.groups;
-                await emitActivityEvent('quantum_travel', `qt_arrived_${lineTs}_${vehicleId}`, lineTs,
-                    'Quantum travel: arrived at final destination',
-                    { eventData: { phase: 'arrived', vehicle, vehicleId } }, silentMode);
                 continue;
             }
 
@@ -1646,33 +1665,6 @@ export async function parseLogContent(content: string, silentMode = false) {
                 continue;
             }
 
-            // --- Quantum Travel ---
-            const qtSuccessMatch = line.match(qtRouteSuccessRegex);
-            if (qtSuccessMatch?.groups) {
-                const { destination, fuel } = qtSuccessMatch.groups;
-                logger.info(MODULE_NAME, 'QT route calculated:', { destination, fuel });
-                const eventId = `qt_${destination}_${Date.now()}`;
-                const partialEvent: Partial<KillEvent> = {
-                    id: eventId,
-                    timestamp: lineTs,
-                    killers: [],
-                    victims: [],
-                    deathType: 'Unknown',
-                    eventType: 'quantum_travel' as GameEventType,
-                    destination: destination,
-                    eventData: { phase: 'route' },
-                    visibility: EVENT_VISIBILITY_MAP['quantum_travel'],
-                    gameMode: stableGameMode,
-                    gameVersion: currentGameVersion,
-                    playerShip: currentPlayerShip,
-                    eventDescription: `Quantum route to ${destination} (fuel: ${Math.round(parseFloat(fuel))})`,
-                    isPlayerInvolved: true,
-                    playerHandle: currentUsername || undefined,
-                };
-                await processKillEvent(partialEvent, silentMode, 0);
-                continue;
-            }
-
             // === END SC 4.8+ GAMEPLAY EVENT DETECTION ===
 
             // --- Incapacitation Log (Optional) ---
@@ -1705,6 +1697,7 @@ export function resetParserState() {
     previousNotificationTitle = null;
     pendingShopRequests.length = 0;
     seenObjectiveProgress.clear();
+    sc50.reset();
     missionCommsCache.clear();
     stableGameMode = "Unknown"; // Reset stable mode
     rawDetectedGameMode = "Unknown"; // Reset raw mode
@@ -1955,11 +1948,11 @@ export const PARSER_PATTERN_META: Record<string, { status: ParserPatternStatus; 
     frontendMode: { status: 'active', lastSeen: '4.10.200' },
     loadout: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
     vehicleDestruction: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<Vehicle Destruction> replaced by <Vehicle Destroyed> (kept for old logs)' },
-    gameVersion: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
-    actorStateDead: { status: 'active', lastSeen: '4.10.200' },
+    gameVersion: { status: 'active', lastSeen: '5.0.202', note: 'Cmdline system-trace-env-id; 5.0 adds extra -NNN segments' },
+    actorStateDead: { status: 'sunset', since: '5.0', lastSeen: '4.10.200', note: 'No [ActorState] Dead line on 5.0; deaths come from game telemetry (ACTOR_DOWNED/ACTOR_DEAD) and the Incapacitated HUD notification' },
     corpseUtils: { status: 'active', lastSeen: '4.10.196', note: 'Only fires for non-kept (lost) gear; not exercised in 4.10.200 samples' },
-    attachmentReceived: { status: 'active', lastSeen: '4.10.200' },
-    fatalCollision: { status: 'active', lastSeen: '4.10.200' },
+    attachmentReceived: { status: 'active', lastSeen: '5.0.202', note: 'Counted; own bursts become a loadout event (sc50-log-events.ts)' },
+    fatalCollision: { status: 'unverified', note: 'No handler (collisions come from <Vehicle Destroyed> reason Collision); 0 matches in 5.0.202 logs' },
     newVehicleDestroyed: { status: 'unverified', note: '[VEHICLE SPAWN] Vehicle Destroyed was Arena Commander only (last seen 4.5.167); AC untested on 4.10' },
     missionAccepted: { status: 'active', lastSeen: '4.10.200' },
     missionComplete: { status: 'active', lastSeen: '4.10.200' },
@@ -1967,22 +1960,22 @@ export const PARSER_PATTERN_META: Record<string, { status: ParserPatternStatus; 
     missionShared: { status: 'active', lastSeen: '4.10.196' },
     missionObjective: { status: 'active', lastSeen: '4.10.200' },
     missionObjectiveComplete: { status: 'active', lastSeen: '4.10.200', note: 'Fixed for the title wrapping onto the next line' },
-    missionObjectiveWithdrawn: { status: 'active', lastSeen: '4.10.196' },
-    missionEnded: { status: 'active', lastSeen: '4.10.200' },
+    missionObjectiveWithdrawn: { status: 'unverified', lastSeen: '4.10.196', note: 'Emits objective_update (withdrawn); 0 matches in 5.0.202 logs' },
+    missionEnded: { status: 'unverified', lastSeen: '4.10.200', note: 'No handler (correlation only, never emitted); 0 matches in 5.0.202 logs' },
     missionPhaseMarker: { status: 'active', lastSeen: '4.10.200' },
     partyMemberConnected: { status: 'unverified', note: '0 matches in any 4.10 sample log; anchored after the timestamp' },
     partyMemberLeft: { status: 'active', lastSeen: '4.10.196', note: 'Anchored after the timestamp (hyphen/space names)' },
     partyDisbanded: { status: 'active', lastSeen: '4.10.200' },
     partyInvite: { status: 'active', lastSeen: '4.10.200', note: 'Body line only; inviter is on the previous Added notification line' },
-    memberLeftNotif: { status: 'active', lastSeen: '4.10.200' },
+    memberLeftNotif: { status: 'unverified', note: 'No handler: party leaves come from the body line (partyMemberLeft); 0 matches in 5.0.202 logs' },
     voipChannelLeft: { status: 'active', lastSeen: '4.10.200', note: 'Anchored after the timestamp (hyphen/space names)' },
-    jurisdictionEntered: { status: 'active', lastSeen: '4.10.200' },
-    monitoredSpace: { status: 'active', lastSeen: '4.10.200' },
-    qtFuelRequest: { status: 'active', lastSeen: '4.10.200' },
-    qtRouteSuccess: { status: 'active', lastSeen: '4.10.200' },
-    qtStartLocation: { status: 'active', lastSeen: '4.10.200' },
-    hangarRequest: { status: 'active', lastSeen: '4.10.200' },
-    refuelRequest: { status: 'unverified', note: '0 matches in 4.10.196 and 4.10.200 sample logs' },
+    jurisdictionEntered: { status: 'active', lastSeen: '5.0.202', note: 'Excludes "Entered Monitored Space" (monitoredSpace)' },
+    monitoredSpace: { status: 'active', lastSeen: '5.0.202', note: 'Entered/Exited; handled in sc50-log-events.ts' },
+    qtFuelRequest: { status: 'active', lastSeen: '5.0.202', note: 'Starts a quantum trip (sc50-log-events.ts)' },
+    qtRouteSuccess: { status: 'active', lastSeen: '5.0.202', note: 'qt_route_planned (sc50-log-events.ts)' },
+    qtStartLocation: { status: 'active', lastSeen: '5.0.202', note: 'Trip origin name (sc50-log-events.ts)' },
+    hangarRequest: { status: 'active', lastSeen: '5.0.202', note: 'ship_retrieved when paired with SetVehicleSpawningInformations (sc50-log-events.ts)' },
+    refuelRequest: { status: 'unverified', note: 'Emits a hangar event (refuel_accepted); 0 matches in 4.10 and 5.0.202 logs' },
     corpseLog: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<[ActorState] Corpse> replaced by <[ActorState] Dead> (kept for old logs)' },
     kill: { status: 'sunset', since: '4.4', lastSeen: '4.3.x', note: '<Actor Death> CActor::Kill no longer emitted: no FPS kill attribution since 4.4 (kept for old logs)' },
     incap: { status: 'unverified', note: 'Last seen 4.6; no incaps in any 4.10 log' },
@@ -1999,8 +1992,8 @@ export const PARSER_PATTERN_META: Record<string, { status: ParserPatternStatus; 
     rewardEarned: { status: 'active', lastSeen: '4.10.200' },
     emergencyServices: { status: 'active', lastSeen: '4.10.200' },
     zoneNotice: { status: 'active', lastSeen: '4.10.200' },
-    qtSelected: { status: 'active', lastSeen: '4.10.200' },
-    qtArrived: { status: 'active', lastSeen: '4.10.200' },
+    qtSelected: { status: 'active', lastSeen: '5.0.202', note: 'Destination resolved to a name (Planet entity / own Aligned Target); raw ids never shown' },
+    qtArrived: { status: 'active', lastSeen: '5.0.202', note: 'Only the own trip vehicle counts (arrivals of nearby ships are logged too)' },
     channelSelf: { status: 'active', lastSeen: '4.10.200' },
     channelOtherJoined: { status: 'active', lastSeen: '4.10.200' },
 };

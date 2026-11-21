@@ -1,0 +1,4 @@
+<2026-11-21T21:54:02.538Z> [Notice] <RequestLocationInventory> Player[<player>] requested inventory for Location[Nyx_Levski] [Team_CoreGameplayFeatures][Inventory]
+<2026-11-21T17:19:52.618Z> [Notice] <RequestLocationInventory> Player[<player>] requested inventory for Location[sector_ht_a_swamp_001 (Northern Reach)] [Team_CoreGameplayFeatures][Inventory]
+<2026-11-21T18:01:38.167Z> [Notice] <RequestLocationInventory> Player[<player>] requested inventory for Location[location_ht_a_habitation_m_hubremote_001 (Ozaki's Central)] [Team_CoreGameplayFeatures][Inventory]
+<2026-11-21T21:53:59.987Z> [Notice] <Update Inventory Location> Player [<player>] is changing location. Landing [0] -> [1170480386]. Location [0] -> [1170480386]. Pending [0] [Team_CoreGameplayFeatures][Inventory]
