@@ -23,6 +23,7 @@ import { LogDiffTracker, type LogDiffReport } from '../log-diff/log-diff-tracker
 import { extractBuildInfo, type LogBuildInfo } from '../log-diff/log-signature';
 import { TelemetryRecorder, computeFieldUniverse, computeGameEventTypes } from './telemetry-recorder';
 import { loadTelemetryRoot } from './telemetry-client';
+import { logFeed, type LogFeedItem } from './log-feed';
 
 const MODULE_NAME = 'Telemetry';
 
@@ -142,6 +143,9 @@ export function initTelemetry(): void {
   // After a server restart / redeploy / network drop the socket is re-authenticated by
   // server-connection; push a fresh snapshot right away and re-send held feed events.
   connectionEvents.on('authenticated', () => service?.resync());
+
+  // Feed moments only Game.log knows about on SC 5.0 (quantum trips, hangar, medical bed, downed fallback).
+  logFeed.on('item', (item: LogFeedItem) => service?.injectLogEvent(item));
 
   if (settings.telemetryEnabled) service.start();
   logger.info(MODULE_NAME, `Telemetry initialised (enabled=${settings.telemetryEnabled}, share=${settings.telemetryShare}, schema ${SCHEMA_GAME_BUILD})`);

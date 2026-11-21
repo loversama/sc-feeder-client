@@ -6,7 +6,8 @@
  */
 import { EventEmitter } from 'node:events';
 import { TelemetryClient, DEFAULT_TELEMETRY_ADDRESS, type StreamHandle } from './telemetry-client';
-import { TelemetryState, type TelemetryEvent, type Obj } from './telemetry-state';
+import { TelemetryState, obj, type TelemetryEvent, type Obj } from './telemetry-state';
+import type { LogFeedItem } from './log-feed';
 
 export type TelemetryStatus =
   | 'disabled'
@@ -54,6 +55,21 @@ const MAX_SNAPSHOT_BYTES = 16 * 1024;
 /** Feed-worthy events kept while the server is unreachable, re-sent on `resync()`. */
 const MAX_RETAINED_FEED_EVENTS = 50;
 const MAX_RETAINED_FEED_AGE_MS = 15 * 60_000;
+/** A log-derived fallback waits this long for the matching telemetry event before it is sent. */
+const LOG_FALLBACK_HOLD_MS = 5000;
+const LOG_FALLBACK_WINDOW_MS = 15_000;
+
+/**
+ * Snapshot fields that change every frame by tiny amounts. A change smaller than `step` does not by
+ * itself trigger an upload; the latest value still goes out at least every `maxAgeMs` (and with any
+ * other change). heart_rate alone produced ~4,300 changes per session.
+ */
+const JITTER_FIELDS: Array<{ path: string[]; step: number; maxAgeMs: number }> = [
+  { path: ['actor', 'vitals', 'heart_rate'], step: 3, maxAgeMs: 5000 },
+  { path: ['actor', 'vitals', 'hunger', 'current'], step: 1, maxAgeMs: 30_000 },
+  { path: ['actor', 'vitals', 'thirst', 'current'], step: 1, maxAgeMs: 30_000 },
+  { path: ['actor', 'vitals', 'body_temperature', 'current'], step: 0.3, maxAgeMs: 30_000 },
+];
 
 export class TelemetryService extends EventEmitter {
   readonly state: TelemetryState;
@@ -78,6 +94,8 @@ export class TelemetryService extends EventEmitter {
   #lastActivity = 0;
   #pendingEvents: TelemetryEvent[] = [];
   #retainedFeed: TelemetryEvent[] = [];
+  /** Last uploaded value + time of each jitter field (by path). */
+  #jitterSent = new Map<string, { value: number; at: number }>();
   #lastSnapshotJson = '';
   #lastSnapshotSentAt = 0;
   #running = false;
@@ -141,6 +159,7 @@ export class TelemetryService extends EventEmitter {
   resync(): void {
     this.#lastSnapshotJson = '';
     this.#lastSnapshotSentAt = 0;
+    this.#jitterSent.clear();
     const cutoff = this.#opts.now() - MAX_RETAINED_FEED_AGE_MS;
     const retained = this.#retainedFeed.filter((e) => Date.parse(e.at) >= cutoff);
     this.#retainedFeed = [];
@@ -148,6 +167,35 @@ export class TelemetryService extends EventEmitter {
       this.#opts.log('info', `Re-sending ${retained.length} telemetry feed event(s) held while offline`);
       this.#pendingEvents.unshift(...retained);
     }
+  }
+
+  /**
+   * A feed item derived from Game.log (log-feed.ts). Shared like telemetry events, also while the
+   * game stream is off. `fallbackFor` items wait briefly and are dropped when telemetry reported
+   * the same moment.
+   */
+  injectLogEvent(item: LogFeedItem): void {
+    const e = this.state.externalEvent(item.type, item.at, item.severity, item.summary, {
+      feed: item.feed,
+      category: item.category,
+      context: { ...(item.context ?? {}), source: 'game_log' },
+      vehicle: item.vehicle,
+    });
+    if (!item.feed) delete e.feed;
+    const deliver = () => {
+      if (item.fallbackFor && this.#telemetryReported(item.fallbackFor, item.at)) {
+        this.#opts.log('debug', `Game.log ${item.type} dropped: telemetry already reported it`);
+        return;
+      }
+      this.#recordEvent(e);
+      if (!this.#running) this.#flushEvents(); // no game stream: nothing else flushes
+    };
+    if (item.fallbackFor) setTimeout(deliver, LOG_FALLBACK_HOLD_MS).unref?.();
+    else deliver();
+  }
+
+  #telemetryReported(type: string, at: number): boolean {
+    return this.recentEvents.some((r) => r.type === type && r.context?.source !== 'game_log' && Math.abs(Date.parse(r.at) - at) <= LOG_FALLBACK_WINDOW_MS);
   }
 
   /** Feed events waiting for the server (for diagnostics / tests). */
@@ -336,12 +384,28 @@ export class TelemetryService extends EventEmitter {
     }
   }
 
+  /**
+   * The snapshot used for change detection: jitter fields that moved less than their step since the
+   * last upload (and are younger than maxAgeMs) are replaced by the uploaded value.
+   */
+  #withoutJitter(snapshot: Obj, now: number): Obj {
+    let out = snapshot;
+    for (const f of JITTER_FIELDS) {
+      const v = readPath(out, f.path);
+      if (typeof v !== 'number') continue;
+      const sent = this.#jitterSent.get(f.path.join('.'));
+      if (!sent || Math.abs(v - sent.value) >= f.step || now - sent.at >= f.maxAgeMs) continue;
+      out = writePath(out, f.path, sent.value);
+    }
+    return out;
+  }
+
   #uploadSnapshot(): void {
     if (this.status !== 'streaming' || !this.#opts.isSharingEnabled() || !this.#opts.upload) return;
     const now = this.#opts.now();
     const snapshot = this.state.buildSharedSnapshot({ includeBalance: this.#opts.includeBalance() }, now);
     if (!Object.keys(snapshot).length) return;
-    const json = JSON.stringify(snapshot);
+    const json = JSON.stringify(this.#withoutJitter(snapshot, now));
     const changed = json !== this.#lastSnapshotJson;
     if (!changed && now - this.#lastSnapshotSentAt < this.#opts.heartbeatMs) return;
     if (json.length > MAX_SNAPSHOT_BYTES) {
@@ -352,7 +416,29 @@ export class TelemetryService extends EventEmitter {
     if (ok) {
       this.#lastSnapshotJson = json;
       this.#lastSnapshotSentAt = now;
+      for (const f of JITTER_FIELDS) {
+        const v = readPath(snapshot, f.path);
+        if (typeof v === 'number') {
+          const key = f.path.join('.');
+          const prev = this.#jitterSent.get(key);
+          // keep the reference value unless it moved by a full step (or got old) — see #withoutJitter
+          if (!prev || Math.abs(v - prev.value) >= f.step || now - prev.at >= f.maxAgeMs) this.#jitterSent.set(key, { value: v, at: now });
+        }
+      }
       this.lastSharedSnapshot = { at: new Date(now).toISOString(), bytes: json.length, snapshot };
     }
   }
+}
+
+function readPath(o: Obj, path: string[]): unknown {
+  let cur: unknown = o;
+  for (const k of path) cur = obj(cur)[k];
+  if (typeof cur === 'string' && cur.trim() !== '' && Number.isFinite(Number(cur))) return Number(cur);
+  return cur;
+}
+
+/** Copy-on-write set (the snapshot shares objects with the live state). */
+function writePath(o: Obj, path: string[], value: unknown): Obj {
+  const [k, ...rest] = path;
+  return { ...o, [k]: rest.length ? writePath(obj(o[k]), rest, value) : value };
 }

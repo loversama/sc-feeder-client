@@ -22,7 +22,11 @@
  *    unknown) and only damage / unknown are alerts worth a feed entry.
  *  - The vehicle section goes stale ~3 s after leaving the seat; `vehicle_exited` is dated at the
  *    game's ACTOR_LEAVE_SEAT when there was one.
- *  - The schema has no quantum drive state (only quantum_fuel), so no quantum events are derived.
+ *  - The schema has no quantum drive state (only quantum_fuel, never sent). `annunciators.qdrv` goes
+ *    OFF → NOMINAL when the drive is ready (NAV mode) and briefly MAJOR_ON on a drive warning; it does
+ *    not show spooling or the jump itself (quantum trips come from Game.log, see log-feed.ts).
+ *  - hunger / thirst drain by ~0.01 per second; heart_rate jitters every frame (see the upload
+ *    throttle in telemetry-service.ts).
  */
 
 export type Obj = Record<string, any>;
@@ -72,6 +76,10 @@ export const FEED_EVENT_TYPES = new Set([
   'shields_down',
   'vehicle_damaged',
   'low_oxygen',
+  // 0.3.3 (Game.log derived, see log-feed.ts)
+  'qt_arrived',
+  'ship_retrieved',
+  'healed_at_medical_bed',
 ]);
 
 const CATEGORY: Record<string, TelemetryEventCategory> = {
@@ -96,6 +104,20 @@ const CATEGORY: Record<string, TelemetryEventCategory> = {
   low_health: 'vitals',
   low_oxygen: 'vitals',
   atmosphere_changed: 'vitals',
+  low_hunger: 'vitals',
+  low_thirst: 'vitals',
+  healed_at_medical_bed: 'vitals',
+  low_fuel: 'ship',
+  quantum_drive_ready: 'travel',
+  quantum_drive_warning: 'travel',
+  atmosphere_entered: 'travel',
+  atmosphere_exited: 'travel',
+  qt_route_planned: 'travel',
+  qt_obstructed: 'travel',
+  qt_arrived: 'travel',
+  ship_retrieved: 'ship',
+  hangar_queued: 'ship',
+  location_changed: 'status',
 };
 
 /** Sections that are never sent to the server (high-rate, no value off-machine). */
@@ -145,6 +167,8 @@ type Facts = {
   seat: string;
   health: number | null;
   oxygen: number | null;
+  hunger: number | null;
+  thirst: number | null;
   breathable: boolean;
   balance: string;
   hasVehicle: boolean;
@@ -158,6 +182,10 @@ type Facts = {
   doorOpen: string;
   doorLock: string;
   shields: number;
+  /** 0..1, null when not reported */
+  hydrogenFuel: number | null;
+  atmosphereDensity: number;
+  qdrv: string;
   power: Record<string, boolean>;
   majorAnnunciators: string[];
   presetName: string;
@@ -191,6 +219,8 @@ export class TelemetryState {
   #shieldPowerSeen = false;
   #landedReported: boolean | null = null;
   #landedPending: { value: boolean; since: number } | null = null;
+  /** Low-level alerts fire once, then re-arm only after recovering above the re-arm level. */
+  #lowArmed: Record<string, boolean> = {};
   frames = 0;
   firstFrameAt = 0;
   lastFrameAt = 0;
@@ -213,6 +243,7 @@ export class TelemetryState {
     this.#shieldPowerSeen = false;
     this.#landedReported = null;
     this.#landedPending = null;
+    this.#lowArmed = {};
     this.frames = 0;
     this.firstFrameAt = 0;
     this.lastFrameAt = 0;
@@ -292,6 +323,21 @@ export class TelemetryState {
       out.actor = actor;
     }
     return out;
+  }
+
+  /**
+   * Build an event that did not come from a telemetry frame (Game.log via log-feed.ts) with the same
+   * id scheme and enrichment as derived events.
+   */
+  externalEvent(
+    type: string,
+    at: number,
+    severity: TelemetryEventSeverity,
+    summary: string,
+    extra: EventExtra = {},
+    data?: Obj,
+  ): TelemetryEvent {
+    return this.#event(type, at, severity, summary, data, extra);
   }
 
   // --- internals -------------------------------------------------------
@@ -382,6 +428,8 @@ export class TelemetryState {
       seat: str(astate.seat_name),
       health: actor ? pct(vitals.health) : null,
       oxygen: actor ? pct(vitals.oxygen) : null,
+      hunger: actor ? pct(vitals.hunger) : null,
+      thirst: actor ? pct(vitals.thirst) : null,
       breathable: bool(env.breathable_atmosphere),
       balance: astate.uec_balance != null ? String(astate.uec_balance) : '0',
       hasVehicle,
@@ -395,6 +443,9 @@ export class TelemetryState {
       doorOpen: hasVehicle ? enumShort(obj(vstate.doors).open_state, 'DOOR_OPEN_STATE_') : 'NONE',
       doorLock: hasVehicle ? enumShort(obj(vstate.doors).lock_state, 'DOOR_LOCK_STATE_') : 'NONE',
       shields: num(obj(vstate.shields).level),
+      hydrogenFuel: hasVehicle && obj(flight.instruments).hydrogen_fuel !== undefined ? num(obj(flight.instruments).hydrogen_fuel) : null,
+      atmosphereDensity: hasVehicle ? num(obj(flight.instruments).atmospheric_density) : 0,
+      qdrv: hasVehicle ? enumShort(ann.qdrv, 'ANNUNCIATOR_STATE_') : 'NONE',
       power: Object.fromEntries(POWER_KEYS.map((k) => [k, bool(power[k])])),
       majorAnnunciators: Object.entries(ann)
         .filter(([, v]) => /MAJOR/.test(String(v)))
@@ -438,6 +489,8 @@ export class TelemetryState {
       // Only real readings count (an absent value is unknown, not 0 %).
       crossing(prev.health, cur.health, 25, () => push('low_health', 'alert', `Health low (${Math.round(cur.health!)}%)`, { health: cur.health }));
       crossing(prev.oxygen, cur.oxygen, 25, () => push('low_oxygen', 'alert', `Oxygen low (${Math.round(cur.oxygen!)}%)`, { oxygen: cur.oxygen }));
+      this.#low('low_hunger', prev.hunger, cur.hunger, 25, 35, (v) => push('low_hunger', 'info', `Hungry (${Math.round(v)}%)`, { hunger: Math.round(v) }));
+      this.#low('low_thirst', prev.thirst, cur.thirst, 25, 35, (v) => push('low_thirst', 'info', `Thirsty (${Math.round(v)}%)`, { thirst: Math.round(v) }));
       if (cur.breathable !== prev.breathable) push('atmosphere_changed', 'info', cur.breathable ? 'Breathable atmosphere' : 'Non-breathable atmosphere', { breathable: cur.breathable });
       if (cur.balance !== prev.balance) {
         const delta = num(cur.balance) - num(prev.balance);
@@ -476,7 +529,7 @@ export class TelemetryState {
         this.#lastDamageAt = now;
         if (dropPct >= 5) push('vehicle_damaged', 'warn', `Hull -${dropPct.toFixed(0)}%`, { from: prev.vehicleHealth, to: cur.vehicleHealth }, { context: { hullDropPct: Math.round(dropPct) } });
       }
-      const newMajors = cur.majorAnnunciators.filter((a) => !prev.majorAnnunciators.includes(a));
+      const newMajors = cur.majorAnnunciators.filter((a) => !prev.majorAnnunciators.includes(a) && a !== 'qdrv');
       if (newMajors.includes('hit')) this.#lastDamageAt = now;
       if (prev.shields > 0 && cur.shields <= 0) {
         const cause = this.#shieldsDownCause(cur, now);
@@ -490,6 +543,15 @@ export class TelemetryState {
         });
       }
       if (prev.shields <= 0 && cur.shields > 0) push('shields_up', 'info', 'Shields up');
+      this.#low('low_fuel', prev.hydrogenFuel === null ? null : prev.hydrogenFuel * 100, cur.hydrogenFuel === null ? null : cur.hydrogenFuel * 100, 15, 25, (v) =>
+        push('low_fuel', 'info', `Hydrogen fuel low (${Math.round(v)}%)`, { fuel: Math.round(v) }));
+      // Density is absent (= 0) in space; small dead band against rounding flicker at the edge.
+      if (prev.atmosphereDensity < 0.005 && cur.atmosphereDensity >= 0.01) push('atmosphere_entered', 'info', 'Entered atmosphere', { density: cur.atmosphereDensity });
+      if (prev.atmosphereDensity >= 0.01 && cur.atmosphereDensity < 0.005) push('atmosphere_exited', 'info', 'Left atmosphere');
+      if (cur.qdrv !== prev.qdrv) {
+        if (cur.qdrv === 'NOMINAL' && prev.qdrv === 'OFF') push('quantum_drive_ready', 'info', 'Quantum drive ready');
+        if (cur.qdrv === 'MAJOR_ON') push('quantum_drive_warning', 'warn', 'Quantum drive warning');
+      }
       const powerChanged = POWER_KEYS.filter((k) => prev.power[k] !== cur.power[k]);
       if (powerChanged.length) push('power_changed', 'info', `Power: ${powerChanged.map((k) => `${k.replace(/_/g, ' ')} ${cur.power[k] ? 'on' : 'off'}`).join(', ')}`, { changed: Object.fromEntries(powerChanged.map((k) => [k, cur.power[k]])) });
       if (newMajors.length) push('annunciator_warning', 'warn', `Warning light: ${newMajors.join(', ').toUpperCase()}`, { annunciators: newMajors });
@@ -504,10 +566,22 @@ export class TelemetryState {
     return ev;
   }
 
+  /** Fire once when `cur` drops below `below`; re-arm when it recovers to `rearm` or more. Unknown readings are ignored. */
+  #low(key: string, prev: number | null, cur: number | null, below: number, rearm: number, fire: (v: number) => void): void {
+    if (cur === null) return;
+    if (this.#lowArmed[key] === undefined) this.#lowArmed[key] = (prev ?? cur) >= below;
+    if (cur >= rearm) this.#lowArmed[key] = true;
+    if (cur < below && this.#lowArmed[key] && prev !== null) {
+      this.#lowArmed[key] = false;
+      fire(cur);
+    }
+  }
+
   #enterVehicle(cur: Facts): void {
     this.#landedReported = cur.landed;
     this.#landedPending = null;
     this.#shieldPowerSeen = !!(cur.power.shield_generators && cur.power.shield_emitters);
+    delete this.#lowArmed.low_fuel;
     this.#lastDamageAt = 0;
   }
 
