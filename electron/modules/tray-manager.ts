@@ -15,6 +15,19 @@ const __dirname = path.dirname(__filename);
 
 let tray: Tray | null = null;
 
+/** Body-cam privacy indicator: tooltip line + a "Stop sharing" menu entry while screenshots are shared. */
+let bodycamBanner: { text: string; onStop: () => void } | null = null;
+const BASE_TOOLTIP = 'SC Kill Feed';
+const tooltipText = () => (bodycamBanner ? `${BASE_TOOLTIP}\n${bodycamBanner.text}` : BASE_TOOLTIP);
+
+export function setBodycamTrayState(banner: { text: string; onStop: () => void } | null): void {
+    bodycamBanner = banner;
+    if (tray && !tray.isDestroyed()) {
+        tray.setToolTip(tooltipText());
+        tray.setContextMenu(buildTrayMenuTemplate());
+    }
+}
+
 // Helper function to open/focus the web content window and navigate to a specific tab
 function navigateWebContentWindow(tabName: string) {
     logger.info(MODULE_NAME, `Tray: Attempting to open/navigate web content window to: ${tabName}`);
@@ -74,7 +87,7 @@ export function createTrayMenu() {
     const contextMenu = buildTrayMenuTemplate();
 
     if (tray) {
-        tray.setToolTip('SC Kill Feed');
+        tray.setToolTip(tooltipText());
         tray.setContextMenu(contextMenu);
 
         tray.on('click', () => {
@@ -268,6 +281,10 @@ function buildTrayMenuTemplate() {
         }
     });
 
+    if (bodycamBanner) {
+        const b = bodycamBanner;
+        (menuItems as any[]).unshift({ label: b.text, enabled: false }, { label: 'Stop sharing game screenshots', click: () => b.onStop() }, { type: 'separator' });
+    }
     return Menu.buildFromTemplate(menuItems as Electron.MenuItemConstructorOptions[]);
 }
 

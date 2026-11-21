@@ -46,13 +46,26 @@ test('window selection never returns a screen source even if its name matches', 
   assert.equal(selectGameWindow([src('screen:0:0', 'Entire screen'), src('window:9:0', 'Star Citizen')], M)?.id, 'window:9:0');
 });
 
-test('title matcher is anchored (does not match titles that merely mention it) and configurable', () => {
+test('title matcher is EXACT (no suffix/prefix) and falls back to the default on a bad override', () => {
   assert.equal(selectGameWindow([src('window:1:0', 'Chat about Star Citizen - Discord')], M), null);
+  assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen - Google Chrome')], M), null);
+  assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen Wiki')], M), null);
   assert.equal(selectGameWindow([src('window:1:0', 'star citizen')], M)?.id, 'window:1:0');
-  assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen 4.0 PTU')], M)?.id, 'window:1:0');
   assert.equal(selectGameWindow([src('window:1:0', 'StarCitizen')], makeTitleMatcher('^StarCitizen$'))?.id, 'window:1:0');
   // invalid user regex falls back to the default
   assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen')], makeTitleMatcher('(['))?.id, 'window:1:0');
+});
+
+test('more than one matching window = capture nothing (never guess)', () => {
+  const two = [src('window:1:0', 'Star Citizen'), src('window:2:0', 'Star Citizen')];
+  assert.equal(selectGameWindow(two, M), null);
+  // an empty-thumbnail twin still counts as a second match
+  assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen'), src('window:2:0', 'Star Citizen', img('empty'))], M), null);
+});
+
+test('malformed source ids are ignored', () => {
+  assert.equal(selectGameWindow([src('window:abc:0', 'Star Citizen')], M), null);
+  assert.equal(selectGameWindow([src('window:12', 'Star Citizen')], M), null);
 });
 
 test('minimised (empty thumbnail) game window is not selected', () => {
@@ -88,6 +101,7 @@ function harness(over: Partial<BodycamDeps> & { sources?: CamSource[]; settings?
     getSettings: () => over.settings ?? { enabled: true, intervalSec: 15, orgs: ['VOID'] },
     isGameRunning: () => true,
     isOnline: () => true,
+    isGameWindow: async () => true,
     getWindowSources: async (o) => (calls.sources.push(o), over.sources ?? [src('window:2:0', 'Star Citizen')]),
     upload: async (f) => (calls.uploads.push(f), { ok: true }),
     setTimer: (fn, ms) => (timers.push({ fn, ms }), timers.length),
@@ -167,4 +181,37 @@ test('uses the configured interval between frames', async () => {
   timers[0].fn();
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(timers.at(-1)!.ms, 30_000);
+});
+
+test('a window titled like the game that is NOT owned by StarCitizen.exe is never captured', async () => {
+  const checked: string[] = [];
+  const { sharer, calls } = harness({ isGameWindow: async (h) => (checked.push(h), false) });
+  const st = await sharer.tick();
+  assert.equal(st.state, 'window-not-found');
+  assert.deepEqual(checked, ['2']);
+  assert.equal(calls.uploads.length, 0);
+});
+
+test('process-check failure (throws) fails closed', async () => {
+  const { sharer, calls } = harness({ isGameWindow: async () => { throw new Error('powershell missing'); } });
+  assert.equal((await sharer.tick()).state, 'window-not-found');
+  assert.equal(calls.uploads.length, 0);
+});
+
+test("'not sharing' re-syncs once, then pauses until resume()", async () => {
+  let resyncs = 0;
+  const calls3: Buffer[] = [];
+  const { sharer, calls } = harness({ upload: async (f) => (calls3.push(f), { ok: false, error: 'not sharing' }), resync: async () => { resyncs++; } });
+  await sharer.tick();
+  assert.equal(resyncs, 1);
+  await sharer.tick(); // still refused -> pause
+  assert.equal(resyncs, 1);
+  const n = calls3.length;
+  const st = await sharer.tick(); // paused: no capture at all
+  assert.equal(calls3.length, n);
+  assert.equal(calls.sources.length, n);
+  assert.match(st.detail ?? '', /paused/);
+  sharer.resume();
+  await sharer.tick();
+  assert.equal(calls3.length, n + 1);
 });

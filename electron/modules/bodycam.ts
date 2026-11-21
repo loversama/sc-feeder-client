@@ -19,10 +19,14 @@ export const BODYCAM_DEFAULT_INTERVAL_S = 15;
 export const BODYCAM_MAX_BYTES = 70 * 1024;
 export const BODYCAM_TARGET_BYTES = 40 * 1024;
 /**
- * Default window-title matcher. The exact Windows title could not be verified from the dev machine,
- * so it is configurable (setting `bodycamTitlePattern`, a RegExp source, case-insensitive).
+ * Window-title matcher: EXACT title "Star Citizen" (case-insensitive). The title alone is never
+ * enough (a browser tab can be called that too): the window must also belong to StarCitizen.exe.
+ * The real Windows title could not be verified from the dev machine, so a main-process-only env
+ * override exists for debugging (VOIDLOG_BODYCAM_TITLE, a RegExp source); it is NOT a user setting.
  */
-export const BODYCAM_DEFAULT_TITLE_PATTERN = '^Star Citizen\\b';
+export const BODYCAM_DEFAULT_TITLE_PATTERN = '^Star Citizen$';
+
+import { hwndFromSourceId } from './bodycam-window';
 
 export type BodycamState =
   | 'off' // sharing disabled / no orgs chosen
@@ -62,23 +66,22 @@ export function makeTitleMatcher(pattern: string | undefined | null): RegExp {
 }
 
 /**
- * Pick the Star Citizen window. Only `window:` sources whose title matches; `screen:` sources (and
- * anything else) can never be returned. When several match the one with the largest thumbnail wins.
+ * Every `window:` source whose title matches. `screen:` sources (and anything else) are never returned.
+ * Minimised windows (empty thumbnail) are still listed: they count for the ambiguity check.
+ */
+export function matchingWindows(sources: readonly CamSource[], matcher: RegExp): CamSource[] {
+  return sources.filter((s) => typeof s?.id === 'string' && /^window:\d+:\d+$/.test(s.id) && typeof s.name === 'string' && matcher.test(s.name.trim()));
+}
+
+/**
+ * Pick THE Star Citizen window: exactly one title match with a usable thumbnail. If several windows
+ * match (e.g. a browser tab with the same title) we pick none - capturing nothing beats guessing.
  */
 export function selectGameWindow(sources: readonly CamSource[], matcher: RegExp): CamSource | null {
-  let best: CamSource | null = null;
-  let bestArea = -1;
-  for (const s of sources) {
-    if (typeof s?.id !== 'string' || !s.id.startsWith('window:')) continue;
-    if (typeof s.name !== 'string' || !matcher.test(s.name.trim())) continue;
-    if (!s.thumbnail || s.thumbnail.isEmpty()) continue;
-    const { width, height } = s.thumbnail.getSize();
-    if (width * height > bestArea) {
-      best = s;
-      bestArea = width * height;
-    }
-  }
-  return best;
+  const m = matchingWindows(sources, matcher);
+  if (m.length !== 1) return null;
+  const only = m[0];
+  return only.thumbnail && !only.thumbnail.isEmpty() ? only : null;
 }
 
 /** True when the frame is effectively one flat colour (black screen from exclusive fullscreen etc.). */
@@ -119,6 +122,10 @@ export function clampInterval(sec: unknown): number {
 
 export type BodycamDeps = {
   getSettings: () => { enabled: boolean; intervalSec: number; orgs: string[]; titlePattern?: string };
+  /** True only when the window with this HWND belongs to StarCitizen.exe (fails closed: false on any error). */
+  isGameWindow: (hwnd: string) => Promise<boolean>;
+  /** Re-send the opt-in to the server (after a 'not sharing' reply). */
+  resync?: () => Promise<void>;
   isGameRunning: () => boolean;
   /** Connected AND authenticated as a signed-in user. */
   isOnline: () => boolean;
@@ -139,6 +146,8 @@ export class BodycamSharer {
   #running = false;
   #busy = false;
   #backoffUntil = 0;
+  #resynced = false;
+  #paused = false;
   status: BodycamStatus = { state: 'off', lastSentAt: null, framesSent: 0, lastBytes: null };
 
   constructor(deps: BodycamDeps) {
@@ -153,6 +162,13 @@ export class BodycamSharer {
     if (this.#running) return;
     this.#running = true;
     this.#schedule(0);
+  }
+
+  /** Settings changed / reconnected: forget a server-side pause and try again. */
+  resume(): void {
+    this.#paused = false;
+    this.#resynced = false;
+    this.#backoffUntil = 0;
   }
 
   stop(): void {
@@ -172,6 +188,14 @@ export class BodycamSharer {
     this.#d.onStatus?.(this.status);
   }
 
+  async #safeIsGameWindow(hwnd: string): Promise<boolean> {
+    try {
+      return (await this.#d.isGameWindow(hwnd)) === true;
+    } catch {
+      return false;
+    }
+  }
+
   /** One capture attempt (exported for tests). Always reschedules while running. */
   async tick(): Promise<BodycamStatus> {
     if (this.#busy) return this.status;
@@ -186,13 +210,22 @@ export class BodycamSharer {
         this.#set({ state: 'game-not-running' });
       } else if (!this.#d.isOnline()) {
         this.#set({ state: 'offline' }); // drop: no backlog
+      } else if (this.#paused) {
+        this.#set({ state: 'rejected', detail: 'paused: the server is not sharing your frames. Re-toggle sharing or reconnect' });
       } else if (now < this.#backoffUntil) {
         /* server asked us to slow down */
       } else {
         const sources = await this.#d.getWindowSources({ types: ['window'], thumbnailSize: { ...BODYCAM_THUMB }, fetchWindowIcons: false });
-        const win = selectGameWindow(sources, makeTitleMatcher(s.titlePattern));
-        if (!win) {
+        const matcher = makeTitleMatcher(s.titlePattern);
+        const candidates = matchingWindows(sources, matcher);
+        const win = selectGameWindow(sources, matcher);
+        const hwnd = win ? hwndFromSourceId(win.id) : null;
+        if (candidates.length > 1) {
+          this.#set({ state: 'window-not-found', detail: 'more than one window is titled like the game; capturing nothing' });
+        } else if (!win || !hwnd) {
           this.#set({ state: 'window-not-found' });
+        } else if (!(await this.#safeIsGameWindow(hwnd))) {
+          this.#set({ state: 'window-not-found', detail: 'the window is not owned by StarCitizen.exe; capturing nothing' });
         } else if (isBlankBitmap(win.thumbnail.toBitmap())) {
           this.#set({ state: 'blank-frame' });
         } else {
@@ -204,8 +237,23 @@ export class BodycamSharer {
             if (!ack) {
               this.#set({ state: 'offline' });
             } else if (ack.ok) {
+              this.#resynced = false;
               this.#set({ state: 'sharing', detail: undefined, lastSentAt: now, framesSent: this.status.framesSent + 1, lastBytes: jpg.length });
             } else {
+              if (ack.error === 'not sharing') {
+                // The server forgot our opt-in: re-send it once; if it still refuses, pause until
+                // the settings change or the link reconnects.
+                if (!this.#resynced && this.#d.resync) {
+                  this.#resynced = true;
+                  try {
+                    await this.#d.resync();
+                  } catch {
+                    /* retried next tick */
+                  }
+                } else {
+                  this.#paused = true;
+                }
+              }
               if (ack.retryInMs) this.#backoffUntil = now + ack.retryInMs;
               if (ack.error === 'rate limited') next = Math.max(next, ack.retryInMs ?? 0);
               this.#set({ state: 'rejected', detail: ack.error });
