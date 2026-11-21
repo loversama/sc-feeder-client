@@ -1147,8 +1147,9 @@ export async function parseLogContent(content: string, silentMode = false) {
                         eventData,
                     }, silentMode);
                 }
-                // Feed items only for live lines: the startup scan of an existing log must not re-send history.
-                if (o.feed && !silentMode) publishLogFeedItem(o.feed);
+                // Feed items only for live lines: the startup scan or a manual rescan of an existing log
+                // must not re-send history (game time older than 10 min is history).
+                if (o.feed && !silentMode && Date.now() - o.feed.at < 10 * 60_000) publishLogFeedItem(o.feed);
             }
             if (sc50Result.consumed) continue;
 
