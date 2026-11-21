@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "log-diff": "esbuild scripts/log-diff.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/log-diff.mjs --log-level=warning && node test/telemetry/.out/log-diff.mjs",
     "test:telemetry": "esbuild test/telemetry/telemetry.test.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/telemetry.test.mjs && node --test test/telemetry/.out/telemetry.test.mjs",
-    "test:bodycam": "esbuild test/bodycam/bodycam.test.ts --bundle --platform=node --format=esm --packages=external --outfile=test/bodycam/.out/bodycam.test.mjs && node --test test/bodycam/.out/bodycam.test.mjs",
+    "test:bodycam": "esbuild test/bodycam/bodycam.test.ts test/bodycam/bodycam-window.test.ts --bundle --platform=node --format=esm --packages=external --outdir=test/bodycam/.out --out-extension:.js=.mjs && node --test test/bodycam/.out/bodycam.test.mjs test/bodycam/.out/bodycam-window.test.mjs",
     "test:parser": "node test/parser/run.mjs",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",

@@ -3,7 +3,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
-type Settings = { enabled: boolean; intervalSec: number; orgs: string[]; titlePattern: string };
+type Settings = { enabled: boolean; intervalSec: number; orgs: string[] };
 type Status = { state: string; detail?: string; lastSentAt: number | null; framesSent: number; lastBytes: number | null };
 type Info = {
   settings: Settings;
@@ -71,6 +71,7 @@ function toggle(on: boolean) {
 }
 
 onMounted(async () => {
+  api.on?.('bodycam:settings-changed', load);
   await load();
   timer = setInterval(load, 3000);
 });
@@ -128,12 +129,5 @@ onUnmounted(() => clearInterval(timer));
       </div>
     </div>
 
-    <details class="text-xs text-gray-500">
-      <summary class="cursor-pointer">Advanced</summary>
-      <div class="mt-2 space-y-2">
-        <div>Game window title pattern (regular expression, case-insensitive)</div>
-        <el-input :model-value="settings.titlePattern" size="small" :disabled="busy" @change="(v: string) => save({ titlePattern: v })" />
-      </div>
-    </details>
   </div>
 </template>
