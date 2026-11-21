@@ -24,7 +24,7 @@
  *    game's ACTOR_LEAVE_SEAT when there was one.
  *  - The schema has no quantum drive state (only quantum_fuel, never sent). `annunciators.qdrv` goes
  *    OFF → NOMINAL when the drive is ready (NAV mode) and briefly MAJOR_ON on a drive warning; it does
- *    not show spooling or the jump itself (quantum trips come from Game.log, see log-feed.ts).
+ *    not show spooling or the jump itself (quantum trips come from Game.log, derived by the server).
  *  - hunger / thirst drain by ~0.01 per second; heart_rate jitters every frame (see the upload
  *    throttle in telemetry-service.ts).
  */
@@ -76,10 +76,6 @@ export const FEED_EVENT_TYPES = new Set([
   'shields_down',
   'vehicle_damaged',
   'low_oxygen',
-  // 0.3.3 (Game.log derived, see log-feed.ts)
-  'qt_arrived',
-  'ship_retrieved',
-  'healed_at_medical_bed',
 ]);
 
 const CATEGORY: Record<string, TelemetryEventCategory> = {
@@ -106,18 +102,11 @@ const CATEGORY: Record<string, TelemetryEventCategory> = {
   atmosphere_changed: 'vitals',
   low_hunger: 'vitals',
   low_thirst: 'vitals',
-  healed_at_medical_bed: 'vitals',
   low_fuel: 'ship',
   quantum_drive_ready: 'travel',
   quantum_drive_warning: 'travel',
   atmosphere_entered: 'travel',
   atmosphere_exited: 'travel',
-  qt_route_planned: 'travel',
-  qt_obstructed: 'travel',
-  qt_arrived: 'travel',
-  ship_retrieved: 'ship',
-  hangar_queued: 'ship',
-  location_changed: 'status',
 };
 
 /** Sections that are never sent to the server (high-rate, no value off-machine). */
@@ -323,21 +312,6 @@ export class TelemetryState {
       out.actor = actor;
     }
     return out;
-  }
-
-  /**
-   * Build an event that did not come from a telemetry frame (Game.log via log-feed.ts) with the same
-   * id scheme and enrichment as derived events.
-   */
-  externalEvent(
-    type: string,
-    at: number,
-    severity: TelemetryEventSeverity,
-    summary: string,
-    extra: EventExtra = {},
-    data?: Obj,
-  ): TelemetryEvent {
-    return this.#event(type, at, severity, summary, data, extra);
   }
 
   // --- internals -------------------------------------------------------

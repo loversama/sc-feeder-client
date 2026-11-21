@@ -4,11 +4,10 @@
  * inventory location, medical bed and the loadout burst after a (re)spawn.
  *
  * Pure (no Electron imports): log-parser feeds it every line and turns the outputs into local feed
- * events (processKillEvent) and server feed items (log-feed.ts → TelemetryService). Line shapes are
+ * events (processKillEvent) for the client's own UI. Nothing here is uploaded: the server derives the
+ * same moments from the raw Game.log chunks (server-authoritative). Line shapes are
  * taken from real 5.0.202 PTU logs (test/parser/fixtures/*-50.txt).
  */
-import type { LogFeedItem } from './telemetry/log-feed';
-import { vehicleRef } from './telemetry/telemetry-state';
 
 export type Sc50LocalEvent = {
   eventType: 'location_change' | 'quantum_travel' | 'incapacitated' | 'hangar' | 'medical' | 'loadout';
@@ -20,7 +19,7 @@ export type Sc50LocalEvent = {
   eventData: Record<string, unknown>;
 };
 
-export type Sc50Output = { local?: Sc50LocalEvent; feed?: LogFeedItem; location?: string };
+export type Sc50Output = { local?: Sc50LocalEvent; location?: string };
 
 const TS_RE = /^<(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)>/;
 const RE = {
@@ -164,16 +163,6 @@ export class Sc50LogTracker {
       if (!this.#once(`incap_${ts}`)) return out;
       out.push({
         local: { eventType: 'incapacitated', id: `incap_${ts}`, timestamp: ts, description: 'You were incapacitated', eventData: { source: 'hud_notification' } },
-        feed: {
-          type: 'player_downed',
-          at: tsMs(ts),
-          severity: 'alert',
-          summary: 'Downed',
-          category: 'combat',
-          feed: true,
-          context: { ...(this.#location ? { location: this.#location } : {}) },
-          fallbackFor: 'player_downed',
-        },
       });
       return out;
     }
@@ -219,7 +208,6 @@ export class Sc50LogTracker {
       const summary = `Quantum route${t.from ? ` from ${t.from}` : ''}${to ? ` to ${to}` : ''}`;
       out.push({
         local: { eventType: 'quantum_travel', id: `qt_route_${ts}_${t.destId}`, timestamp: ts, description: summary, destination: to, eventData: { phase: 'route_planned', from: t.from, to, fuel: t.fuel, vehicle: t.vehicle } },
-        feed: { type: 'qt_route_planned', at: tsMs(ts), severity: 'info', summary, category: 'travel', context: this.#tripContext(t), vehicle: this.#vehicle(t) },
       });
       return out;
     }
@@ -230,7 +218,6 @@ export class Sc50LogTracker {
       const summary = `Quantum travel blocked${to ? ` to ${to}` : ''}: destination obstructed`;
       out.push({
         local: { eventType: 'quantum_travel', id: `qt_obstructed_${ts}`, timestamp: ts, description: summary, destination: to, eventData: { phase: 'obstructed', to } },
-        feed: { type: 'qt_obstructed', at: tsMs(ts), severity: 'warn', summary, category: 'travel', context: t ? this.#tripContext(t) : {}, vehicle: t ? this.#vehicle(t) : undefined },
       });
       return out;
     }
@@ -252,14 +239,14 @@ export class Sc50LogTracker {
       const summary = `Quantum travel complete${t.from ? ` from ${t.from}` : ''}${to ? ` to ${to}` : ''}`;
       out.push({
         local: { eventType: 'quantum_travel', id: `qt_arrived_${ts}_${t.vehicleId}`, timestamp: ts, description: summary, destination: to, eventData: { phase: 'arrived', from: t.from, to, durationSec, vehicle: t.vehicle, vehicleId: t.vehicleId } },
-        feed: { type: 'qt_arrived', at: tsMs(ts), severity: 'info', summary, category: 'travel', feed: true, context: { ...this.#tripContext(t), durationSec }, vehicle: this.#vehicle(t) },
       });
       return out;
     }
 
     // --- ships / hangar ---
     if ((m = line.match(RE.fleet))) {
-      this.#fleetSize = Number(m.groups!.total);
+      // single-vehicle queries ("0 out of 1") follow the full one: keep the largest total
+      this.#fleetSize = Math.max(this.#fleetSize ?? 0, Number(m.groups!.total));
       return out;
     }
     if ((m = line.match(RE.spawnInfo))) {
@@ -275,7 +262,6 @@ export class Sc50LogTracker {
       if (!this.#once(`hangarq_${ts}`)) return out;
       out.push({
         local: { eventType: 'hangar', id: `hangar_queued_${ts}`, timestamp: ts, description: 'Joined the hangar queue', eventData: { action: 'queued' } },
-        feed: { type: 'hangar_queued', at: tsMs(ts), severity: 'info', summary: 'Joined the hangar queue', category: 'ship' },
       });
       return out;
     }
@@ -289,7 +275,6 @@ export class Sc50LogTracker {
       out.push({
         location: loc,
         local: { eventType: 'location_change', id: `inv_location_${ts}`, timestamp: ts, description: `At ${loc}`, location: loc, destination: loc, eventData: { zoneType: 'inventory_location', action: 'enter', raw: m.groups!.loc } },
-        feed: { type: 'location_changed', at: tsMs(ts), severity: 'info', summary: `At ${loc}`, category: 'status', context: { location: loc } },
       });
       return out;
     }
@@ -299,7 +284,6 @@ export class Sc50LogTracker {
       if (!this.#once(`medbed_${m.groups!.notifId}_${ts}`)) return out;
       out.push({
         local: { eventType: 'medical', id: `medbed_${ts}`, timestamp: ts, description: 'Healed at a medical bed', location: this.#location, eventData: { action: 'medical_bed' } },
-        feed: { type: 'healed_at_medical_bed', at: tsMs(ts), severity: 'info', summary: 'Healed at a medical bed', category: 'vitals', feed: true, context: this.#location ? { location: this.#location } : {} },
       });
       return out;
     }
@@ -337,15 +321,8 @@ export class Sc50LogTracker {
   #shipRetrieved(sp: { vehicleId: string; area: string; at: string }, username: string | null): Sc50Output {
     const hangar = hangarName(sp.area, username);
     const summary = `Ship delivered${hangar ? ` to ${hangar}` : ''}`;
-    const context: Record<string, string | number> = {
-      vehicleEntityId: sp.vehicleId,
-      ...(hangar ? { hangar } : {}),
-      ...(this.#fleetSize ? { fleetSize: this.#fleetSize } : {}),
-      ...(this.#location ? { location: this.#location } : {}),
-    };
     return {
       local: { eventType: 'hangar', id: `hangar_retrieved_${sp.at}_${sp.vehicleId}`, timestamp: sp.at, description: summary, location: hangar, eventData: { action: 'retrieved', vehicleId: sp.vehicleId, hangar, fleetSize: this.#fleetSize } },
-      feed: { type: 'ship_retrieved', at: tsMs(sp.at), severity: 'info', summary, category: 'ship', feed: true, context },
     };
   }
 
@@ -358,15 +335,6 @@ export class Sc50LogTracker {
 
   #destName(t: Trip): string | undefined {
     return prettyPlace(t.destName) ?? prettyPlace(this.#entityNames.get(t.destId)) ?? prettyPlace(t.destId);
-  }
-
-  #tripContext(t: Trip): Record<string, string | number> {
-    const to = this.#destName(t);
-    return { ...(t.from ? { from: t.from } : {}), ...(to ? { to } : {}), ...(t.fuel !== undefined ? { fuel: t.fuel } : {}) };
-  }
-
-  #vehicle(t: Trip) {
-    return vehicleRef(t.vehicle, '');
   }
 }
 

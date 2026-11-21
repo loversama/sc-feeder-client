@@ -7,7 +7,6 @@
 import { EventEmitter } from 'node:events';
 import { TelemetryClient, DEFAULT_TELEMETRY_ADDRESS, type StreamHandle } from './telemetry-client';
 import { TelemetryState, obj, type TelemetryEvent, type Obj } from './telemetry-state';
-import type { LogFeedItem } from './log-feed';
 
 export type TelemetryStatus =
   | 'disabled'
@@ -55,9 +54,6 @@ const MAX_SNAPSHOT_BYTES = 16 * 1024;
 /** Feed-worthy events kept while the server is unreachable, re-sent on `resync()`. */
 const MAX_RETAINED_FEED_EVENTS = 50;
 const MAX_RETAINED_FEED_AGE_MS = 15 * 60_000;
-/** A log-derived fallback waits this long for the matching telemetry event before it is sent. */
-const LOG_FALLBACK_HOLD_MS = 5000;
-const LOG_FALLBACK_WINDOW_MS = 15_000;
 
 /**
  * Snapshot fields that change every frame by tiny amounts. A change smaller than `step` does not by
@@ -167,35 +163,6 @@ export class TelemetryService extends EventEmitter {
       this.#opts.log('info', `Re-sending ${retained.length} telemetry feed event(s) held while offline`);
       this.#pendingEvents.unshift(...retained);
     }
-  }
-
-  /**
-   * A feed item derived from Game.log (log-feed.ts). Shared like telemetry events, also while the
-   * game stream is off. `fallbackFor` items wait briefly and are dropped when telemetry reported
-   * the same moment.
-   */
-  injectLogEvent(item: LogFeedItem): void {
-    const e = this.state.externalEvent(item.type, item.at, item.severity, item.summary, {
-      feed: item.feed,
-      category: item.category,
-      context: { ...(item.context ?? {}), source: 'game_log' },
-      vehicle: item.vehicle,
-    });
-    if (!item.feed) delete e.feed;
-    const deliver = () => {
-      if (item.fallbackFor && this.#telemetryReported(item.fallbackFor, item.at)) {
-        this.#opts.log('debug', `Game.log ${item.type} dropped: telemetry already reported it`);
-        return;
-      }
-      this.#recordEvent(e);
-      if (!this.#running) this.#flushEvents(); // no game stream: nothing else flushes
-    };
-    if (item.fallbackFor) setTimeout(deliver, LOG_FALLBACK_HOLD_MS).unref?.();
-    else deliver();
-  }
-
-  #telemetryReported(type: string, at: number): boolean {
-    return this.recentEvents.some((r) => r.type === type && r.context?.source !== 'game_log' && Math.abs(Date.parse(r.at) - at) <= LOG_FALLBACK_WINDOW_MS);
   }
 
   /** Feed events waiting for the server (for diagnostics / tests). */

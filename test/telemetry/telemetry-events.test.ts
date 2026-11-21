@@ -322,36 +322,3 @@ test('snapshot upload: heart-rate / hunger jitter does not trigger uploads; a re
   assert.equal(uploads.length, base + 2, 'refreshed after 5 s');
   svc.stop();
 });
-
-test('Game.log feed items: same id shape, context.source game_log, shared while the game stream is off', () => {
-  const uploads: any[] = [];
-  const svc = new TelemetryService({ address: 'fake', clientId: () => 'c1', isSharingEnabled: () => true, upload: (p) => (uploads.push(p), true) });
-  svc.injectLogEvent({ type: 'qt_arrived', at: 1_000_000, severity: 'info', summary: 'Quantum travel complete to Nyx I', category: 'travel', feed: true, context: { to: 'Nyx I', durationSec: 199 } });
-  const e = uploads[0].events[0];
-  assert.equal(uploads[0].kind, 'events');
-  assert.equal(e.id, 'tm_c1_qt_arrived_1000000');
-  assert.equal(e.feed, true);
-  assert.deepEqual(e.context, { to: 'Nyx I', durationSec: 199, source: 'game_log' });
-  svc.injectLogEvent({ type: 'qt_route_planned', at: 1_000_100, severity: 'info', summary: 'Quantum route', category: 'travel' });
-  assert.equal(uploads[1].events[0].feed, undefined, 'live-only items carry no feed flag');
-  const long = 'tm_1d8bb6ac-3c51-495a-8502-ae7a7299e676_healed_at_medical_bed_1795284541745_12';
-  assert.ok(long.length <= 128, 'longest 0.3.3 id fits the server cap');
-});
-
-test('Game.log player_downed fallback waits for telemetry and is dropped when telemetry already reported it', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const uploads: any[] = [];
-  const svc = new TelemetryService({ address: 'fake', clientId: () => 'c1', isSharingEnabled: () => true, upload: (p) => (uploads.push(p), true) });
-  const at = Date.parse('2026-11-21T17:23:34.951Z');
-  const downed = { type: 'player_downed', at, severity: 'alert' as const, summary: 'Downed', category: 'combat' as const, feed: true, fallbackFor: 'player_downed' };
-  svc.injectLogEvent(downed);
-  assert.equal(uploads.length, 0, 'held');
-  t.mock.timers.tick(5000);
-  assert.equal(uploads.length, 1, 'no telemetry: the log fallback is sent');
-  assert.equal(uploads[0].events[0].context.source, 'game_log');
-  // telemetry saw it 0.9 s earlier: the fallback is dropped
-  svc.recentEvents.unshift({ id: 'x', type: 'player_downed', at: new Date(at - 860).toISOString(), source: 'telemetry', severity: 'alert', summary: 'Downed' });
-  svc.injectLogEvent({ ...downed, at: at + 10 });
-  t.mock.timers.tick(5000);
-  assert.equal(uploads.length, 1);
-});

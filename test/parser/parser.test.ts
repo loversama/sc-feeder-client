@@ -11,7 +11,6 @@ import { fileURLToPath } from 'node:url';
 import { parseLogContent, resetParserState, PARSER_PATTERNS, PARSER_PATTERN_META } from '../../electron/modules/log-parser.ts';
 import { emitted, clearEmitted } from './stubs/stubs';
 import { Sc50LogTracker, prettyPlace } from '../../electron/modules/sc50-log-events.ts';
-import { logFeed } from '../../electron/modules/telemetry/log-feed.ts';
 
 const fixtureDir = process.env.PARSER_FIXTURES ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures'); // run.mjs sets it (the bundle lives in a different folder)
 const fx = (name: string) => fs.readFileSync(path.join(fixtureDir, name), 'utf8').replace(/\r\n/g, '\n');
@@ -289,12 +288,12 @@ test('PARSER_PATTERN_META covers every PARSER_PATTERNS entry with a valid status
 // ---------------------------------------------------------------------------------------------
 
 const lines50 = (name: string) => fx(name).split('\n').filter(Boolean);
-/** Feed items + local events straight from the tracker (feed items are not published in silent mode). */
+/** Local events straight from the tracker (local-only: the server derives its own from the raw chunks). */
 function track(names: string[], user = '<player>') {
   const t = new Sc50LogTracker();
   const outs = names.flatMap(n => lines50(n)).flatMap(l => t.handle(l, user).out);
   outs.push(...t.flushLoadout());
-  return { t, feed: outs.filter(o => o.feed).map(o => o.feed!), local: outs.filter(o => o.local).map(o => o.local!) };
+  return { t, local: outs.filter(o => o.local).map(o => o.local!) };
 }
 
 test('5.0 bug 1: "Entered Monitored Space" is not a jurisdiction; Entered/Exited both handled', async () => {
@@ -336,25 +335,21 @@ test('5.0 quantum trip (bug 4 + addition 2): names instead of entity ids, obstru
   assert.equal(qt[1].eventData.fuel, 696301);
   assert.match(qt[2].eventDescription, /blocked to Nyx I/);
 
-  const { feed } = track(['qt-trip-obstructed-50.txt']);
-  assert.deepEqual(feed.map(f => [f.type, f.feed ?? false]), [['qt_route_planned', false], ['qt_obstructed', false]]);
-  assert.deepEqual(feed[0].context, { from: 'Levski', to: 'Nyx I', fuel: 696301 });
-  assert.deepEqual(feed[0].vehicle, { name: 'RSI_Galaxy_877609015558', className: 'RSI_Galaxy', entityId: '877609015558' });
+  assert.deepEqual(qt[1].eventData, { phase: 'route_planned', from: 'Levski', to: 'Nyx I', fuel: 696301, vehicle: 'RSI_Galaxy_877609015558' });
 });
 
-test('5.0 quantum trip: own arrival → qt_arrived (feed) with from/to and duration; other users\' QT errors never rename our target', async () => {
-  const { feed, local } = track(['qt-trip-arrived-50.txt']);
-  const arrived = feed.find(f => f.type === 'qt_arrived')!;
-  assert.ok(arrived, 'qt_arrived');
-  assert.equal(arrived.feed, true);
-  assert.equal(arrived.category, 'travel');
-  assert.deepEqual(arrived.context, { from: 'Levski', to: 'Nyx I', fuel: 696300, durationSec: 199 });
-  assert.equal(arrived.summary, 'Quantum travel complete from Levski to Nyx I');
-  assert.equal(arrived.at, Date.parse('2026-11-21T22:03:58.639Z'));
-  assert.equal(local.at(-1)!.eventData.phase, 'arrived');
+test('5.0 quantum trip: own arrival with from/to and duration; other users\' QT errors never rename our target', () => {
+  const { local } = track(['qt-trip-arrived-50.txt']);
+  const arrived = local.find(l => l.eventData.phase === 'arrived')!;
+  assert.ok(arrived, 'arrived');
+  assert.equal(arrived.eventData.from, 'Levski');
+  assert.equal(arrived.eventData.to, 'Nyx I');
+  assert.equal(arrived.eventData.durationSec, 199);
+  assert.equal(arrived.description, 'Quantum travel complete from Levski to Nyx I');
+  assert.equal(arrived.timestamp, '2026-11-21T22:03:58.639Z');
   // the "Aligned Target: Nyx1" line belongs to Pilot1, not to us
   const t2 = track(['qt-trip-arrived-50.txt'], 'Pilot1');
-  assert.ok(t2.feed.every(f => f.context?.to === 'Nyx I'));
+  assert.ok(t2.local.filter(l => l.eventType === 'quantum_travel').every(l => l.destination === 'Nyx I'));
 });
 
 test('5.0 quantum: our own "Aligned Target" names the destination', () => {
@@ -363,7 +358,7 @@ test('5.0 quantum: our own "Aligned Target" names the destination', () => {
   for (const l of sel) t.handle(l, '<player>');
   t.handle(lines50('qt-own-aligned-50.txt')[0], '<player>');
   const out = t.handle(lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!, '<player>').out;
-  assert.equal(out[0].feed!.context!.to, 'Hub');
+  assert.equal(out[0].local!.eventData.to, 'Hub');
 });
 
 test('prettyPlace: readable names, bare ids hidden', () => {
@@ -375,21 +370,15 @@ test('prettyPlace: readable names, bare ids hidden', () => {
   assert.equal(prettyPlace('877562123546'), undefined);
 });
 
-test('5.0 addition 1: Incapacitated HUD notification → local event + player_downed fallback (feed, waits for telemetry)', async () => {
+test('5.0 addition 1: Incapacitated HUD notification → local event (the server stores the log player_downed)', async () => {
   await login();
   await parse(fx('incap-50.txt'));
   const inc = events().filter(e => e.eventType === 'incapacitated');
   assert.equal(inc.length, 1, 'the echo line does not double it');
   assert.equal(inc[0].timestamp, '2026-11-21T17:23:34.951Z');
-  const { feed } = track(['incap-50.txt']);
-  assert.equal(feed.length, 1);
-  assert.equal(feed[0].type, 'player_downed');
-  assert.equal(feed[0].fallbackFor, 'player_downed');
-  assert.equal(feed[0].feed, true);
-  assert.equal(feed[0].at, Date.parse('2026-11-21T17:23:34.951Z'));
 });
 
-test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrapped line, fleet size, ship_retrieved (feed)', async () => {
+test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrapped line, fleet size', async () => {
   await login();
   await parse(fx('hangar-50.txt'));
   const h = events().filter(e => e.eventType === 'hangar');
@@ -399,20 +388,22 @@ test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrap
   assert.equal(h[0].eventData.hangar, 'XL Hangar');
   assert.equal(h[0].eventData.vehicleId, '877604806898');
   assert.equal(h[0].eventData.fleetSize, 55);
-  const { feed } = track(['hangar-50.txt']);
-  assert.deepEqual(feed.map(f => f.type), ['ship_retrieved']);
-  assert.equal(feed[0].at, Date.parse('2026-11-21T21:54:23.138Z'));
-  assert.deepEqual(feed[0].context, { vehicleEntityId: '877604806898', hangar: 'XL Hangar', fleetSize: 55 });
   // the hangar name must never leak the handle; someone else's hangar name is dropped
-  assert.ok(!JSON.stringify(feed).includes('<player>'));
-  const other = track(['hangar-50.txt'], 'SomeoneElse').feed;
-  assert.equal(other[0].context!.hangar, undefined);
+  assert.ok(!JSON.stringify(track(['hangar-50.txt']).local).includes('<player>'));
+  // a later single-vehicle query ("0 out of 1") does not shrink the fleet
+  const t = new Sc50LogTracker();
+  const ls = lines50('hangar-50.txt');
+  t.handle(ls[0], '<player>');
+  t.handle(ls[0].replace('55 entitlements out of 55', '0 entitlements out of 1'), '<player>');
+  const outs = ls.slice(1).flatMap(l => t.handle(l, '<player>').out);
+  assert.equal(outs[0].local!.eventData.fleetSize, 55);
+  const other = track(['hangar-50.txt'], 'SomeoneElse').local;
+  assert.equal(other[0].eventData.hangar, undefined);
 });
 
 test('5.0 hangar: "Joined hangar queue." (real line from LIVE 4.x) → hangar_queued', () => {
   const t = new Sc50LogTracker();
   const out = t.handle('<2026-03-26T21:06:59.578Z> [Notice] <SHUDEvent_OnNotification> Added notification "Joined hangar queue.', '<player>').out;
-  assert.equal(out[0].feed!.type, 'hangar_queued');
   assert.equal(out[0].local!.eventData.action, 'queued');
 });
 
@@ -421,18 +412,15 @@ test('5.0 addition 4: readable location from RequestLocationInventory (own playe
   await parse(fx('location-inventory-50.txt'));
   const loc = events().filter(e => e.eventData?.zoneType === 'inventory_location');
   assert.deepEqual(loc.map(e => e.location), ['Levski (Nyx)', 'Northern Reach', "Ozaki's Central"]);
-  const { feed } = track(['location-inventory-50.txt']);
-  assert.deepEqual(feed.map(f => [f.type, f.feed ?? false, f.context?.location]), [
-    ['location_changed', false, 'Levski (Nyx)'], ['location_changed', false, 'Northern Reach'], ['location_changed', false, "Ozaki's Central"]]);
-  assert.equal(track(['location-inventory-50.txt'], 'SomeoneElse').feed.length, 0);
+  assert.deepEqual(track(['location-inventory-50.txt']).local.map(l => [l.eventType, l.location]), [
+    ['location_change', 'Levski (Nyx)'], ['location_change', 'Northern Reach'], ['location_change', "Ozaki's Central"]]);
+  assert.equal(track(['location-inventory-50.txt'], 'SomeoneElse').local.length, 0);
 });
 
-test('5.0 addition 5: medical bed (feed) and the loadout burst after spawn (counter)', async () => {
+test('5.0 addition 5: medical bed and the loadout burst after spawn (counter)', async () => {
   await login();
   await parse(fx('medical-bed-50.txt'));
   assert.equal(events().filter(e => e.eventType === 'medical').length, 1);
-  const { feed } = track(['medical-bed-50.txt']);
-  assert.deepEqual(feed.map(f => [f.type, f.feed, f.category]), [['healed_at_medical_bed', true, 'vitals']]);
 
   clearEmitted();
   await parse(fx('attachments-50.txt'));
@@ -442,24 +430,4 @@ test('5.0 addition 5: medical bed (feed) and the loadout burst after spawn (coun
   assert.equal(lo.length, 1);
   assert.equal(lo[0].eventData.items, 6);
   assert.equal(lo[0].eventData.armorPieces, 5, "undersuit, arms, helmet, legs, torso");
-});
-
-test('parser publishes Game.log feed items only for live lines (not silent, game time under 10 min old)', async () => {
-  await login();
-  const items: any[] = [];
-  const on = (i: any) => items.push(i);
-  logFeed.on('item', on);
-  try {
-    const medbed = lines50('medical-bed-50.txt')[0];
-    const now = new Date(Date.now() - 2000).toISOString();
-    await parseLogContent(medbed.replace(/^<[^>]+>/, `<${now}>`) + '\n', false);
-    assert.deepEqual(items.map(i => i.type), ['healed_at_medical_bed'], 'live line');
-    await parseLogContent(medbed + '\n', false);
-    assert.equal(items.length, 1, 'history (manual rescan) is not re-sent');
-    const now2 = new Date(Date.now() - 1000).toISOString();
-    await parseLogContent(medbed.replace(/^<[^>]+>/, `<${now2}>`) + '\n', true);
-    assert.equal(items.length, 1, 'silent startup scan sends nothing');
-  } finally {
-    logFeed.off('item', on);
-  }
 });
