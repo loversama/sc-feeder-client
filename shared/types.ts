@@ -22,7 +22,11 @@ export type GameEventType =
   | 'status_effect'      // Own status effect started (Dehydrated / Starved ...)
   | 'reward_earned'      // "You've Earned: <reward>" notification
   | 'emergency_services' // "Local Emergency Services Are En Route" (after own death)
-  | 'party_invite';      // Party invite received (inviter in partyMember)
+  | 'party_invite'       // Party invite received (inviter in partyMember)
+  | 'incapacitated'      // Own "Incapacitated" HUD notification (SC 5.0)
+  | 'hangar'             // Ship delivered / hangar queue / refuel (SC 5.0)
+  | 'medical'            // Healed at a medical bed (SC 5.0)
+  | 'loadout';           // Loadout equipped after a (re)spawn (AttachmentReceived burst)
 
 // Event visibility — controls who can see an event on the global feed
 export type EventVisibility = 'public' | 'private';
@@ -50,6 +54,10 @@ export const EVENT_VISIBILITY_MAP: Record<GameEventType, EventVisibility> = {
   reward_earned: 'private',
   emergency_services: 'private',
   party_invite: 'private',
+  incapacitated: 'private',
+  hangar: 'private',
+  medical: 'private',
+  loadout: 'private',
 };
 
 // Mission category classification
@@ -208,7 +216,7 @@ export interface KillEvent {
   objectiveText?: string;     // Objective description text
   partyMember?: string;       // Player name for party/VOIP events
   destination?: string;       // QT destination or location name
-  channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : LoVeRSaMa")
+  channelName?: string;       // VOIP channel name (e.g. "Aegis Retaliator : Player_One")
   visibility?: EventVisibility; // Whether event is public or private on global feed
   missionOrganization?: string; // Mission giver from <CommsNotifications> tags (e.g. "Navy.Baramsco")
   eventData?: Record<string, unknown>; // Structured extras for SC 4.10 events (shop price/item, vehicle reason, zoneType, phase, ...)

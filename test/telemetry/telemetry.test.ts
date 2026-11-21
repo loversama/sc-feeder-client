@@ -164,7 +164,7 @@ test('TelemetryService: game not running stays quiet and keeps retrying', async 
 });
 
 test('log signatures: variable parts are normalised and names redacted', () => {
-  const a = lineSignature("<2025-06-29T11:42:46.937Z> [Notice] <Actor Death> CActor::Kill: 'Bob_123' [2001] in zone 'X' killed by 'LoVeRSaMa' [99] using 'GATS_S3' [Class X] [Team_ActorTech][Actor]", { redact: ['LoVeRSaMa'] })!;
+  const a = lineSignature("<2025-06-29T11:42:46.937Z> [Notice] <Actor Death> CActor::Kill: 'Bob_123' [2001] in zone 'X' killed by 'Player_One' [99] using 'GATS_S3' [Class X] [Team_ActorTech][Actor]", { redact: ['Player_One'] })!;
   const b = lineSignature("<2025-07-01T01:00:00.000Z> [Notice] <Actor Death> CActor::Kill: 'Alice' [7] in zone 'Y' killed by 'Someone' [12] using 'Other' [Class Z] [Team_Renamed][Actor]")!;
   assert.equal(a.signature, b.signature);
   assert.equal(a.tag, 'Actor Death');

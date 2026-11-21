@@ -27,7 +27,7 @@ Initializing game telemetry component of local player      ← stream starts aft
 | `actor` | vitals (health/oxygen/hunger/thirst gauges, body temp, heart rate, gravity, pressure, intoxication), state (on foot / EVA / seated, crew role, seat, aUEC balance), environment (outside temp, radiation, breathable) |
 | `vehicle` | name/class/manufacturer/type, lights, doors, annunciators, flight (landed, gear, VTOL, IFCS settings, speed, fuel, boost, altitude, heading…), power, shields, hull health, master mode |
 | `weapons` | settings, preset, each weapon's power/ready state, countermeasures |
-| `events` | GameEvent types (spawn, dead, enter/leave seat, respawn, downed) — death/respawn are in the schema but not emitted in 5.0 PTU |
+| `events` | GameEvent types (spawn, dead, enter/leave seat, respawn, downed). On 5.0.202 PTU ACTOR_DOWNED, ACTOR_DEAD and ENTER/LEAVE_SEAT are emitted (LEAVE_SEAT repeats up to 9x, collapsed by the client); ACTOR_SPAWN and ACTOR_RESPAWN never fired in our recordings |
 | `force_feedback`, `turret` | stick feedback / turret light amplification |
 
 Absent section = "no update" (kept until 3 s stale); absent field inside a present section = 0/false

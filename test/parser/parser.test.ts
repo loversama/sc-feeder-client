@@ -10,12 +10,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseLogContent, resetParserState, PARSER_PATTERNS, PARSER_PATTERN_META } from '../../electron/modules/log-parser.ts';
 import { emitted, clearEmitted } from './stubs/stubs';
+import { Sc50LogTracker, prettyPlace } from '../../electron/modules/sc50-log-events.ts';
 
 const fixtureDir = process.env.PARSER_FIXTURES ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures'); // run.mjs sets it (the bundle lives in a different folder)
 const fx = (name: string) => fs.readFileSync(path.join(fixtureDir, name), 'utf8').replace(/\r\n/g, '\n');
 const parse = (content: string) => parseLogContent(content, true);
 const events = () => emitted.map(e => e.event);
-const GEID = '204772006105';
+const GEID = '200000000001';
 
 beforeEach(() => {
   resetParserState();
@@ -261,7 +262,9 @@ test('reward, emergency services, zones, quantum travel, own status effects', as
   await parse(fx('quantum.txt'));
   const qt = events().filter(e => e.eventType === 'quantum_travel');
   assert.deepEqual(qt.map(q => q.eventData.phase), ['selected', 'arrived']);
-  assert.equal(qt[0].destination, 'OOC_Stanton_4_Microtech');
+  assert.equal(qt[0].destination, 'Microtech', 'readable name instead of the raw OOC_ id');
+  assert.equal(qt[0].eventData.destinationRaw, 'OOC_Stanton_4_Microtech');
+  assert.equal(qt[1].eventData.to, 'Microtech');
   assert.equal(qt[0].eventData.vehicle, 'RSI_Galaxy_927281380301');
   await parse(fx('status-effect.txt')); // second line names another player: ignored
   const st = events().filter(e => e.eventType === 'status_effect');
@@ -278,4 +281,181 @@ test('PARSER_PATTERN_META covers every PARSER_PATTERNS entry with a valid status
   assert.equal(PARSER_PATTERN_META.newVehicleDestroyed.status, 'unverified');
   for (const n of ['kill', 'environmentDeath', 'vehicleDestruction', 'corpseLog']) assert.equal(PARSER_PATTERN_META[n].status, 'sunset', n);
   assert.equal(PARSER_PATTERN_META.vehicleDestroyed.status, 'active');
+});
+
+// ---------------------------------------------------------------------------------------------
+// SC 5.0 (PTU 5.0.202, build 13248297) — fixtures *-50.txt are verbatim lines, handles redacted
+// ---------------------------------------------------------------------------------------------
+
+const lines50 = (name: string) => fx(name).split('\n').filter(Boolean);
+/** Local events straight from the tracker (local-only: the server derives its own from the raw chunks). */
+function track(names: string[], user = '<player>') {
+  const t = new Sc50LogTracker();
+  const outs = names.flatMap(n => lines50(n)).flatMap(l => t.handle(l, user).out);
+  outs.push(...t.flushLoadout());
+  return { t, local: outs.filter(o => o.local).map(o => o.local!) };
+}
+
+test('5.0 bug 1: "Entered Monitored Space" is not a jurisdiction; Entered/Exited both handled', async () => {
+  await login();
+  await parse(fx('monitored-space-50.txt'));
+  const loc = events().filter(e => e.eventType === 'location_change');
+  assert.ok(!loc.some(e => /Monitored Space/.test(e.location ?? '')), 'never sets location "Monitored Space"');
+  const ms = loc.filter(e => e.eventData?.zoneType === 'monitored_space');
+  assert.deepEqual(ms.map(e => e.eventData.action), ['enter', 'leave']);
+  const jur = loc.filter(e => !e.eventData);
+  assert.deepEqual(jur.map(e => e.eventDescription), ['Entered Ungoverned Jurisdiction', "Entered People's Alliance Jurisdiction"]);
+  assert.ok(!PARSER_PATTERNS.jurisdictionEntered.test(lines50('monitored-space-50.txt')[0]));
+});
+
+test('5.0 bug 5: gameVersion pattern matches the 5.0 command line and is marked active', () => {
+  const m = fx('version-50.txt').match(PARSER_PATTERNS.gameVersion);
+  assert.equal(m?.groups?.gameversion, '500-13248297');
+  assert.equal(PARSER_PATTERN_META.gameVersion.status, 'active');
+});
+
+test('5.0 bug 2: patterns marked active all have a handler; never-seen ones are honest', () => {
+  for (const n of ['fatalCollision', 'missionEnded', 'memberLeftNotif', 'refuelRequest', 'missionObjectiveWithdrawn']) {
+    assert.notEqual(PARSER_PATTERN_META[n].status, 'active', n);
+  }
+  for (const n of ['attachmentReceived', 'monitoredSpace', 'qtFuelRequest', 'qtStartLocation', 'hangarRequest']) {
+    assert.equal(PARSER_PATTERN_META[n].status, 'active', n);
+  }
+  assert.equal(PARSER_PATTERN_META.actorStateDead.status, 'sunset');
+});
+
+test('5.0 quantum trip (bug 4 + addition 2): names instead of entity ids, obstructed, other ships ignored', async () => {
+  await login();
+  await parse(fx('qt-trip-obstructed-50.txt'));
+  const qt = events().filter(e => e.eventType === 'quantum_travel');
+  assert.deepEqual(qt.map(q => q.eventData.phase), ['selected', 'route_planned', 'obstructed'], 'the Polaris arrival is another ship: ignored');
+  for (const q of qt) assert.ok(!/\d{9,}/.test(q.eventDescription), `no raw entity id in "${q.eventDescription}"`);
+  assert.equal(qt[0].destination, 'Nyx I', "Planet 'nyx1' (entity 877480122483) resolves the target id");
+  assert.equal(qt[1].eventDescription, 'Quantum route from Levski to Nyx I');
+  assert.equal(qt[1].eventData.fuel, 696301);
+  assert.match(qt[2].eventDescription, /blocked to Nyx I/);
+
+  assert.deepEqual(qt[1].eventData, { phase: 'route_planned', from: 'Levski', to: 'Nyx I', fuel: 696301, vehicle: 'RSI_Galaxy_877609015558' });
+});
+
+test('5.0 quantum trip: own arrival with from/to and duration; other users\' QT errors never rename our target', () => {
+  const { local } = track(['qt-trip-arrived-50.txt']);
+  const arrived = local.find(l => l.eventData.phase === 'arrived')!;
+  assert.ok(arrived, 'arrived');
+  assert.equal(arrived.eventData.from, 'Levski');
+  assert.equal(arrived.eventData.to, 'Nyx I');
+  assert.equal(arrived.eventData.durationSec, 199);
+  assert.equal(arrived.description, 'Quantum travel complete from Levski to Nyx I');
+  assert.equal(arrived.timestamp, '2026-11-21T22:03:58.639Z');
+  // the "Aligned Target: Nyx1" line belongs to Pilot1, not to us
+  const t2 = track(['qt-trip-arrived-50.txt'], 'Pilot1');
+  assert.ok(t2.local.filter(l => l.eventType === 'quantum_travel').every(l => l.destination === 'Nyx I'));
+});
+
+test('5.0 quantum: our own "Aligned Target" names the destination', () => {
+  const t = new Sc50LogTracker();
+  const sel = lines50('qt-trip-arrived-50.txt').filter(l => /Selected Quantum Target|Requested Fuel/.test(l));
+  for (const l of sel) t.handle(l, '<player>');
+  t.handle(lines50('qt-own-aligned-50.txt')[0], '<player>');
+  const out = t.handle(lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!, '<player>').out;
+  assert.equal(out[0].local!.eventData.to, 'Hub');
+});
+
+test('prettyPlace: readable names, bare ids hidden', () => {
+  assert.equal(prettyPlace('Nyx_Levski'), 'Levski (Nyx)');
+  assert.equal(prettyPlace('sector_ht_a_swamp_001 (Northern Reach)'), 'Northern Reach');
+  assert.equal(prettyPlace("location_ht_a_habitation_m_hubremote_001 (Ozaki's Central)"), "Ozaki's Central");
+  assert.equal(prettyPlace('OOC_Stanton_4_Microtech'), 'Microtech');
+  assert.equal(prettyPlace('nyx1'), 'Nyx I');
+  assert.equal(prettyPlace('877562123546'), undefined);
+});
+
+test('5.0 addition 1: Incapacitated HUD notification → local event (the server stores the log player_downed)', async () => {
+  await login();
+  await parse(fx('incap-50.txt'));
+  const inc = events().filter(e => e.eventType === 'incapacitated');
+  assert.equal(inc.length, 1, 'the echo line does not double it');
+  assert.equal(inc[0].timestamp, '2026-11-21T17:23:34.951Z');
+});
+
+test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrapped line, fleet size', async () => {
+  await login();
+  await parse(fx('hangar-50.txt'));
+  const h = events().filter(e => e.eventType === 'hangar');
+  // "Hangar Request Completed" (21:59:14) is the ATC request after boarding: local only
+  assert.deepEqual(h.map(e => e.eventData.action), ['retrieved', 'atc_request_completed']);
+  assert.equal(h[0].timestamp, '2026-11-21T21:54:23.138Z', 'delivered when the ship spawns');
+  assert.equal(h[0].eventData.hangar, 'XL Hangar');
+  assert.equal(h[0].eventData.vehicleId, '877604806898');
+  assert.equal(h[0].eventData.fleetSize, 55);
+  // the hangar name must never leak the handle; someone else's hangar name is dropped
+  assert.ok(!JSON.stringify(track(['hangar-50.txt']).local).includes('<player>'));
+  // a later single-vehicle query ("0 out of 1") does not shrink the fleet
+  const t = new Sc50LogTracker();
+  const ls = lines50('hangar-50.txt');
+  t.handle(ls[0], '<player>');
+  t.handle(ls[0].replace('55 entitlements out of 55', '0 entitlements out of 1'), '<player>');
+  const outs = ls.slice(1).flatMap(l => t.handle(l, '<player>').out);
+  assert.equal(outs[0].local!.eventData.fleetSize, 55);
+  const other = track(['hangar-50.txt'], 'SomeoneElse').local;
+  assert.equal(other[0].eventData.hangar, undefined);
+});
+
+test('5.0 hangar: "Joined hangar queue." (real line from LIVE 4.x) → hangar_queued', () => {
+  const t = new Sc50LogTracker();
+  const out = t.handle('<2026-03-26T21:06:59.578Z> [Notice] <SHUDEvent_OnNotification> Added notification "Joined hangar queue.', '<player>').out;
+  assert.equal(out[0].local!.eventData.action, 'queued');
+});
+
+test('5.0 addition 4: readable location from RequestLocationInventory (own player only, numeric Update Inventory Location ignored)', async () => {
+  await login();
+  await parse(fx('location-inventory-50.txt'));
+  const loc = events().filter(e => e.eventData?.zoneType === 'inventory_location');
+  assert.deepEqual(loc.map(e => e.location), ['Levski (Nyx)', 'Northern Reach', "Ozaki's Central"]);
+  assert.deepEqual(track(['location-inventory-50.txt']).local.map(l => [l.eventType, l.location]), [
+    ['location_change', 'Levski (Nyx)'], ['location_change', 'Northern Reach'], ['location_change', "Ozaki's Central"]]);
+  assert.equal(track(['location-inventory-50.txt'], 'SomeoneElse').local.length, 0);
+});
+
+test('5.0 addition 5: medical bed and the loadout burst after spawn (counter)', async () => {
+  await login();
+  await parse(fx('medical-bed-50.txt'));
+  assert.equal(events().filter(e => e.eventType === 'medical').length, 1);
+
+  clearEmitted();
+  await parse(fx('attachments-50.txt'));
+  // burst still open at the end of the chunk; a later line closes it
+  await parse('<2026-11-21T21:54:05.000Z> [Notice] <Something> unrelated\n');
+  const lo = events().filter(e => e.eventType === 'loadout');
+  assert.equal(lo.length, 1);
+  assert.equal(lo[0].eventData.items, 6);
+  assert.equal(lo[0].eventData.armorPieces, 5, "undersuit, arms, helmet, legs, torso");
+});
+
+test('5.0 quantum: own arrival without a selection this session is still reported (unknown origin); other ships are not', () => {
+  const t = new Sc50LogTracker();
+  const hangar = lines50('hangar-50.txt');
+  for (const l of hangar) t.handle(l, '<player>'); // ship 877604806898 delivered to us
+  const arrival = lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!;
+  const out = t.handle(arrival, '<player>').out.map(o => o.local!);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].eventData.phase, 'arrived');
+  assert.equal(out[0].eventData.from, undefined);
+  assert.equal(out[0].eventData.durationSec, undefined);
+  assert.equal(out[0].description, 'Quantum travel complete');
+  // a nearby ship we never selected / owned
+  const polaris = lines50('qt-trip-obstructed-50.txt').find(l => /Quantum Drive Arrived/.test(l))!;
+  assert.equal(t.handle(polaris, '<player>').out.length, 0);
+});
+
+test('5.0 tracker compares handles case-insensitively', () => {
+  const loc = track(['location-inventory-50.txt'], '<PLAYER>').local;
+  assert.equal(loc.length, 3);
+  const h = track(['hangar-50.txt'], '<Player>').local;
+  assert.equal(h[0].eventData.hangar, 'XL Hangar');
+  const t = new Sc50LogTracker();
+  for (const l of lines50('qt-trip-arrived-50.txt').filter(l => /Selected Quantum Target|Requested Fuel/.test(l))) t.handle(l, '<PLAYER>');
+  t.handle(lines50('qt-own-aligned-50.txt')[0], '<PLAYER>');
+  const out = t.handle(lines50('qt-trip-arrived-50.txt').find(l => /Quantum Drive Arrived/.test(l))!, '<PLAYER>').out;
+  assert.equal(out[0].local!.eventData.to, 'Hub');
 });

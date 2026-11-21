@@ -224,3 +224,101 @@ test('TelemetryService: game restart → stream resumes and snapshots keep flowi
   svc.stop();
   second.server.forceShutdown();
 });
+
+// --- 0.3.3 additions ----------------------------------------------------------------------------
+
+const vitals = (o: { hunger?: number; thirst?: number; hr?: number } = {}) => ({
+  actor: {
+    vitals: {
+      health: { current: 100, max: 100 },
+      hunger: { current: o.hunger ?? 100, max: 100 },
+      thirst: { current: o.thirst ?? 100, max: 100 },
+      heart_rate: o.hr ?? 60,
+    },
+    state: { locomotion: 'ACTOR_LOCOMOTION_STATE_ON_FOOT' },
+  },
+});
+
+test('low hunger / thirst: info alerts once per crossing, re-armed only after recovering above 35 %', () => {
+  const ev = run([
+    [0, vitals({ hunger: 30 })],
+    [100, vitals({ hunger: 24.9 })],
+    [200, vitals({ hunger: 24.5 })],
+    [300, vitals({ hunger: 26 })], // hovering at the edge: no new alert
+    [400, vitals({ hunger: 24 })],
+    [500, vitals({ hunger: 80 })], // ate
+    [600, vitals({ hunger: 20, thirst: 10 })],
+  ]);
+  assert.deepEqual(ofType(ev, 'low_hunger').map((e) => e.data?.hunger), [25, 20]);
+  assert.equal(ofType(ev, 'low_hunger')[0].severity, 'info');
+  assert.equal(ofType(ev, 'low_hunger')[0].feed, undefined);
+  assert.equal(ofType(ev, 'low_thirst').length, 1);
+  assert.equal(ofType(ev, 'low_thirst')[0].category, 'vitals');
+  // already low when telemetry starts: no alert
+  assert.equal(ofType(run([[0, vitals({ hunger: 10 })], [100, vitals({ hunger: 9 })]]), 'low_hunger').length, 0);
+});
+
+const flightShip = (o: { fuel?: number; density?: number; qdrv?: string } = {}) => ({
+  vehicle: {
+    state: {
+      name: 'ANVL_C8R_Pisces_877604809490',
+      class_name: 'ANVL_C8R_Pisces',
+      flight: { instruments: { ...(o.fuel !== undefined ? { hydrogen_fuel: o.fuel } : {}), ...(o.density ? { atmospheric_density: o.density } : {}) }, state: {} },
+      ...(o.qdrv ? { annunciators: { qdrv: `ANNUNCIATOR_STATE_${o.qdrv}` } } : {}),
+    },
+  },
+});
+
+test('low hydrogen fuel, atmosphere entered/exited (density absent in space), quantum drive ready/warning from annunciators.qdrv', () => {
+  const ev = run([
+    [0, { ...actor(), ...flightShip({ fuel: 0.5, density: 1.2, qdrv: 'OFF' }) }],
+    [100, { ...actor(), ...flightShip({ fuel: 0.14, density: 0.9, qdrv: 'OFF' }) }],
+    [200, { ...actor(), ...flightShip({ fuel: 0.13, qdrv: 'NOMINAL' }) }], // left atmosphere, NAV mode
+    [300, { ...actor(), ...flightShip({ fuel: 0.13, qdrv: 'MAJOR_ON' }) }],
+    [400, { ...actor(), ...flightShip({ fuel: 0.13, qdrv: 'NOMINAL' }) }],
+    [500, { ...actor(), ...flightShip({ fuel: 0.13, density: 0.004, qdrv: 'NOMINAL' }) }], // dead band
+    [600, { ...actor(), ...flightShip({ fuel: 0.13, density: 0.3, qdrv: 'NOMINAL' }) }],
+  ]);
+  assert.deepEqual(ofType(ev, 'low_fuel').map((e) => e.data?.fuel), [14]);
+  assert.deepEqual(ev.filter((e) => e.type.startsWith('atmosphere_')).map((e) => e.type), ['atmosphere_exited', 'atmosphere_entered']);
+  assert.equal(ofType(ev, 'quantum_drive_ready').length, 1);
+  assert.equal(ofType(ev, 'quantum_drive_warning').length, 1);
+  assert.equal(ofType(ev, 'annunciator_warning').length, 0, 'qdrv has its own event, not the generic warning light');
+  assert.ok(ev.every((e) => !e.feed), 'all live-only');
+});
+
+test('snapshot upload: heart-rate / hunger jitter does not trigger uploads; a real change or 5 s does', async () => {
+  let t = 0;
+  let onFrame: ((f: any, b: number) => void) | null = null;
+  const uploads: any[] = [];
+  const svc = new TelemetryService({
+    address: 'fake',
+    isSharingEnabled: () => true,
+    upload: (p) => (uploads.push(p), true),
+    snapshotIntervalMs: 10,
+    heartbeatMs: 60_000,
+    silenceMs: 60_000,
+    now: () => t,
+    clientFactory: () => ({ openStream: (f) => ((onFrame = f), { cancel: () => {} }), close: () => {} }),
+  });
+  svc.start();
+  const step = async (ms: number, frame: any) => {
+    t += ms;
+    onFrame!(frame, 10);
+    await new Promise((r) => setTimeout(r, 30));
+  };
+  await step(0, vitals({ hr: 60, hunger: 92.29 }));
+  const base = uploads.length;
+  assert.equal(base, 1);
+  await step(1000, vitals({ hr: 61.5, hunger: 92.28 }));
+  await step(1000, vitals({ hr: 59, hunger: 92.27 }));
+  assert.equal(uploads.length, base, 'sub-step jitter only');
+  await step(1000, vitals({ hr: 64, hunger: 92.26 }));
+  assert.equal(uploads.length, base + 1, '>= 3 bpm change uploads');
+  assert.equal(uploads.at(-1).snapshot.actor.vitals.heart_rate, 64);
+  await step(1000, vitals({ hr: 65, hunger: 92.25 }));
+  assert.equal(uploads.length, base + 1);
+  await step(4500, vitals({ hr: 65.5, hunger: 92.2 }));
+  assert.equal(uploads.length, base + 2, 'refreshed after 5 s');
+  svc.stop();
+});

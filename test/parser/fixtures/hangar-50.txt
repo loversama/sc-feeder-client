@@ -1,0 +1,4 @@
+<2026-11-21T21:54:09.616Z> [Notice] <VehicleListQuery> Fetching vehicle list for player 100000000001 completed. Retrieved 55 entitlements out of 55 vehicules. [Team_GameServices][ASOP][Entitlement][Insurance]
+<2026-11-21T21:54:23.138Z> [Notice] <CEntityComponentShipListProvider::SetVehicleSpawningInformations> SetVehicleSpawningInformations - VehicleEntityId: [877604806898], LandingArea: <player>'s
+<2026-11-21T21:54:23.138Z> XL Hangar [Team_GameServices][ASOP]
+<2026-11-21T21:59:14.971Z> [Notice] <SHUDEvent_OnNotification> Added notification "Hangar Request Completed: " [5] to queue. New queue size: 1, MissionId: [00000000-0000-0000-0000-000000000000], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]
