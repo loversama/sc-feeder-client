@@ -11,7 +11,7 @@ import {
   getUserCfgStatus,
 } from './telemetry-manager';
 import { getTelemetrySettings } from '../config-manager';
-import { refreshOverlay, registerOverlayHotkey, toggleOverlay, isGameRunning } from './overlay-window';
+import { syncOverlayFeature, toggleOverlay, isGameRunning } from './overlay-window';
 import { renderMarkdown } from '../log-diff/log-diff-tracker';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -21,10 +21,8 @@ const MODULE_NAME = 'TelemetryIPC';
 export function registerTelemetryIpc(): void {
   ipcMain.handle('telemetry:get-settings', () => getTelemetrySettings());
   ipcMain.handle('telemetry:set-settings', (_e, patch: Partial<TelemetrySettings>) => {
-    const before = getTelemetrySettings();
     const s = applyTelemetrySettings(patch ?? {});
-    if (s.overlayHotkey !== before.overlayHotkey) registerOverlayHotkey();
-    refreshOverlay();
+    syncOverlayFeature();
     return s;
   });
   ipcMain.handle('telemetry:get-state', () => ({ ...getOverlayState({ maxRowsPerSection: 200 }), gameRunning: isGameRunning() }));

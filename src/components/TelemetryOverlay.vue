@@ -42,7 +42,8 @@ const prevValues = new Map<string, string>();
 let off: (() => void) | undefined;
 
 const SECTION_ORDER = ['actor', 'vehicle', 'weapons', 'turret', 'events', 'force_feedback'];
-const MAX_ROWS: Record<string, number> = { actor: 22, vehicle: 30, weapons: 14, turret: 3, events: 4, force_feedback: 6 };
+// Row budgets keep the whole panel inside 820 px; the full field list is in Settings → Telemetry & Overlay.
+const MAX_ROWS: Record<string, number> = { actor: 16, vehicle: 20, weapons: 10, turret: 2, events: 2, force_feedback: 4 };
 
 onMounted(() => {
   off = (window as any).overlayApi?.onState((s: State) => {
@@ -60,11 +61,20 @@ onMounted(() => {
 });
 onBeforeUnmount(() => off?.());
 
+/** Rows worth a line on the overlay: no gauge maxima, instruments/state before IFCS settings. */
+function overlayRows(rows: Row[]): Row[] {
+  const rank = (k: string) => (/\.settings\./.test(k) ? 2 : /annunciators|doors|power\./.test(k) ? 1 : 0);
+  return rows.filter(([k]) => !k.endsWith('.max')).sort((a, b) => rank(a[0]) - rank(b[0]));
+}
+
 const sections = computed(() =>
-  [...(state.value?.telemetry.sections ?? [])].sort(
-    (a, b) => (SECTION_ORDER.indexOf(a.name) + 99) % 99 - (SECTION_ORDER.indexOf(b.name) + 99) % 99,
-  ),
+  [...(state.value?.telemetry.sections ?? [])]
+    .map((sec) => ({ ...sec, rows: overlayRows(sec.rows).filter(([k, v]) => !(k === '' && v === '{}')) }))
+    .filter((sec) => sec.rows.length > 0)
+    .sort((a, b) => (SECTION_ORDER.indexOf(a.name) + 99) % 99 - (SECTION_ORDER.indexOf(b.name) + 99) % 99),
 );
+
+const hotkeyLabel = computed(() => (state.value?.hotkey ?? '').replace('CommandOrControl', 'Ctrl').replace('CmdOrCtrl', 'Ctrl'));
 
 function isChanged(section: string, key: string): boolean {
   const t = changedAt.get(`${section}.${key}`);
@@ -113,7 +123,7 @@ const statusClass = computed(() => `st-${state.value?.telemetry.status ?? 'disab
       </div>
       <div class="line muted">
         {{ state.telemetry.address }} · {{ state.telemetry.frames }} frames · {{ bytes(state.telemetry.bytesReceived) }} ·
-        game {{ state.gameRunning ? 'running' : 'not detected' }}<span v-if="state.hotkey"> · {{ state.hotkey }} hides</span>
+        game {{ state.gameRunning ? 'running' : 'not detected' }}<span v-if="state.hotkey"> · {{ hotkeyLabel }} hides</span>
       </div>
 
       <!-- why no telemetry -->
@@ -145,7 +155,7 @@ const statusClass = computed(() => `st-${state.value?.telemetry.status ?? 'disab
       <!-- events -->
       <div class="sec-title">EVENTS</div>
       <div class="events">
-        <div v-for="e in state.events.slice(0, 14)" :key="e.id" class="ev" :class="`sev-${e.severity ?? 'info'}`">
+        <div v-for="e in state.events.slice(0, 10)" :key="e.id" class="ev" :class="`sev-${e.severity ?? 'info'}`">
           <span class="t">{{ time(e.at) }}</span>
           <span class="src" :class="`src-${e.source}`">{{ SOURCE_LABEL[e.source] ?? e.source }}</span>
           <span class="sum">{{ e.summary }}</span>
@@ -154,6 +164,26 @@ const statusClass = computed(() => `st-${state.value?.telemetry.status ?? 'disab
         <div v-if="!state.events.length" class="muted">no events yet</div>
       </div>
 
+      <!-- Game.log diff -->
+      <template v-if="state.logDiff">
+        <div class="sec-title">GAME.LOG DIFF</div>
+        <div class="line">
+          {{ state.logDiff.current.build.fileVersion ?? '?' }} ({{ state.logDiff.current.lines }} lines, {{ state.logDiff.current.signatures }} kinds)
+          <span class="muted"> vs </span>
+          <template v-if="state.logDiff.baseline">{{ state.logDiff.baseline.build.fileVersion ?? '?' }} <span class="muted">({{ state.logDiff.baseline.source }})</span></template>
+          <span v-else class="muted">no previous log yet</span>
+        </div>
+        <div v-if="state.logDiff.baseline" class="line">
+          <span class="ok">+{{ state.logDiff.counts.added }} new</span> ·
+          <span class="warn">{{ state.logDiff.counts.notSeen }} not seen</span> ·
+          {{ state.logDiff.counts.common }} same
+        </div>
+        <div v-if="state.logDiff.lostPatterns.length" class="line err">
+          parser patterns lost: {{ state.logDiff.lostPatterns.map((p) => p.name).join(', ') }}
+        </div>
+        <div v-if="state.logDiff.newPatterns.length" class="line ok">patterns now matching: {{ state.logDiff.newPatterns.join(', ') }}</div>
+        <div v-for="a in state.logDiff.added.slice(0, 3)" :key="a.signature" class="sig">+{{ a.count }} {{ a.signature }}</div>
+      </template>
       <!-- telemetry sections -->
       <template v-for="sec in sections" :key="sec.name">
         <div class="sec-title" :class="{ stale: sec.stale }">
@@ -168,26 +198,6 @@ const statusClass = computed(() => `st-${state.value?.telemetry.status ?? 'disab
         <div v-if="sec.rows.length > (MAX_ROWS[sec.name] ?? 12)" class="muted more">+{{ sec.rows.length - (MAX_ROWS[sec.name] ?? 12) }} more fields</div>
       </template>
 
-      <!-- Game.log diff -->
-      <template v-if="state.logDiff">
-        <div class="sec-title">GAME.LOG DIFF</div>
-        <div class="line">
-          {{ state.logDiff.current.build.fileVersion ?? '?' }} ({{ state.logDiff.current.lines }} lines, {{ state.logDiff.current.signatures }} kinds)
-          <span class="muted">vs</span>
-          <template v-if="state.logDiff.baseline">{{ state.logDiff.baseline.build.fileVersion ?? '?' }} <span class="muted">({{ state.logDiff.baseline.source }})</span></template>
-          <span v-else class="muted">no previous log yet</span>
-        </div>
-        <div v-if="state.logDiff.baseline" class="line">
-          <span class="ok">+{{ state.logDiff.counts.added }} new</span> ·
-          <span class="warn">{{ state.logDiff.counts.notSeen }} not seen</span> ·
-          {{ state.logDiff.counts.common }} same
-        </div>
-        <div v-if="state.logDiff.lostPatterns.length" class="line err">
-          parser patterns lost: {{ state.logDiff.lostPatterns.map((p) => p.name).join(', ') }}
-        </div>
-        <div v-if="state.logDiff.newPatterns.length" class="line ok">patterns now matching: {{ state.logDiff.newPatterns.join(', ') }}</div>
-        <div v-for="a in state.logDiff.added.slice(0, 4)" :key="a.signature" class="sig">+{{ a.count }} {{ a.signature }}</div>
-      </template>
       <div class="foot muted">schema {{ state.telemetry.schemaBuild }}</div>
     </div>
   </div>

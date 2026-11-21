@@ -6,8 +6,9 @@
  * access), so it is anti-cheat safe — but it is only visible when the game runs in Borderless or
  * Windowed mode, not exclusive Fullscreen.
  *
- * Shown while overlay is enabled AND StarCitizen.exe is running (or "always show" is on).
- * Toggle with the overlay hotkey (default Ctrl+Alt+O).
+ * Off by default. When the setting is on: StarCitizen.exe is polled every 5 s and the panel shows
+ * while the game runs (or always, with "always show"); the hotkey (default Ctrl+Alt+O) hides/shows
+ * it. When the setting is off there is no hotkey grab and no process polling.
  */
 import { BrowserWindow, globalShortcut, screen } from 'electron';
 import { execFile } from 'node:child_process';
@@ -16,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import * as logger from '../logger';
 import { getPreloadPath } from '../window-manager';
 import { getTelemetrySettings } from '../config-manager';
-import { applyTelemetrySettings, getOverlayState } from './telemetry-manager';
+import { getOverlayState } from './telemetry-manager';
 import { pushDebugEvent } from './debug-bus';
 
 const MODULE_NAME = 'Overlay';
@@ -32,6 +33,9 @@ let pushTimer: NodeJS.Timeout | null = null;
 let pollTimer: NodeJS.Timeout | null = null;
 let gameRunning = false;
 let registeredHotkey: string | null = null;
+/** Runtime hide via hotkey (not persisted). */
+let hiddenByHotkey = false;
+let displayListener = false;
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -118,7 +122,7 @@ function stopPush(): void {
 /** Show/hide according to settings + game state. */
 export function refreshOverlay(): void {
   const s = getTelemetrySettings();
-  const shouldShow = s.overlayEnabled && (gameRunning || s.overlayAlwaysShow);
+  const shouldShow = s.overlayEnabled && !hiddenByHotkey && (gameRunning || s.overlayAlwaysShow);
   if (shouldShow) {
     if (!overlay || overlay.isDestroyed()) overlay = createOverlay();
     overlay.setBounds(overlayBounds());
@@ -133,12 +137,13 @@ export function refreshOverlay(): void {
   }
 }
 
+/** Hotkey / IPC: hide or show the overlay while the feature is enabled. Returns visible-intent. */
 export function toggleOverlay(): boolean {
-  const enabled = !getTelemetrySettings().overlayEnabled;
-  applyTelemetrySettings({ overlayEnabled: enabled });
-  pushDebugEvent({ source: 'system', type: 'overlay', summary: `Overlay ${enabled ? 'enabled' : 'disabled'}` });
+  if (!getTelemetrySettings().overlayEnabled) return false;
+  hiddenByHotkey = !hiddenByHotkey;
+  pushDebugEvent({ source: 'system', type: 'overlay', summary: `Overlay ${hiddenByHotkey ? 'hidden' : 'shown'}` });
   refreshOverlay();
-  return enabled;
+  return !hiddenByHotkey;
 }
 
 export function registerOverlayHotkey(): void {
@@ -160,20 +165,42 @@ export function registerOverlayHotkey(): void {
   }
 }
 
-export function initOverlay(): void {
-  registerOverlayHotkey();
-  const poll = async () => {
-    const running = await checkGameProcess();
-    if (running !== gameRunning) {
-      gameRunning = running;
-      logger.info(MODULE_NAME, `${GAME_EXE} ${running ? 'detected' : 'exited'}`);
-      pushDebugEvent({ source: 'system', type: running ? 'game_started' : 'game_exited', summary: `${GAME_EXE} ${running ? 'running' : 'exited'}` });
+async function poll(): Promise<void> {
+  const running = await checkGameProcess();
+  if (running !== gameRunning) {
+    gameRunning = running;
+    logger.info(MODULE_NAME, `${GAME_EXE} ${running ? 'detected' : 'exited'}`);
+    pushDebugEvent({ source: 'system', type: running ? 'game_started' : 'game_exited', summary: `${GAME_EXE} ${running ? 'running' : 'exited'}` });
+  }
+  refreshOverlay();
+}
+
+/** Apply the overlay setting: start/stop process polling and the hotkey. Safe to call repeatedly. */
+export function syncOverlayFeature(): void {
+  const s = getTelemetrySettings();
+  if (s.overlayEnabled) {
+    if (registeredHotkey !== s.overlayHotkey) registerOverlayHotkey();
+    if (!pollTimer) {
+      poll();
+      pollTimer = setInterval(poll, PROCESS_POLL_MS);
     }
-    refreshOverlay();
-  };
-  poll();
-  pollTimer = setInterval(poll, PROCESS_POLL_MS);
-  screen.on('display-metrics-changed', () => overlay && !overlay.isDestroyed() && overlay.setBounds(overlayBounds()));
+  } else {
+    if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
+    registeredHotkey = null;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    gameRunning = false;
+    hiddenByHotkey = false;
+  }
+  refreshOverlay();
+}
+
+export function initOverlay(): void {
+  syncOverlayFeature();
+  if (!displayListener) {
+    displayListener = true;
+    screen.on('display-metrics-changed', () => overlay && !overlay.isDestroyed() && overlay.setBounds(overlayBounds()));
+  }
 }
 
 export function destroyOverlay(): void {

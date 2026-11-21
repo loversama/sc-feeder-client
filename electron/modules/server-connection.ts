@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import * as logger from './logger';
 import os from 'node:os'; // Import os module for hostname
 // Import refreshToken along with other auth functions
+import { getAuthStatus } from './auth-manager';
 import { getAccessToken, getGuestToken, getPersistedClientId, refreshToken, setGuestToken, clearGuestToken, requestAndStoreGuestToken, getRefreshToken } from './auth-manager';
 import { getMainWindow } from './window-manager'; // Import window manager to send messages
 import { getDetailedUserAgent } from './app-lifecycle';
@@ -520,13 +521,20 @@ export function sendLogChunk(chunk: string): void {
  * and stale events have no value). Returns true when emitted.
  */
 export function sendTelemetry(payload: TelemetryUploadPayload): boolean {
-  if (!socket?.connected || !isAuthenticated) {
+  // The server only accepts telemetry from signed-in users (guests are rejected), so don't send
+  // (and don't mark events as shared) in guest mode.
+  if (!socket?.connected || !isAuthenticated || !getAuthStatus().isAuthenticated) {
     countDropped(payload.kind === 'events' ? payload.events.length : 1);
     return false;
   }
   const body = { clientId: getPersistedClientId(), ...payload };
   const bytes = JSON.stringify(body).length;
-  socket.emit('submit_telemetry', body);
+  socket.emit('submit_telemetry', body, (ack?: { ok?: boolean; error?: string }) => {
+    if (ack && ack.ok === false) {
+      countDropped(payload.kind === 'events' ? payload.events.length : 1);
+      logger.warn(MODULE_NAME, `Server rejected telemetry ${payload.kind}: ${ack.error ?? 'unknown'}`);
+    }
+  });
   countTelemetryUpload(payload.kind === 'snapshot' ? 'snapshot' : 'events', bytes, payload.kind === 'events' ? payload.events.length : 0);
   return true;
 }

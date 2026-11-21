@@ -144,7 +144,7 @@ export async function enableTelemetryInUserCfg(): Promise<{ path: string; change
   if (m && /^(1|true)$/i.test(m[2])) return { path: p, changed: false };
   let backup: string | undefined;
   if (text) {
-    backup = `${p}.bak`;
+    backup = `${p}.${new Date().toISOString().replace(/[:.]/g, '-')}.bak`;
     await fsp.writeFile(backup, text);
   }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';

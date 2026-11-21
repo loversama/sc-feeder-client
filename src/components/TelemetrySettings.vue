@@ -122,7 +122,7 @@ onUnmounted(() => clearInterval(timer));
           <el-switch :model-value="settings.overlayAlwaysShow" @change="(v: boolean) => save({ overlayAlwaysShow: v })" />
         </div>
         <div class="flex items-center justify-between gap-4">
-          <span class="text-theme-text-white">Toggle hotkey</span>
+          <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
           <el-input class="max-w-xs" :model-value="settings.overlayHotkey" @change="(v: string) => save({ overlayHotkey: v.trim() })" placeholder="CommandOrControl+Alt+O" />
         </div>
       </div>
