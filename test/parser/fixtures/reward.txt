@@ -1,0 +1,2 @@
+<2026-11-12T21:54:30.154Z> [Notice] <SHUDEvent_OnNotification> Added notification "You've Earned: MG Scrip
+<2026-11-12T21:54:30.154Z> Access It at Your Primary Residence's Inventory

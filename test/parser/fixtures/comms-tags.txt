@@ -1,0 +1,3 @@
+<2026-11-12T21:49:23.177Z> [Notice] <CommsNotifications> SendCommsNotification +Missions.Organization.Navy.Baramsco,Missions.MissionType.WaveAttack.SingleTarget,Missions.CommsNotifications.MissionAccept - [db87a275-222e-4c4e-9b43-de578c6ff11c] - Mission: [ff4cfc01-eef6-45e9-854f-6116e02a591f], Player: <player>[204772006105] [Team_MissionFeatures][Missions]
+<2026-11-12T21:49:23.188Z> [Notice] <SHUDEvent_OnNotification> Added notification "Contract Accepted:  Combat Gauntlet - Scenario #1: " [22] to queue. New queue size: 1, MissionId: [ff4cfc01-eef6-45e9-854f-6116e02a591f], ObjectiveId: [] [Team_CoreGameplayFeatures][Missions][Comms]
+<2026-11-12T21:49:23.188Z>    "Contract Accepted:  Combat Gauntlet - Scenario #1: " [22]
