@@ -1,4 +1,64 @@
 import chalk, { type ChalkInstance } from 'chalk'; // Import the ChalkInstance type
+import fs from 'node:fs';
+import nodePath from 'node:path';
+
+// --- rolling file log --------------------------------------------------------------------------
+// Console output is invisible in packaged builds, so connection drops etc. could not be diagnosed
+// from a user's machine. initFileLog() mirrors info/warn/error (not debug) to
+// <userData>/logs/voidlog-client.log, rotated at 5 MB, keeping 3 old files.
+const FILE_LOG_MAX_BYTES = 5 * 1024 * 1024;
+const FILE_LOG_KEEP = 3;
+let fileLogPath: string | null = null;
+let fileLogBytes = 0;
+let fileLogFd: number | null = null;
+
+export function initFileLog(dir: string): string | null {
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        fileLogPath = nodePath.join(dir, 'voidlog-client.log');
+        fileLogBytes = fs.existsSync(fileLogPath) ? fs.statSync(fileLogPath).size : 0;
+        fileLogFd = fs.openSync(fileLogPath, 'a');
+        writeFileLog('INFO', 'Logger', `---- log opened (pid ${process.pid}) ----`);
+        return fileLogPath;
+    } catch (err) {
+        fileLogPath = null;
+        console.error('[Logger] file log unavailable:', err);
+        return null;
+    }
+}
+
+export function getFileLogPath(): string | null {
+    return fileLogPath;
+}
+
+function rotateFileLog(): void {
+    if (!fileLogPath) return;
+    try {
+        if (fileLogFd !== null) fs.closeSync(fileLogFd);
+        for (let i = FILE_LOG_KEEP; i >= 1; i--) {
+            const from = i === 1 ? fileLogPath : `${fileLogPath}.${i - 1}`;
+            if (fs.existsSync(from)) fs.renameSync(from, `${fileLogPath}.${i}`);
+        }
+        fileLogFd = fs.openSync(fileLogPath, 'a');
+        fileLogBytes = 0;
+    } catch {
+        fileLogFd = null;
+    }
+}
+
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+function writeFileLog(level: string, moduleName: string, message: string): void {
+    if (fileLogFd === null) return;
+    const line = `${new Date().toISOString()} ${level.padEnd(5)} [${moduleName}] ${message.replace(ANSI_RE, '')}\n`;
+    try {
+        fs.writeSync(fileLogFd, line);
+        fileLogBytes += Buffer.byteLength(line);
+        if (fileLogBytes > FILE_LOG_MAX_BYTES) rotateFileLog();
+    } catch {
+        /* never let logging break the app */
+    }
+}
 
 // Basic logger utility using chalk
 
@@ -85,6 +145,10 @@ function processArgsForColoring(args: any[]): string[] {
 
 // Base log function
 function log(levelColor: ChalkInstance, moduleName: string, ...args: any[]) {
+    logAt(null, levelColor, moduleName, ...args);
+}
+
+function logAt(fileLevel: string | null, levelColor: ChalkInstance, moduleName: string, ...args: any[]) {
     const timestamp = new Date().toLocaleTimeString();
     // Process args for specific entity/keyword coloring first
     const processedArgs = processArgsForColoring(args);
@@ -96,20 +160,21 @@ function log(levelColor: ChalkInstance, moduleName: string, ...args: any[]) {
         `${timestampColor(timestamp)} ${moduleColor(`[${moduleName}]`)}`, // Timestamp and Module Name
         levelColor(message) // Apply level color to the whole message string
     );
+    if (fileLevel) writeFileLog(fileLevel, moduleName, message);
 }
 
 // Specific level functions
 // Specific level functions call the modified log
 export function info(moduleName: string, ...args: any[]) {
-    log(levelColors.info, moduleName, ...args);
+    logAt('INFO', levelColors.info, moduleName, ...args);
 }
 
 export function warn(moduleName: string, ...args: any[]) {
-    log(levelColors.warn, moduleName, ...args);
+    logAt('WARN', levelColors.warn, moduleName, ...args);
 }
 
 export function error(moduleName: string, ...args: any[]) {
-    log(levelColors.error, moduleName, ...args);
+    logAt('ERROR', levelColors.error, moduleName, ...args);
 }
 
 export function debug(moduleName: string, ...args: any[]) {
@@ -120,7 +185,7 @@ export function debug(moduleName: string, ...args: any[]) {
 }
 
 export function success(moduleName: string, ...args: any[]) {
-    log(levelColors.success, moduleName, ...args);
+    logAt('INFO', levelColors.success, moduleName, ...args);
 }
 
 export function startup(moduleName: string, ...args: any[]) {

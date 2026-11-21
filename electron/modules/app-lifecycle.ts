@@ -307,7 +307,9 @@ function shouldStartMinimized(): boolean {
 
 // This is the new, correct onReady function
 async function onReady() {
+  const fileLog = logger.initFileLog(path.join(app.getPath('userData'), 'logs'));
   logger.startup(MODULE_NAME, 'Application ready - starting initialization sequence...');
+  logger.info(MODULE_NAME, `VOIDLOG.GG Client ${app.getVersion()} - log file: ${fileLog ?? 'unavailable'}`);
   isInitializing = true; // Set flag to prevent quit during initialization
   
   // Environment setup
