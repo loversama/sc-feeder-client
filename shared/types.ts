@@ -129,7 +129,10 @@ export interface StoreSchema {
   overlayAlwaysShow: boolean;
   overlayHotkey: string;
   logDiffEnabled: boolean;
+  telemetryRecord: boolean;
   logFilePath: string;
+  gameRoot: string;
+  gameRootMigrated: boolean;
   sessions: SessionInfo[];
   lastLoggedInUser: string;
   showNotifications: boolean;

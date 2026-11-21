@@ -69,10 +69,11 @@ export function registerIpcHandlers() {
     // Handles direct path setting (less common now)
     ipcMain.on('set-log-path', (event, newPath: string) => {
         logger.info(MODULE_NAME, `Received 'set-log-path' for: ${newPath}`);
+        ConfigManager.setGameRoot(''); // an explicit single Game.log path switches off channel discovery
         const changed = ConfigManager.setLogPath(newPath);
         if (changed) {
             // Restart watcher only if path actually changed
-            LogWatcher.startWatchingLogFile().catch(err => logger.error(MODULE_NAME, "Error restarting watcher after set-log-path:", err));
+            LogWatcher.applyGameRootChange().catch(err => logger.error(MODULE_NAME, "Error restarting watcher after set-log-path:", err));
             // Notify renderer
             getMainWindow()?.webContents.send('log-path-updated', newPath);
         } else {
@@ -96,9 +97,10 @@ export function registerIpcHandlers() {
             const directoryPath = result.filePaths[0];
             const newLogFilePath = path.join(directoryPath, 'Game.log');
             logger.info(MODULE_NAME, `Directory selected: ${directoryPath}, setting log path to: ${newLogFilePath}`);
+            ConfigManager.setGameRoot(''); // single-file mode (non-standard layout)
             const changed = ConfigManager.setLogPath(newLogFilePath);
+            await LogWatcher.applyGameRootChange(); // Restart watcher (the mode may have changed even if the path did not)
             if (changed) {
-                 await LogWatcher.startWatchingLogFile(); // Restart watcher
                  getMainWindow()?.webContents.send('log-path-updated', newLogFilePath); // Notify renderer
                  return newLogFilePath; // Return the path that was set
             } else {

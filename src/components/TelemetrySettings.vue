@@ -11,11 +11,14 @@ type Settings = {
   overlayAlwaysShow: boolean;
   overlayHotkey: string;
   logDiffEnabled: boolean;
+  telemetryRecord: boolean;
 };
+
+type CfgRow = { channel: string; active: boolean; path: string; exists: boolean; enabled: boolean };
 
 const api = (window as any).logMonitorApi;
 const settings = ref<Settings | null>(null);
-const cfg = ref<{ path: string; exists: boolean; enabled: boolean } | null>(null);
+const cfg = ref<{ path: string; exists: boolean; enabled: boolean; channels: CfgRow[] } | null>(null);
 const live = ref<any>(null);
 const busy = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -33,16 +36,24 @@ async function save(patch: Partial<Settings>) {
   settings.value = await api.invoke('telemetry:set-settings', patch);
 }
 
-async function enableCfg() {
+async function enableCfg(channel: string = 'all') {
   busy.value = true;
   try {
-    const r = await api.invoke('telemetry:enable-user-cfg');
-    if (r?.ok) ElMessage.success(r.changed ? `Added to ${r.path}. Restart Star Citizen.` : 'Already enabled in user.cfg');
+    const r = await api.invoke('telemetry:enable-user-cfg', channel);
+    if (r?.ok) {
+      const done = (r.results ?? []).filter((x: any) => x.changed).map((x: any) => x.channel);
+      ElMessage.success(done.length ? `Enabled in ${done.join(', ')}. Restart Star Citizen.` : 'Already enabled in user.cfg');
+    }
     else ElMessage.error(`Could not update user.cfg: ${r?.error ?? 'unknown error'}`);
     cfg.value = await api.invoke('telemetry:user-cfg-status');
   } finally {
     busy.value = false;
   }
+}
+
+async function openRecordings() {
+  const r = await api.invoke('telemetry:open-recordings');
+  if (r && !r.ok) ElMessage.error(`Could not open ${r.dir}: ${r.error}`);
 }
 
 async function exportDiff() {
@@ -76,6 +87,7 @@ onUnmounted(() => clearInterval(timer));
         <h4 class="text-lg font-semibold text-theme-text-white mb-2">Status</h4>
         <div v-if="live" class="text-sm text-gray-300 space-y-1 font-mono">
           <div>Telemetry: <b>{{ live.telemetry.status.replace(/_/g, ' ') }}</b> · {{ live.telemetry.address }} · {{ live.telemetry.fps }} fps · {{ live.telemetry.frames }} frames</div>
+          <div v-if="cfg?.channels?.length">Channels: <template v-for="(c, i) in cfg.channels" :key="c.channel"><span :class="c.active ? 'text-green-400' : ''">{{ c.channel }}{{ c.active ? ' (active)' : '' }}</span>{{ i < cfg.channels.length - 1 ? ', ' : '' }}</template></div>
           <div>Game: {{ live.gameRunning ? 'StarCitizen.exe running' : 'not detected' }} · user.cfg seen in Game.log: {{ live.telemetry.logHints.cfgEnabled === null ? '—' : live.telemetry.logHints.cfgEnabled }}</div>
           <div>Shared: {{ live.sharing.counters.telemetrySnapshots }} snapshots, {{ live.sharing.counters.telemetryEvents }} events · server {{ live.sharing.serverConnected ? 'connected' : 'offline' }}</div>
           <div class="text-gray-500">Schema: {{ live.telemetry.schemaBuild }}</div>
@@ -89,12 +101,16 @@ onUnmounted(() => clearInterval(timer));
           <el-switch :model-value="settings.telemetryEnabled" @change="(v: boolean) => save({ telemetryEnabled: v })" />
         </div>
         <p class="text-gray-400 text-sm">Connects to the game's local API on 127.0.0.1:2942 (no game modification, no memory reading). Star Citizen must have it switched on in user.cfg.</p>
-        <div class="flex items-center gap-3 text-sm">
-          <span class="text-gray-300 font-mono truncate">{{ cfg?.path }}</span>
-          <span :class="cfg?.enabled ? 'text-green-400' : 'text-orange-400'">{{ cfg?.enabled ? 'enabled' : cfg?.exists ? 'not enabled' : 'no user.cfg' }}</span>
-          <el-button size="small" type="primary" :disabled="cfg?.enabled || busy" @click="enableCfg">Enable in user.cfg</el-button>
+        <div v-for="c in cfg?.channels ?? []" :key="c.channel" class="flex items-center gap-3 text-sm">
+          <span class="w-28 shrink-0 font-semibold" :class="c.active ? 'text-green-400' : 'text-gray-300'">{{ c.channel }}</span>
+          <span class="text-gray-400 font-mono truncate flex-1">{{ c.path }}</span>
+          <span :class="c.enabled ? 'text-green-400' : 'text-orange-400'">{{ c.enabled ? 'enabled' : c.exists ? 'not enabled' : 'no user.cfg' }}</span>
+          <el-button size="small" type="primary" :disabled="c.enabled || busy" @click="enableCfg(c.channel)">Enable</el-button>
         </div>
-        <p class="text-gray-500 text-xs">Adds <code>server.game.telemetry.enabled=1</code> next to your Game.log (a .bak copy is kept). Change the log path in General to target PTU/LIVE.</p>
+        <div v-if="(cfg?.channels?.length ?? 0) > 1" class="flex justify-end">
+          <el-button size="small" :disabled="cfg?.channels.every((c) => c.enabled) || busy" @click="enableCfg('all')">Enable in all channels</el-button>
+        </div>
+        <p class="text-gray-500 text-xs">Adds <code>server.game.telemetry.enabled=1</code> to each channel's user.cfg, next to its Game.log (a timestamped .bak copy is kept). Channels are detected from your Star Citizen folder (General settings).</p>
       </div>
 
       <!-- Sharing -->
@@ -107,6 +123,19 @@ onUnmounted(() => clearInterval(timer));
         <div class="flex items-center justify-between">
           <span class="text-theme-text-white">Include aUEC wallet balance</span>
           <el-switch :model-value="settings.telemetryShareBalance" @change="(v: boolean) => save({ telemetryShareBalance: v })" />
+        </div>
+      </div>
+
+      <!-- Recording -->
+      <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-lg font-semibold text-theme-text-white">Record telemetry to files</h4>
+          <el-switch :model-value="settings.telemetryRecord" @change="(v: boolean) => save({ telemetryRecord: v })" />
+        </div>
+        <p class="text-gray-400 text-sm">Writes what the game's telemetry reports (every change, events, and which fields never carried data) to a <code>.log</code> file per game session, on this PC only, to review accuracy and what a patch changed. The newest 30 files are kept; each is capped at 50 MB. Force feedback is not recorded.</p>
+        <div class="flex items-center gap-3 text-sm">
+          <span class="text-gray-300 font-mono truncate flex-1">{{ live?.recording?.active ? live.recording.file : 'not recording' }}</span>
+          <el-button size="small" @click="openRecordings">Open recordings folder</el-button>
         </div>
       </div>
 

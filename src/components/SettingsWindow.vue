@@ -6,6 +6,7 @@ import { User, Tools } from '@element-plus/icons-vue';
 import DebugActions from './DebugActions.vue';
 import SoundPreferences from './SoundPreferences.vue';
 import TelemetrySettings from './TelemetrySettings.vue';
+import GameChannels from './GameChannels.vue';
 import { useUserState } from '../composables/useUserState';
 import type { SoundPreferences as SoundPreferencesType } from '../../shared/types';
 
@@ -603,15 +604,8 @@ const toggleLaunchOnStartup = async () => {
           <div class="space-y-6">
             <!-- Log File Location -->
             <div class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border">
-              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Log File Location</h4>
-              <div class="flex items-center gap-4">
-                <code class="flex-1 bg-theme-bg-dark px-4 py-3 rounded border border-theme-border font-mono text-sm text-theme-text-light overflow-hidden">
-                  {{ currentPath }}
-                </code>
-                <el-button @click="handleSelectLogDirectory" type="primary" class="px-6">
-                  Change
-                </el-button>
-              </div>
+              <h4 class="text-lg font-semibold text-theme-text-white mb-4">Star Citizen Folder</h4>
+              <GameChannels @single-file="handleSelectLogDirectory" />
             </div>
 
             <!-- Theme -->
