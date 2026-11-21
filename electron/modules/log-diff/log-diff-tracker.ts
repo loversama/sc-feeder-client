@@ -41,8 +41,9 @@ export type PatternStatus = {
   name: string;
   current: number;
   baseline: number;
-  /** ok = matched now; lost = matched in baseline but not now; never = matched in neither */
-  status: 'ok' | 'lost' | 'never' | 'new';
+  /** ok = matched now; lost = matched in baseline but not now; never = matched in neither;
+   *  retired = not matched and known to be gone from the game (sunset in PARSER_PATTERN_META) */
+  status: 'ok' | 'lost' | 'never' | 'new' | 'retired';
 };
 
 export type LogDiffReport = {
@@ -58,6 +59,8 @@ export type LogDiffReport = {
 export type LogDiffTrackerOptions = {
   storeDir: string;
   patterns: Readonly<Record<string, RegExp>>;
+  /** Pattern lifecycle (sunset patterns are reported as 'retired', not 'lost'). */
+  patternMeta?: PatternMeta;
   getRedactNames?: () => string[];
   log?: (level: 'info' | 'warn' | 'debug', msg: string) => void;
   /** Minimum lines before a session is worth saving as the next baseline. */
@@ -236,7 +239,7 @@ export class LogDiffTracker {
 
   report(limit = 200): LogDiffReport {
     if (this.#cachedReport && this.#cachedReport.version === this.#version && limit === 200) return this.#cachedReport.report;
-    const report = buildReport(this.#comparisonBaseline(), this.#current, Object.keys(this.#opts.patterns), limit);
+    const report = buildReport(this.#comparisonBaseline(), this.#current, Object.keys(this.#opts.patterns), limit, this.#opts.patternMeta);
     if (limit === 200) this.#cachedReport = { version: this.#version, report };
     return report;
   }
@@ -247,7 +250,7 @@ export class LogDiffTracker {
     const cur = await this.snapshotFromFile(currentFile);
     if (!base) throw new Error(`Not found: ${baselineFile}`);
     if (!cur) throw new Error(`Not found: ${currentFile}`);
-    return buildReport(base, cur, Object.keys(this.#opts.patterns), limit);
+    return buildReport(base, cur, Object.keys(this.#opts.patterns), limit, this.#opts.patternMeta);
   }
 
   /** Write the full report (JSON + readable Markdown) and return the Markdown path. */
@@ -322,15 +325,18 @@ export class LogDiffTracker {
   }
 }
 
-export function buildReport(base: LogSnapshot | null, current: LogSnapshot, patternNames: string[], limit = 200): LogDiffReport {
+export type PatternMeta = Record<string, { status: string }>;
+
+export function buildReport(base: LogSnapshot | null, current: LogSnapshot, patternNames: string[], limit = 200, meta?: PatternMeta): LogDiffReport {
   const diff = diffSignatureSets(base?.set ?? {}, current.set);
   const patterns: PatternStatus[] = patternNames.map((name) => {
     const cur = current.patternHits[name] ?? 0;
     const was = base?.patternHits[name] ?? 0;
-    const status: PatternStatus['status'] = cur > 0 ? (was > 0 || !base ? 'ok' : 'new') : was > 0 ? 'lost' : 'never';
+    let status: PatternStatus['status'] = cur > 0 ? (was > 0 || !base ? 'ok' : 'new') : was > 0 ? 'lost' : 'never';
+    if (cur === 0 && meta?.[name]?.status === 'sunset') status = 'retired';
     return { name, current: cur, baseline: was, status };
   });
-  const order = { lost: 0, new: 1, ok: 2, never: 3 } as const;
+  const order = { lost: 0, new: 1, ok: 2, never: 3, retired: 4 } as const;
   patterns.sort((a, b) => order[a.status] - order[b.status] || b.baseline - a.baseline);
   return {
     generatedAt: new Date().toISOString(),

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import * as logger from '../logger';
 import { getCurrentLogPath, getTelemetrySettings, setTelemetrySettings, type TelemetrySettings } from '../config-manager';
 import { getActiveChannelName, getChannelTracker, legacyChannelName } from '../channel-manager';
-import { PARSER_PATTERNS, getCurrentUsername } from '../log-parser';
+import { PARSER_PATTERNS, PARSER_PATTERN_META, getCurrentUsername } from '../log-parser';
 import { sendTelemetry, isConnected as isServerConnected } from '../server-connection';
 import { TelemetryService } from './telemetry-service';
 import { flatten, type TelemetryEvent } from './telemetry-state';
@@ -58,6 +58,7 @@ function trackerFor(channel: string): LogDiffTracker {
   t = new LogDiffTracker({
     storeDir,
     patterns: PARSER_PATTERNS,
+    patternMeta: PARSER_PATTERN_META,
     getRedactNames: () => {
       const u = getCurrentUsername();
       return u ? [u] : [];
