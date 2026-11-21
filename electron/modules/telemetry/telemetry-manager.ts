@@ -76,7 +76,9 @@ export function initTelemetry(): void {
 
 export async function shutdownTelemetry(): Promise<void> {
   service?.stop();
-  await tracker?.finalize().catch(() => {});
+  // Saving the Game.log baseline waits for queued lines; never hold up app quit for long.
+  const save = tracker?.finalize().catch(() => {}) ?? Promise.resolve();
+  await Promise.race([save, new Promise((r) => setTimeout(r, 1500))]);
 }
 
 export function applyTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {
