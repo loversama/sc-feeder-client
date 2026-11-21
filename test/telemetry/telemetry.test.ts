@@ -12,6 +12,9 @@ import { loadTelemetryRoot, TELEMETRY_PACKAGE, TELEMETRY_SERVICE } from '../../e
 import { TelemetryService, type TelemetryUploadPayload } from '../../electron/modules/telemetry/telemetry-service';
 import { TelemetryState, flatten } from '../../electron/modules/telemetry/telemetry-state';
 import { buildSignatureSet, diffSignatureSets, lineSignature, extractBuildInfo } from '../../electron/modules/log-diff/log-signature';
+// Connection reliability + contextual feed events (same runner, one esbuild bundle)
+import './server-link.test';
+import './telemetry-events.test';
 
 const root = loadTelemetryRoot();
 const T = (n: string) => root.lookupType(`${TELEMETRY_PACKAGE}.${n}`);
