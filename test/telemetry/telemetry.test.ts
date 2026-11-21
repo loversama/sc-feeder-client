@@ -569,3 +569,28 @@ test('recorder: unknown version is only waited for ~10 s, then the file is named
   assert.deepEqual(names, ['2026-11-21T19-05-02_LIVE_unknown.log']);
   await r.rec.close();
 });
+
+test('TelemetryService: a silent stream is reopened on a fresh connection (old gRPC channel closed)', async () => {
+  let opened = 0;
+  let closed = 0;
+  let cancelled = 0;
+  const svc = new TelemetryService({
+    address: 'fake',
+    silenceMs: 150,
+    retryMs: [20],
+    log: () => {},
+    clientFactory: () => ({
+      openStream: () => {
+        opened++;
+        return { cancel: () => { cancelled++; } };
+      },
+      close: () => { closed++; },
+    }),
+  });
+  svc.start();
+  await new Promise((r) => setTimeout(r, 1300));
+  await svc.stop();
+  assert.ok(opened >= 2, `expected reopen, opened=${opened}`);
+  // every silent reopen must close the previous channel, so the game never sees piled-up clients
+  assert.ok(closed >= opened - 1, `opened=${opened} closed=${closed} cancelled=${cancelled}`);
+});

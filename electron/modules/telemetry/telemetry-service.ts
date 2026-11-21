@@ -258,6 +258,10 @@ export class TelemetryService extends EventEmitter {
       const s = this.#stream;
       this.#stream = null;
       s.cancel();
+      // Also drop the gRPC channel: the game only notices a client leaving when the connection closes,
+      // so cancelled streams on a reused connection pile up as "Client connected (total=N)" in the game.
+      this.#client?.close();
+      this.#client = null;
       if (this.status === 'streaming') this.#setStatus('connected');
       this.#scheduleRetry();
     }
