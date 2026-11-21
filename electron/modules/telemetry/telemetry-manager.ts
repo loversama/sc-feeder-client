@@ -13,7 +13,8 @@ import * as logger from '../logger';
 import { getCurrentLogPath, getTelemetrySettings, setTelemetrySettings, type TelemetrySettings } from '../config-manager';
 import { getActiveChannelName, getChannelTracker, legacyChannelName } from '../channel-manager';
 import { PARSER_PATTERNS, PARSER_PATTERN_META, getCurrentUsername } from '../log-parser';
-import { sendTelemetry, isConnected as isServerConnected } from '../server-connection';
+import { sendTelemetry, isServerAuthenticated, connectionEvents } from '../server-connection';
+import { getPersistedClientId } from '../auth-manager';
 import { TelemetryService } from './telemetry-service';
 import { flatten, type TelemetryEvent } from './telemetry-state';
 import { SCHEMA_GAME_BUILD } from './schema-desc';
@@ -94,6 +95,7 @@ export function initTelemetry(): void {
     isSharingEnabled: () => getTelemetrySettings().telemetryShare,
     includeBalance: () => getTelemetrySettings().telemetryShareBalance,
     upload: (payload) => sendTelemetry(payload, channelNow()),
+    clientId: () => getPersistedClientId(),
     log: (lvl, msg) => logger[lvl === 'debug' ? 'debug' : lvl](MODULE_NAME, msg),
   });
   service.on('status', (status: string, prev: string) => {
@@ -136,6 +138,10 @@ export function initTelemetry(): void {
     log: (lvl, msg) => logger[lvl === 'debug' ? 'debug' : lvl](MODULE_NAME, msg),
   });
   recorder.attach(service);
+
+  // After a server restart / redeploy / network drop the socket is re-authenticated by
+  // server-connection; push a fresh snapshot right away and re-send held feed events.
+  connectionEvents.on('authenticated', () => service?.resync());
 
   if (settings.telemetryEnabled) service.start();
   logger.info(MODULE_NAME, `Telemetry initialised (enabled=${settings.telemetryEnabled}, share=${settings.telemetryShare}, schema ${SCHEMA_GAME_BUILD})`);
@@ -374,7 +380,7 @@ export function getOverlayState(opts: { maxRowsPerSection?: number } = {}): Over
     },
     sharing: {
       enabled: settings.telemetryShare,
-      serverConnected: isServerConnected(),
+      serverConnected: isServerAuthenticated(),
       counters: getUploadCounters(),
       lastSnapshotAt: s?.lastSharedSnapshot?.at ?? null,
       lastSnapshotBytes: s?.lastSharedSnapshot?.bytes ?? 0,

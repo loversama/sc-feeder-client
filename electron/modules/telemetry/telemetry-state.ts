@@ -10,8 +10,19 @@
  *    and only treat it as gone once it is older than `staleMs`.
  *  - Inside a present section, an absent field means its proto3 default (0 / false / ''),
  *    because zero values are never sent on the wire.
- *  - `events` carries GameEvent{type} entries. In 5.0 PTU death/respawn are in the schema but are
- *    not emitted, so we also derive our own events from state changes.
+ *  - `events` carries GameEvent{type} entries (ACTOR_SPAWN / DEAD / DOWNED / RESPAWN / ENTER_SEAT /
+ *    LEAVE_SEAT). The game repeats some of them several times within ~0.5 s (LEAVE_SEAT up to 9x),
+ *    so identical game events are collapsed.
+ *
+ * Real-data quirks handled here (PTU 5.0.202 recordings):
+ *  - `actor.vitals.health.current` disappears (= proto default) while downed: an absent gauge value
+ *    is treated as "unknown", never as 0 % (no bogus "Health low (0%)").
+ *  - Switching to NAV master mode powers the shield generators off ~1 s later and the shields drain
+ *    to 0 within ~6-10 s: `shields_down` carries `context.cause` (nav_mode / power_off / damage /
+ *    unknown) and only damage / unknown are alerts worth a feed entry.
+ *  - The vehicle section goes stale ~3 s after leaving the seat; `vehicle_exited` is dated at the
+ *    game's ACTOR_LEAVE_SEAT when there was one.
+ *  - The schema has no quantum drive state (only quantum_fuel), so no quantum events are derived.
  */
 
 export type Obj = Record<string, any>;
@@ -22,9 +33,14 @@ export type SectionEntry = { value: Obj; at: number };
 
 export type TelemetryEventSeverity = 'info' | 'warn' | 'alert';
 
+export type TelemetryEventCategory = 'combat' | 'ship' | 'travel' | 'vitals' | 'status';
+
+export type TelemetryVehicleRef = { name: string; className: string; entityId?: string };
+
 export type TelemetryEvent = {
+  /** Stable and unique: `tm_<clientId>_<type>_<epochMs>` (a `_<n>` suffix only if that repeats). */
   id: string;
-  /** e.g. `actor_spawn`, `vehicle_entered`, `landing_gear`, `low_oxygen`. */
+  /** e.g. `player_downed`, `vehicle_entered`, `landing_gear`, `low_oxygen`. */
   type: string;
   /** ISO timestamp */
   at: string;
@@ -33,6 +49,53 @@ export type TelemetryEvent = {
   /** One-line human summary for overlay / feed. */
   summary: string;
   data?: Obj;
+  /** Worth persisting to the VOIDLOG.GG event feed (curated, low-noise). Absent = live-only. */
+  feed?: boolean;
+  category?: TelemetryEventCategory;
+  /** Why it happened, e.g. shields_down `{ cause: 'nav_mode' }`. */
+  context?: { cause?: string; [k: string]: unknown };
+  /** Ship the player was in. */
+  vehicle?: TelemetryVehicleRef;
+};
+
+type EventExtra = Pick<TelemetryEvent, 'feed' | 'category' | 'context' | 'vehicle'>;
+
+/** Event types that may go to the feed (the server enforces the same allowlist). */
+export const FEED_EVENT_TYPES = new Set([
+  'player_downed',
+  'player_dead',
+  'player_respawn',
+  'vehicle_entered',
+  'vehicle_exited',
+  'took_off',
+  'landed',
+  'shields_down',
+  'vehicle_damaged',
+  'low_oxygen',
+]);
+
+const CATEGORY: Record<string, TelemetryEventCategory> = {
+  player_downed: 'combat',
+  player_dead: 'combat',
+  vehicle_damaged: 'combat',
+  countermeasure_used: 'combat',
+  weapon_preset_changed: 'combat',
+  vehicle_entered: 'ship',
+  vehicle_exited: 'ship',
+  landing_gear: 'ship',
+  master_mode_changed: 'ship',
+  lights_toggled: 'ship',
+  doors_changed: 'ship',
+  doors_lock_changed: 'ship',
+  shields_up: 'ship',
+  shields_down: 'ship',
+  power_changed: 'ship',
+  annunciator_warning: 'ship',
+  took_off: 'travel',
+  landed: 'travel',
+  low_health: 'vitals',
+  low_oxygen: 'vitals',
+  atmosphere_changed: 'vitals',
 };
 
 /** Sections that are never sent to the server (high-rate, no value off-machine). */
@@ -47,10 +110,14 @@ export const num = (x: unknown): number => {
 const str = (x: unknown): string => (typeof x === 'string' ? x : '');
 const bool = (x: unknown): boolean => x === true;
 
+/**
+ * Gauge percentage, or null when unknown. An absent `current` is NOT read as 0: the game drops the
+ * value entirely in some states (health while downed), which is indistinguishable from a real 0.
+ */
 function pct(gauge: unknown): number | null {
   const g = obj(gauge);
   const max = num(g.max);
-  if (max <= 0) return null;
+  if (max <= 0 || g.current === undefined || g.current === null) return null;
   return Math.max(0, Math.min(100, (num(g.current) / max) * 100));
 }
 
@@ -60,6 +127,15 @@ export function enumShort(value: unknown, prefix: string): string {
   if (!s) return 'UNSPECIFIED';
   return s.startsWith(prefix) ? s.slice(prefix.length) : s;
 }
+
+/** RSI_Galaxy_877609015558 → { name, className: RSI_Galaxy, entityId: 877609015558 } */
+export function vehicleRef(name: string, className: string): TelemetryVehicleRef | undefined {
+  if (!name && !className) return undefined;
+  const m = name.match(/_(\d{6,})$/);
+  return { name: name || className, className: className || (m ? name.slice(0, -m[0].length) : name), ...(m ? { entityId: m[1] } : {}) };
+}
+
+const vehicleLabel = (name: string, className: string) => (className || name).replace(/_/g, ' ');
 
 /** The facts we diff between frames to derive events. */
 type Facts = {
@@ -88,24 +164,55 @@ type Facts = {
   countermeasures: Record<string, number>;
 };
 
+export type TelemetryStateOptions = {
+  staleMs?: number;
+  /** Client id used in event ids (`tm_<clientId>_<type>_<ms>`). */
+  clientId?: () => string;
+  /** Identical game events closer than this are one event (default 1000 ms). */
+  gameEventDedupeMs?: number;
+  /** took_off / landed are reported once the new state held this long (default 1500 ms). */
+  landedSettleMs?: number;
+};
+
 export class TelemetryState {
   readonly staleMs: number;
   #sections = new Map<string, SectionEntry>();
   #facts: Facts | null = null;
-  #seq = 0;
+  #clientId: () => string;
+  #dedupeMs: number;
+  #settleMs: number;
+  #lastIdAt = new Map<string, number>();
+  #idRepeat = 0;
+  #lastGameEventAt = new Map<string, number>();
+  #lastLeaveSeatAt = 0;
+  #lastDamageAt = 0;
+  #downedAt = 0;
+  #lastHealth: number | null = null;
+  #shieldPowerSeen = false;
+  #landedReported: boolean | null = null;
+  #landedPending: { value: boolean; since: number } | null = null;
   frames = 0;
   firstFrameAt = 0;
   lastFrameAt = 0;
   /** Count of frames per section name. */
   sectionFrames: Record<string, number> = {};
 
-  constructor(opts: { staleMs?: number } = {}) {
+  constructor(opts: TelemetryStateOptions = {}) {
     this.staleMs = opts.staleMs ?? 3000;
+    this.#clientId = opts.clientId ?? (() => 'local');
+    this.#dedupeMs = opts.gameEventDedupeMs ?? 1000;
+    this.#settleMs = opts.landedSettleMs ?? 1500;
   }
 
   reset(): void {
     this.#sections.clear();
     this.#facts = null;
+    this.#lastGameEventAt.clear();
+    this.#lastLeaveSeatAt = this.#lastDamageAt = this.#downedAt = 0;
+    this.#lastHealth = null;
+    this.#shieldPowerSeen = false;
+    this.#landedReported = null;
+    this.#landedPending = null;
     this.frames = 0;
     this.firstFrameAt = 0;
     this.lastFrameAt = 0;
@@ -149,11 +256,15 @@ export class TelemetryState {
       this.#sections.set(name, { value: value as Obj, at: now });
       this.sectionFrames[name] = (this.sectionFrames[name] ?? 0) + 1;
     }
-    // Native game events
+    // Native game events (vehicle/health context comes from the facts of the previous frame)
     const gameEvents: unknown[] = Array.isArray(obj(frame?.events).events) ? obj(frame.events).events : [];
     for (const ge of gameEvents) {
       const type = enumShort(obj(ge).type, 'GAME_EVENT_TYPE_');
-      events.push(this.#event(`game_${type.toLowerCase()}`, now, GAME_EVENT_SEVERITY[type] ?? 'info', `Game event: ${type.replace(/_/g, ' ').toLowerCase()}`, { gameEventType: type }));
+      const last = this.#lastGameEventAt.get(type);
+      this.#lastGameEventAt.set(type, now); // sliding window: a burst collapses into its first event
+      if (last !== undefined && now - last < this.#dedupeMs) continue;
+      const e = this.#gameEvent(type, now);
+      if (e) events.push(e);
     }
     events.push(...this.#diff(now));
     return events;
@@ -185,9 +296,67 @@ export class TelemetryState {
 
   // --- internals -------------------------------------------------------
 
-  #event(type: string, now: number, severity: TelemetryEventSeverity, summary: string, data?: Obj): TelemetryEvent {
-    this.#seq++;
-    return { id: `tm-${now}-${this.#seq}`, type, at: new Date(now).toISOString(), source: 'telemetry', severity, summary, data };
+  #id(type: string, at: number): string {
+    const base = `tm_${this.#clientId() || 'local'}_${type}_${at}`;
+    // Two events of one type in the same millisecond (or one re-dated into the past) stay unique.
+    const key = `${type}@${at}`;
+    if (this.#lastIdAt.has(key)) return `${base}_${++this.#idRepeat}`;
+    this.#lastIdAt.set(key, at);
+    if (this.#lastIdAt.size > 200) this.#lastIdAt.delete(this.#lastIdAt.keys().next().value as string);
+    return base;
+  }
+
+  #event(
+    type: string,
+    at: number,
+    severity: TelemetryEventSeverity,
+    summary: string,
+    data?: Obj,
+    extra: EventExtra = {},
+  ): TelemetryEvent {
+    const e: TelemetryEvent = { id: this.#id(type, at), type, at: new Date(at).toISOString(), source: 'telemetry', severity, summary };
+    if (data) e.data = data;
+    const category = extra.category ?? CATEGORY[type] ?? 'status';
+    e.category = category;
+    const feed = extra.feed ?? FEED_EVENT_TYPES.has(type);
+    if (feed) e.feed = true;
+    if (extra.context) e.context = extra.context;
+    if (extra.vehicle) e.vehicle = extra.vehicle;
+    return e;
+  }
+
+  #currentVehicle(): TelemetryVehicleRef | undefined {
+    const f = this.#facts;
+    return f?.hasVehicle ? vehicleRef(f.vehicleName, f.vehicleClass) : undefined;
+  }
+
+  #gameEvent(type: string, now: number): TelemetryEvent | null {
+    const vehicle = this.#currentVehicle();
+    const where = vehicle ? ` in ${vehicleLabel(vehicle.name, vehicle.className)}` : '';
+    const lastHealth = this.#lastHealth !== null ? Math.round(this.#lastHealth) : undefined;
+    switch (type) {
+      case 'ACTOR_DOWNED':
+        this.#downedAt = now;
+        return this.#event('player_downed', now, 'alert', `Downed${where}`, { gameEventType: type }, {
+          vehicle,
+          context: { ...(lastHealth !== undefined ? { lastHealth } : {}), inVehicle: !!vehicle },
+        });
+      case 'ACTOR_DEAD': {
+        const downedAt = this.#downedAt && now - this.#downedAt < 10 * 60_000 ? new Date(this.#downedAt).toISOString() : undefined;
+        this.#downedAt = 0;
+        return this.#event('player_dead', now, 'alert', `Died${where}`, { gameEventType: type }, {
+          vehicle,
+          context: { ...(downedAt ? { downedAt } : {}), ...(lastHealth !== undefined && !downedAt ? { lastHealth } : {}), inVehicle: !!vehicle },
+        });
+      }
+      case 'ACTOR_RESPAWN':
+        this.#downedAt = 0;
+        return this.#event('player_respawn', now, 'info', 'Respawned', { gameEventType: type }, { category: 'status' });
+      case 'ACTOR_LEAVE_SEAT':
+        this.#lastLeaveSeatAt = now;
+        break;
+    }
+    return this.#event(`game_${type.toLowerCase()}`, now, 'info', `Game event: ${type.replace(/_/g, ' ').toLowerCase()}`, { gameEventType: type }, { vehicle });
   }
 
   #readFacts(now: number): Facts {
@@ -236,13 +405,27 @@ export class TelemetryState {
     };
   }
 
+  /** Why did the shields just reach 0? Checked in this order (NAV drops shield power by itself). */
+  #shieldsDownCause(cur: Facts, now: number): 'nav_mode' | 'power_off' | 'damage' | 'unknown' {
+    if (cur.masterMode === 'NAVIGATION') return 'nav_mode';
+    if (this.#shieldPowerSeen && (!cur.power.shield_generators || !cur.power.shield_emitters)) return 'power_off';
+    if (this.#lastDamageAt && now - this.#lastDamageAt <= 15_000) return 'damage';
+    return 'unknown';
+  }
+
   #diff(now: number): TelemetryEvent[] {
     const cur = this.#readFacts(now);
     const prev = this.#facts;
     this.#facts = cur;
-    if (!prev) return [];
+    if (cur.health !== null) this.#lastHealth = cur.health;
+    if (!prev) {
+      if (cur.hasVehicle) this.#enterVehicle(cur);
+      return [];
+    }
     const ev: TelemetryEvent[] = [];
-    const push = (type: string, severity: TelemetryEventSeverity, summary: string, data?: Obj) => ev.push(this.#event(type, now, severity, summary, data));
+    const veh = cur.hasVehicle ? vehicleRef(cur.vehicleName, cur.vehicleClass) : undefined;
+    const push = (type: string, severity: TelemetryEventSeverity, summary: string, data?: Obj, extra: EventExtra = {}, at = now) =>
+      ev.push(this.#event(type, at, severity, summary, data, { vehicle: veh, ...extra }));
 
     // Actor presence
     if (!prev.hasActor && cur.hasActor) push('actor_telemetry_started', 'info', 'Character telemetry started (spawned)');
@@ -252,9 +435,9 @@ export class TelemetryState {
       if (cur.locomotion !== prev.locomotion) push('locomotion_changed', 'info', `Locomotion ${prev.locomotion} → ${cur.locomotion}`, { from: prev.locomotion, to: cur.locomotion });
       if (cur.crewRole !== prev.crewRole) push('crew_role_changed', 'info', `Crew role ${prev.crewRole} → ${cur.crewRole}`, { from: prev.crewRole, to: cur.crewRole, seat: cur.seat });
       if (cur.seat !== prev.seat && cur.seat) push('seat_changed', 'info', `Seat: ${cur.seat}`, { seat: cur.seat });
+      // Only real readings count (an absent value is unknown, not 0 %).
       crossing(prev.health, cur.health, 25, () => push('low_health', 'alert', `Health low (${Math.round(cur.health!)}%)`, { health: cur.health }));
       crossing(prev.oxygen, cur.oxygen, 25, () => push('low_oxygen', 'alert', `Oxygen low (${Math.round(cur.oxygen!)}%)`, { oxygen: cur.oxygen }));
-      if (prev.health !== null && cur.health !== null && prev.health > 0 && cur.health <= 0) push('health_zero', 'alert', 'Health reached 0');
       if (cur.breathable !== prev.breathable) push('atmosphere_changed', 'info', cur.breathable ? 'Breathable atmosphere' : 'Non-breathable atmosphere', { breathable: cur.breathable });
       if (cur.balance !== prev.balance) {
         const delta = num(cur.balance) - num(prev.balance);
@@ -263,27 +446,52 @@ export class TelemetryState {
     }
 
     // Vehicle
-    if (!prev.hasVehicle && cur.hasVehicle) push('vehicle_entered', 'info', `Entered ${cur.vehicleName || cur.vehicleClass}`, { name: cur.vehicleName, className: cur.vehicleClass });
-    if (prev.hasVehicle && !cur.hasVehicle) push('vehicle_exited', 'info', `Left ${prev.vehicleName || prev.vehicleClass}`, { name: prev.vehicleName, className: prev.vehicleClass });
-    if (prev.hasVehicle && cur.hasVehicle && prev.vehicleClass !== cur.vehicleClass) push('vehicle_entered', 'info', `Switched to ${cur.vehicleName || cur.vehicleClass}`, { name: cur.vehicleName, className: cur.vehicleClass });
+    if (!prev.hasVehicle && cur.hasVehicle) {
+      this.#enterVehicle(cur);
+      push('vehicle_entered', 'info', `Entered ${vehicleLabel(cur.vehicleName, cur.vehicleClass)}`, { name: cur.vehicleName, className: cur.vehicleClass });
+    }
+    if (prev.hasVehicle && !cur.hasVehicle) {
+      // The vehicle section only goes stale ~3 s after leaving the seat: date it at the game's LEAVE_SEAT.
+      const left = this.#lastLeaveSeatAt && now - this.#lastLeaveSeatAt <= this.staleMs + 3000 ? this.#lastLeaveSeatAt : now;
+      push('vehicle_exited', 'info', `Left ${vehicleLabel(prev.vehicleName, prev.vehicleClass)}`, { name: prev.vehicleName, className: prev.vehicleClass }, { vehicle: vehicleRef(prev.vehicleName, prev.vehicleClass) }, left);
+      this.#landedReported = null;
+      this.#landedPending = null;
+    }
+    if (prev.hasVehicle && cur.hasVehicle && prev.vehicleClass !== cur.vehicleClass) {
+      this.#enterVehicle(cur);
+      push('vehicle_entered', 'info', `Switched to ${vehicleLabel(cur.vehicleName, cur.vehicleClass)}`, { name: cur.vehicleName, className: cur.vehicleClass });
+    }
 
     if (prev.hasVehicle && cur.hasVehicle && prev.vehicleClass === cur.vehicleClass) {
+      if (cur.power.shield_generators && cur.power.shield_emitters) this.#shieldPowerSeen = true;
       if (cur.masterMode !== prev.masterMode) push('master_mode_changed', 'info', `Master mode ${cur.masterMode}`, { from: prev.masterMode, to: cur.masterMode });
       if (cur.gear !== prev.gear && (cur.gear === 'DEPLOYED' || cur.gear === 'RETRACTED')) push('landing_gear', 'info', `Landing gear ${cur.gear.toLowerCase()}`, { state: cur.gear });
-      if (cur.landed !== prev.landed) push(cur.landed ? 'landed' : 'took_off', 'info', cur.landed ? 'Landed' : 'Took off');
+      this.#landing(cur, prev, now, push);
       if (cur.lights !== prev.lights) push('lights_toggled', 'info', `Lights ${cur.lights ? 'on' : 'off'}`, { on: cur.lights });
       if (cur.doorOpen !== prev.doorOpen && cur.doorOpen !== 'UNSPECIFIED') push('doors_changed', 'info', `Doors ${cur.doorOpen.toLowerCase()}`, { state: cur.doorOpen });
       if (cur.doorLock !== prev.doorLock && cur.doorLock !== 'UNSPECIFIED') push('doors_lock_changed', 'info', `Doors ${cur.doorLock.toLowerCase()}`, { state: cur.doorLock });
-      if (prev.shields > 0 && cur.shields <= 0) push('shields_down', 'alert', 'Shields down');
-      if (prev.shields <= 0 && cur.shields > 0) push('shields_up', 'info', 'Shields up');
       if (prev.vehicleHealth > 0 && cur.vehicleHealth < prev.vehicleHealth) {
         // `health` scale isn't documented (0-1 or 0-100); report relative drops ≥ 5 %.
         const dropPct = ((prev.vehicleHealth - cur.vehicleHealth) / prev.vehicleHealth) * 100;
-        if (dropPct >= 5) push('vehicle_damaged', 'warn', `Hull -${dropPct.toFixed(0)}%`, { from: prev.vehicleHealth, to: cur.vehicleHealth });
+        this.#lastDamageAt = now;
+        if (dropPct >= 5) push('vehicle_damaged', 'warn', `Hull -${dropPct.toFixed(0)}%`, { from: prev.vehicleHealth, to: cur.vehicleHealth }, { context: { hullDropPct: Math.round(dropPct) } });
       }
+      const newMajors = cur.majorAnnunciators.filter((a) => !prev.majorAnnunciators.includes(a));
+      if (newMajors.includes('hit')) this.#lastDamageAt = now;
+      if (prev.shields > 0 && cur.shields <= 0) {
+        const cause = this.#shieldsDownCause(cur, now);
+        const harmless = cause === 'nav_mode' || cause === 'power_off';
+        const summary =
+          cause === 'nav_mode' ? 'Shields down (NAV mode)' : cause === 'power_off' ? 'Shields down (powered off)' : cause === 'damage' ? 'Shields down under fire' : 'Shields down';
+        push('shields_down', harmless ? 'info' : 'alert', summary, undefined, {
+          feed: !harmless,
+          category: cause === 'damage' ? 'combat' : 'ship',
+          context: { cause, masterMode: cur.masterMode },
+        });
+      }
+      if (prev.shields <= 0 && cur.shields > 0) push('shields_up', 'info', 'Shields up');
       const powerChanged = POWER_KEYS.filter((k) => prev.power[k] !== cur.power[k]);
       if (powerChanged.length) push('power_changed', 'info', `Power: ${powerChanged.map((k) => `${k.replace(/_/g, ' ')} ${cur.power[k] ? 'on' : 'off'}`).join(', ')}`, { changed: Object.fromEntries(powerChanged.map((k) => [k, cur.power[k]])) });
-      const newMajors = cur.majorAnnunciators.filter((a) => !prev.majorAnnunciators.includes(a));
       if (newMajors.length) push('annunciator_warning', 'warn', `Warning light: ${newMajors.join(', ').toUpperCase()}`, { annunciators: newMajors });
     }
 
@@ -295,16 +503,28 @@ export class TelemetryState {
     }
     return ev;
   }
+
+  #enterVehicle(cur: Facts): void {
+    this.#landedReported = cur.landed;
+    this.#landedPending = null;
+    this.#shieldPowerSeen = !!(cur.power.shield_generators && cur.power.shield_emitters);
+    this.#lastDamageAt = 0;
+  }
+
+  /** took_off / landed once the new state held for `landedSettleMs` (no flicker while hovering on the pad). */
+  #landing(cur: Facts, prev: Facts, now: number, push: (type: string, sev: TelemetryEventSeverity, summary: string, data?: Obj, extra?: EventExtra, at?: number) => void): void {
+    if (cur.landed !== prev.landed) this.#landedPending = cur.landed !== this.#landedReported ? { value: cur.landed, since: now } : null;
+    const p = this.#landedPending;
+    if (!p || cur.landed !== p.value || now - p.since < this.#settleMs) return;
+    this.#landedPending = null;
+    this.#landedReported = p.value;
+    push(p.value ? 'landed' : 'took_off', 'info', p.value ? 'Landed' : 'Took off', undefined, {}, p.since);
+  }
 }
 
 const POWER_KEYS = ['powerplants', 'engines', 'weapons', 'coolers', 'life_support', 'gravity_generators', 'sensors', 'shield_generators', 'shield_emitters'];
 
-const GAME_EVENT_SEVERITY: Record<string, TelemetryEventSeverity> = {
-  ACTOR_DEAD: 'alert',
-  ACTOR_DOWNED: 'alert',
-};
-
-/** Calls `fire` when a percentage drops from ≥ threshold to < threshold. */
+/** Calls `fire` when a percentage drops from ≥ threshold to < threshold (both readings known). */
 function crossing(prev: number | null, cur: number | null, threshold: number, fire: () => void): void {
   if (prev === null || cur === null) return;
   if (prev >= threshold && cur < threshold) fire();
