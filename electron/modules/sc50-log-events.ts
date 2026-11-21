@@ -83,7 +83,7 @@ type Trip = {
 export class Sc50LogTracker {
   #entityNames = new Map<string, string>();
   #trip: Trip | null = null;
-  #spawn: { vehicleId: string; area: string; at: string; continued: boolean } | null = null;
+  #spawn: { vehicleId: string; area: string; at: string } | null = null;
   #fleetSize: number | undefined;
   #location: string | undefined;
   #loadout: { first: string; last: string; count: number; ports: Set<string> } | null = null;
@@ -122,13 +122,16 @@ export class Sc50LogTracker {
     if (!ts) return null;
 
     // The hangar name of SetVehicleSpawningInformations wraps onto the next line ("<handle>'s\n<ts> XL Hangar [Team…]").
-    if (this.#spawn && !this.#spawn.continued) {
-      this.#spawn.continued = true;
+    // The ship is delivered at this point (the player boards it minutes later; "Hangar Request Completed"
+    // is the ATC door/takeoff request and also fires on landing).
+    if (this.#spawn) {
+      const sp = this.#spawn;
+      this.#spawn = null;
       const rest = line.slice(ts.length + 2).replace(/\s*\[Team_[^\]]*\].*$/, '').trim();
-      if (rest && !rest.startsWith('[') && !rest.startsWith('<')) {
-        this.#spawn.area = `${this.#spawn.area} ${rest}`.trim();
-        return out;
-      }
+      const wrapped = !!rest && !rest.startsWith('[') && !rest.startsWith('<');
+      if (wrapped) sp.area = `${sp.area} ${rest}`.trim();
+      this.#pending.push(this.#shipRetrieved(sp, username));
+      if (wrapped) return out;
     }
 
     // Loadout burst ends at the first line more than 2 s after its last attachment.
@@ -260,32 +263,12 @@ export class Sc50LogTracker {
       return out;
     }
     if ((m = line.match(RE.spawnInfo))) {
-      this.#spawn = { vehicleId: m.groups!.id, area: m.groups!.area.replace(/\s*\[Team_[^\]]*\].*$/, '').trim(), at: ts, continued: false };
+      this.#spawn = { vehicleId: m.groups!.id, area: m.groups!.area.replace(/\s*\[Team_[^\]]*\].*$/, '').trim(), at: ts };
       return out;
     }
     if ((m = line.match(RE.hangarCompleted))) {
       if (!this.#once(`hangar_${ts}`)) return out;
-      const sp = this.#spawn && tsMs(ts) - tsMs(this.#spawn.at) <= 15 * 60_000 ? this.#spawn : null;
-      this.#spawn = null;
-      const hangar = sp ? hangarName(sp.area, username) : undefined;
-      if (!sp) {
-        out.push({ local: { eventType: 'hangar', id: `hangar_done_${ts}`, timestamp: ts, description: 'Hangar request completed', eventData: { action: 'request_completed' } } });
-        return out;
-      }
-      const summary = `Ship delivered${hangar ? ` to ${hangar}` : ''}`;
-      const context: Record<string, string | number> = { vehicleEntityId: sp.vehicleId, ...(hangar ? { hangar } : {}), ...(this.#fleetSize ? { fleetSize: this.#fleetSize } : {}), ...(this.#location ? { location: this.#location } : {}) };
-      out.push({
-        local: { eventType: 'hangar', id: `hangar_retrieved_${ts}_${sp.vehicleId}`, timestamp: ts, description: summary, location: hangar, eventData: { action: 'retrieved', vehicleId: sp.vehicleId, hangar, fleetSize: this.#fleetSize } },
-        feed: {
-          type: 'ship_retrieved',
-          at: tsMs(ts),
-          severity: 'info',
-          summary,
-          category: 'ship',
-          feed: true,
-          context,
-        },
-      });
+      out.push({ local: { eventType: 'hangar', id: `hangar_done_${ts}`, timestamp: ts, description: 'Hangar request completed', eventData: { action: 'request_completed' } } });
       return out;
     }
     if (RE.hangarQueued.test(line)) {
@@ -351,6 +334,21 @@ export class Sc50LogTracker {
     ];
   }
 
+  #shipRetrieved(sp: { vehicleId: string; area: string; at: string }, username: string | null): Sc50Output {
+    const hangar = hangarName(sp.area, username);
+    const summary = `Ship delivered${hangar ? ` to ${hangar}` : ''}`;
+    const context: Record<string, string | number> = {
+      vehicleEntityId: sp.vehicleId,
+      ...(hangar ? { hangar } : {}),
+      ...(this.#fleetSize ? { fleetSize: this.#fleetSize } : {}),
+      ...(this.#location ? { location: this.#location } : {}),
+    };
+    return {
+      local: { eventType: 'hangar', id: `hangar_retrieved_${sp.at}_${sp.vehicleId}`, timestamp: sp.at, description: summary, location: hangar, eventData: { action: 'retrieved', vehicleId: sp.vehicleId, hangar, fleetSize: this.#fleetSize } },
+      feed: { type: 'ship_retrieved', at: tsMs(sp.at), severity: 'info', summary, category: 'ship', feed: true, context },
+    };
+  }
+
   #once(key: string): boolean {
     if (this.#seen.has(key)) return false;
     this.#seen.add(key);
@@ -372,9 +370,9 @@ export class Sc50LogTracker {
   }
 }
 
-/** "<handle>'s XL Hangar" → "XL Hangar" (own); other areas are kept as they are. */
+/** "<handle>'s XL Hangar" → "XL Hangar". Anything not prefixed with the own handle is dropped (it could name someone else). */
 function hangarName(area: string, username: string | null): string | undefined {
-  let a = area.trim();
-  if (username && a.startsWith(`${username}'s`)) a = a.slice(username.length + 2).trim();
-  return a || undefined;
+  const a = area.trim();
+  if (!username || !a.startsWith(`${username}'s`)) return undefined;
+  return a.slice(username.length + 2).trim() || undefined;
 }

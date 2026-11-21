@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { parseLogContent, resetParserState, PARSER_PATTERNS, PARSER_PATTERN_META } from '../../electron/modules/log-parser.ts';
 import { emitted, clearEmitted } from './stubs/stubs';
 import { Sc50LogTracker, prettyPlace } from '../../electron/modules/sc50-log-events.ts';
+import { logFeed } from '../../electron/modules/telemetry/log-feed.ts';
 
 const fixtureDir = process.env.PARSER_FIXTURES ?? path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures'); // run.mjs sets it (the bundle lives in a different folder)
 const fx = (name: string) => fs.readFileSync(path.join(fixtureDir, name), 'utf8').replace(/\r\n/g, '\n');
@@ -388,20 +389,24 @@ test('5.0 addition 1: Incapacitated HUD notification → local event + player_do
   assert.equal(feed[0].at, Date.parse('2026-11-21T17:23:34.951Z'));
 });
 
-test('5.0 addition 3: ship delivery — hangar name from the wrapped line, fleet size, ship_retrieved (feed)', async () => {
+test('5.0 addition 3: ship delivery — at spawn time, hangar name from the wrapped line, fleet size, ship_retrieved (feed)', async () => {
   await login();
   await parse(fx('hangar-50.txt'));
   const h = events().filter(e => e.eventType === 'hangar');
-  assert.equal(h.length, 1);
-  assert.equal(h[0].eventData.action, 'retrieved');
+  // "Hangar Request Completed" (21:59:14) is the ATC request after boarding: local only
+  assert.deepEqual(h.map(e => e.eventData.action), ['retrieved', 'request_completed']);
+  assert.equal(h[0].timestamp, '2026-11-21T21:54:23.138Z', 'delivered when the ship spawns');
   assert.equal(h[0].eventData.hangar, 'XL Hangar');
   assert.equal(h[0].eventData.vehicleId, '877604806898');
   assert.equal(h[0].eventData.fleetSize, 55);
   const { feed } = track(['hangar-50.txt']);
   assert.deepEqual(feed.map(f => f.type), ['ship_retrieved']);
+  assert.equal(feed[0].at, Date.parse('2026-11-21T21:54:23.138Z'));
   assert.deepEqual(feed[0].context, { vehicleEntityId: '877604806898', hangar: 'XL Hangar', fleetSize: 55 });
-  // the hangar name must never leak the handle
+  // the hangar name must never leak the handle; someone else's hangar name is dropped
   assert.ok(!JSON.stringify(feed).includes('<player>'));
+  const other = track(['hangar-50.txt'], 'SomeoneElse').feed;
+  assert.equal(other[0].context!.hangar, undefined);
 });
 
 test('5.0 hangar: "Joined hangar queue." (real line from LIVE 4.x) → hangar_queued', () => {
@@ -437,4 +442,24 @@ test('5.0 addition 5: medical bed (feed) and the loadout burst after spawn (coun
   assert.equal(lo.length, 1);
   assert.equal(lo[0].eventData.items, 6);
   assert.equal(lo[0].eventData.armorPieces, 5, "undersuit, arms, helmet, legs, torso");
+});
+
+test('parser publishes Game.log feed items only for live lines (not silent, game time under 10 min old)', async () => {
+  await login();
+  const items: any[] = [];
+  const on = (i: any) => items.push(i);
+  logFeed.on('item', on);
+  try {
+    const medbed = lines50('medical-bed-50.txt')[0];
+    const now = new Date(Date.now() - 2000).toISOString();
+    await parseLogContent(medbed.replace(/^<[^>]+>/, `<${now}>`) + '\n', false);
+    assert.deepEqual(items.map(i => i.type), ['healed_at_medical_bed'], 'live line');
+    await parseLogContent(medbed + '\n', false);
+    assert.equal(items.length, 1, 'history (manual rescan) is not re-sent');
+    const now2 = new Date(Date.now() - 1000).toISOString();
+    await parseLogContent(medbed.replace(/^<[^>]+>/, `<${now2}>`) + '\n', true);
+    assert.equal(items.length, 1, 'silent startup scan sends nothing');
+  } finally {
+    logFeed.off('item', on);
+  }
 });
