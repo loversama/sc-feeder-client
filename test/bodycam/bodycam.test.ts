@@ -236,3 +236,20 @@ test("when the process check cannot run, screenshots pause with a clear message 
   const t2 = harness({ isGameWindow: async () => { throw new Error('x'); } });
   assert.equal((await t2.sharer.tick()).detail, VERIFY_FAILED_MESSAGE);
 });
+
+test('every stuck state explains itself instead of staying silent', async () => {
+  let h = harness({ isGameRunning: () => false, gameDetail: () => 'Could not check for the game: tasklist: boom' });
+  let s = await h.sharer.tick();
+  assert.equal(s.state, 'game-not-running');
+  assert.equal(s.detail, 'Could not check for the game: tasklist: boom');
+  h = harness({ sources: [src('window:1:0', 'Discord')] });
+  s = await h.sharer.tick();
+  assert.match(s.detail ?? '', /no window titled exactly "Star Citizen"/);
+  h = harness({ sources: [src('window:2:0', 'Star Citizen', img('empty'))] });
+  s = await h.sharer.tick();
+  assert.match(s.detail ?? '', /minimised or cannot be captured/);
+  h = harness({ isGameWindow: async () => 'unknown' });
+  assert.equal((await h.sharer.tick()).detail, VERIFY_FAILED_MESSAGE);
+  h = harness({ isGameWindow: async () => false });
+  assert.match((await h.sharer.tick()).detail ?? '', /not owned by StarCitizen\.exe/);
+});

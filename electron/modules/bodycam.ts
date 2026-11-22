@@ -129,6 +129,8 @@ export type BodycamDeps = {
   /** Re-send the opt-in to the server (after a 'not sharing' reply). */
   resync?: () => Promise<void>;
   isGameRunning: () => boolean;
+  /** Why the game is not detected (e.g. "Could not check for the game: ..."); shown next to game-not-running. */
+  gameDetail?: () => string | undefined;
   /** Connected AND authenticated as a signed-in user. */
   isOnline: () => boolean;
   /** desktopCapturer.getSources - must be called with window types only (the sharer passes that). */
@@ -212,7 +214,7 @@ export class BodycamSharer {
       if (!s.enabled || !s.orgs.length) {
         this.#set({ state: 'off' });
       } else if (!this.#d.isGameRunning()) {
-        this.#set({ state: 'game-not-running' });
+        this.#set({ state: 'game-not-running', detail: this.#d.gameDetail?.() });
       } else if (!this.#d.isOnline()) {
         this.#set({ state: 'offline' }); // drop: no backlog
       } else if (this.#paused) {
@@ -227,8 +229,12 @@ export class BodycamSharer {
         const hwnd = win ? hwndFromSourceId(win.id) : null;
         if (candidates.length > 1) {
           this.#set({ state: 'window-not-found', detail: 'more than one window is titled like the game; capturing nothing' });
-        } else if (!win || !hwnd) {
-          this.#set({ state: 'window-not-found' });
+        } else if (candidates.length === 0) {
+          this.#set({ state: 'window-not-found', detail: 'no window titled exactly "Star Citizen" was found (still loading, or running under another title?)' });
+        } else if (!win) {
+          this.#set({ state: 'window-not-found', detail: 'the Star Citizen window is minimised or cannot be captured right now' });
+        } else if (!hwnd) {
+          this.#set({ state: 'window-not-found', detail: 'could not read the game window handle' });
         } else if ((await this.#safeIsGameWindow(hwnd)) !== true) {
           const unknown = this.#lastVerdict === 'unknown';
           this.#set({ state: 'window-not-found', detail: unknown ? VERIFY_FAILED_MESSAGE : 'the window is not owned by StarCitizen.exe; capturing nothing' });
