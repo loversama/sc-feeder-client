@@ -196,11 +196,15 @@ test('feed: selfId from the ack; owner keeps the code across broadcasts; members
   assert.equal(feed.current.party?.code, 'ABCDEF');
   assert.equal(feed.current.party?.isOwner, true);
   assert.equal(feed.current.party?.members.length, 2);
+  // as owner we re-fetch: the code may have been rotated elsewhere (website)
+  assert.deepEqual(link.sent[1].payload, { action: 'get' });
+  link.sent[1].ack!({ ok: true, party: { ...party, members: [...party.members, { userId: 'bb22', name: 'Ava' }], code: 'NEWONE', selfId: 'aa11', isOwner: true } });
+  assert.equal(feed.current.party?.code, 'NEWONE');
   // ownership handed to bb22: the code is dropped
   link.handlers.get('overlay_party')!({ ...party, ownerId: 'bb22' });
   assert.equal(feed.current.party?.code, undefined);
   assert.equal(feed.current.party?.isOwner, false);
-  assert.equal(link.sent.length, 1, 'no fetch when we are not the owner');
+  assert.equal(link.sent.length, 2, 'no fetch when we are not the owner');
 });
 
 test('feed: becoming owner via broadcast fetches the code; rotate replies replace it', () => {

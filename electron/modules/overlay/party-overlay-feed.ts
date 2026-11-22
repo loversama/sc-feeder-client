@@ -146,8 +146,8 @@ export class PartyOverlayFeed {
   }
 
   /**
-   * Room broadcast (no code / selfId / isOwner). Work out ownership from our selfId; keep the code we
-   * already had, or fetch it when we just became the owner.
+   * Room broadcast (no code / selfId / isOwner). Work out ownership from our selfId. As owner, show the
+   * code we had and re-fetch it (it may have been rotated from the website or another client).
    */
   private onParty(p: PartyInfo | null): void {
     if (!this.enabled() || this.state.source?.scope !== 'party') return;
@@ -157,7 +157,7 @@ export class PartyOverlayFeed {
     const prev = this.state.party;
     const code = isOwner && prev?.id === p.id ? prev.code : undefined;
     this.set({ party: { ...p, selfId, isOwner, code }, source: { scope: 'party', id: p.id, label: p.name } });
-    if (isOwner && !code) void this.party('get');
+    if (isOwner) void this.party('get');
   }
 
   /** The server removed us from an org room (no longer a verified member). */
