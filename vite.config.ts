@@ -22,7 +22,10 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'bindings', 'node-gyp-build', 'undici', '@grpc/grpc-js', 'protobufjs', 'protobufjs/ext/descriptor/index.js'],
+              // Native modules ONLY (see CLAUDE.md "Packaging rules"): everything else is bundled into
+              // dist-electron so a half-written node_modules can never break startup.
+              // scripts/check-externals.mjs fails the build on any other bare import.
+              external: ['better-sqlite3', 'bindings', 'node-gyp-build'],
             },
           },
         },

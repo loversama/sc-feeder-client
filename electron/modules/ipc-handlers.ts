@@ -530,10 +530,12 @@ export function registerIpcHandlers() {
 logger.debug(MODULE_NAME, "Attempting to register handler for 'get-resource-path'...");
 try {
     ipcMain.handle('get-resource-path', () => { // Keep only one handler call
+        // Static assets (sounds, icons): public/ in dev, <app>/dist in production (inside app.asar,
+        // which Electron serves to file:// URLs).
         const isProd = app.isPackaged;
-        const vitePublic = process.env.VITE_PUBLIC; // Set in app-lifecycle onReady
+        const vitePublic = process.env.VITE_PUBLIC || path.join(app.getAppPath(), isProd ? 'dist' : 'public');
         const resourcesPath = process.resourcesPath;
-        const basePath = isProd ? resourcesPath : vitePublic;
+        const basePath = vitePublic;
         logger.debug(MODULE_NAME, `Providing resource path: ${basePath} (isProd: ${isProd})`);
         // Ensure a valid string is returned
         if (basePath && typeof basePath === 'string') {
