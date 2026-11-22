@@ -11,6 +11,8 @@
 
 export const LIVE_DEADMAN_MS = 60_000;
 export const LIVE_WINDOW_RECHECK_MS = 30_000;
+/** The game window is checked for presence (closed / minimised) at most this often; a loss closes the capture on that tick. */
+export const LIVE_PRESENCE_CHECK_MS = 1000;
 /** A start arriving this soon after a stop is held back (viewer flapping). */
 export const LIVE_RESTART_DEBOUNCE_MS = 3000;
 /** After a soft stop the hidden capture stays open this long so a quick re-watch is instant. */
@@ -31,6 +33,8 @@ export type LiveDeps = {
   /** One JPEG of the opened window; `blank` = flat/black frame. Null = nothing available. */
   grab: (quality: number, size: { width: number; height: number }) => Promise<{ jpeg: Buffer; blank: boolean } | null>;
   closeCapture: () => void;
+  /** Cheap check that the opened window still exists and is not minimised. Optional (tests). */
+  windowAlive?: (sourceId: string) => Promise<boolean>;
   /** Fire-and-forget upload; false = not sent. */
   send: (jpeg: Buffer) => boolean;
   onStatus?: (s: LiveStatus) => void;
@@ -51,6 +55,7 @@ export class LiveSharer {
   #warmTimer: unknown = null;
   #windowId: string | null = null;
   #windowCheckedAt = 0;
+  #presenceAt = 0;
   #quality = 40;
   #tokens = 0;
   #refilledAt = 0;
@@ -177,6 +182,17 @@ export class LiveSharer {
             if (this.#windowId) this.#d.closeCapture();
             await this.#d.openCapture(w.sourceId, { width: p.width, height: p.height }, p.fps);
             this.#windowId = w.sourceId;
+          }
+        }
+        if (this.#windowId && this.#d.windowAlive && now - this.#presenceAt >= LIVE_PRESENCE_CHECK_MS) {
+          this.#presenceAt = now;
+          if (!(await this.#d.windowAlive(this.#windowId))) {
+            this.#d.closeCapture(); // closed or minimised: stop capturing immediately instead of sending a frozen frame
+            this.#windowId = null;
+            this.#windowCheckedAt = 0;
+            this.#block('game window closed or minimised');
+            next = 1000;
+            return this.status;
           }
         }
         const g = await this.#d.grab(this.#quality, { width: p.width, height: p.height });

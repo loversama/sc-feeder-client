@@ -231,3 +231,39 @@ test('server rejection reasons are surfaced in the status', async () => {
   live.noteServerRejection('EXIF/XMP metadata (APP1) is not allowed');
   assert.match(live.status.detail ?? '', /live frames rejected: EXIF/);
 });
+
+test('closes the capture on the next tick once the game window is minimised or closed', async () => {
+  let alive = true;
+  let checks = 0;
+  const { live, log, advance } = harness({ windowAlive: async () => (checks++, alive) });
+  live.start(PARAMS);
+  await live.tick();
+  assert.equal(log.sent, 1);
+  assert.equal(checks, 1);
+  alive = false;
+  advance(200);
+  await live.tick(); // within the 1 s presence interval: no extra check, still capturing
+  assert.equal(checks, 1);
+  assert.equal(log.sent, 2);
+  advance(1000);
+  const closedBefore = log.closed;
+  await live.tick();
+  assert.equal(checks, 2);
+  assert.equal(log.closed, closedBefore + 1);
+  assert.equal(log.sent, 2); // no frozen frame sent
+  assert.equal(live.status.state, 'blocked');
+  assert.match(live.status.detail ?? '', /closed or minimised/);
+});
+
+test('re-opens the capture when the window comes back', async () => {
+  let alive = false;
+  const { live, log, advance } = harness({ windowAlive: async () => alive });
+  live.start(PARAMS);
+  await live.tick();
+  assert.equal(log.sent, 0);
+  alive = true;
+  advance(1500);
+  await live.tick();
+  assert.equal(log.opened.length, 2);
+  assert.equal(log.sent, 1);
+});

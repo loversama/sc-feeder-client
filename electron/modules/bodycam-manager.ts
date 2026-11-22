@@ -92,6 +92,20 @@ async function findGameWindow(): Promise<{ sourceId: string } | null> {
   return { sourceId: matches[0].id };
 }
 
+/** A hung or crashed capture renderer must not wedge the live loop: every executeJavaScript call is bounded. */
+export const CAPTURE_JS_TIMEOUT_MS = 3000;
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let t: NodeJS.Timeout;
+  return Promise.race([p, new Promise<never>((_, rej) => (t = setTimeout(() => rej(new Error(`${what} timed out after ${ms} ms`)), ms)))]).finally(() => clearTimeout(t));
+}
+
+/** The opened window still exists and is not minimised (a minimised / closed window has no thumbnail or is not listed). */
+async function windowAlive(sourceId: string): Promise<boolean> {
+  const sources = (await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 16, height: 9 }, fetchWindowIcons: false })) as unknown as CamSource[];
+  const s = sources.find((x) => x.id === sourceId);
+  return !!s && !s.thumbnail.isEmpty();
+}
+
 function closeCapture(): void {
   capMode = null;
   capSourceId = null;
@@ -113,14 +127,14 @@ async function openCapture(sourceId: string, size: { width: number; height: numb
     ses.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
     capWin = new BrowserWindow({ show: false, width: size.width, height: size.height, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, session: ses } });
     await capWin.loadFile(page);
-    await capWin.webContents.executeJavaScript(`(async () => {
+    await withTimeout(capWin.webContents.executeJavaScript(`(async () => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ${JSON.stringify(sourceId)}, maxFrameRate: ${Math.round(fps)} } } });
       const v = document.createElement('video'); v.muted = true; v.srcObject = stream; await v.play();
       const c = document.createElement('canvas'); c.width = ${size.width}; c.height = ${size.height};
       window.__bc = { stream, v, c, ctx: c.getContext('2d'), ended: false };
       // The window closed / capture was revoked: never keep sending the last (frozen) frame.
       stream.getVideoTracks().forEach((t) => t.addEventListener('ended', () => { window.__bc.ended = true; }));
-    })()`);
+    })()`), CAPTURE_JS_TIMEOUT_MS, 'capture start');
     capMode = 'media';
   } catch (err) {
     logger.warn(MODULE_NAME, `Live getUserMedia capture unavailable (${(err as Error).message}); falling back to ~1 fps thumbnails`);
@@ -132,14 +146,14 @@ async function openCapture(sourceId: string, size: { width: number; height: numb
 
 async function grabFrame(quality: number, size: { width: number; height: number }): Promise<{ jpeg: Buffer; blank: boolean } | null> {
   if (capMode === 'media' && capWin && !capWin.isDestroyed()) {
-    const url: string | null = await capWin.webContents.executeJavaScript(
+    const url: string | null = await withTimeout(capWin.webContents.executeJavaScript(
       `(() => { const b = window.__bc; if (!b) return null; if (b.ended) return 'ended'; const vw = b.v.videoWidth, vh = b.v.videoHeight; if (!vw || !vh) return null;
         // letterbox: keep the game's aspect ratio, black bars instead of stretching
         const k = Math.min(b.c.width / vw, b.c.height / vh), dw = Math.round(vw * k), dh = Math.round(vh * k);
         b.ctx.fillStyle = '#000'; b.ctx.fillRect(0, 0, b.c.width, b.c.height);
         b.ctx.drawImage(b.v, Math.round((b.c.width - dw) / 2), Math.round((b.c.height - dh) / 2), dw, dh);
         return b.c.toDataURL('image/jpeg', ${(quality / 100).toFixed(2)}); })()`,
-    );
+    ), CAPTURE_JS_TIMEOUT_MS, 'capture frame');
     if (url === 'ended') throw new Error('capture ended (the game window closed)');
     if (!url || !url.startsWith('data:image/jpeg;base64,')) return null;
     const jpeg = Buffer.from(url.slice('data:image/jpeg;base64,'.length), 'base64');
@@ -298,6 +312,7 @@ export function initBodycam(): void {
     isGameRunning: () => gameRunning,
     isOnline,
     findWindow: findGameWindow,
+    windowAlive,
     openCapture,
     grab: grabFrame,
     closeCapture,

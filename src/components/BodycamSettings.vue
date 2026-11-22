@@ -19,6 +19,7 @@ const api = (window as any).logMonitorApi;
 const info = ref<Info | null>(null);
 const busy = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
+const offs: unknown[] = [];
 
 const STATE_TEXT: Record<string, string> = {
   off: 'Not sharing',
@@ -74,12 +75,14 @@ function toggle(on: boolean) {
 }
 
 onMounted(async () => {
-  api.on?.('bodycam:settings-changed', load);
-  api.on?.('bodycam:live-status', load);
+  offs.push(api.onIpcMessage?.('bodycam:settings-changed', load), api.onIpcMessage?.('bodycam:live-status', load));
   await load();
   timer = setInterval(load, 3000);
 });
-onUnmounted(() => clearInterval(timer));
+onUnmounted(() => {
+  clearInterval(timer);
+  for (const off of offs) if (typeof off === 'function') off();
+});
 </script>
 
 <template>
