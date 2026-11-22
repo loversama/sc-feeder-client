@@ -50,6 +50,8 @@ export type ControlResult = {
   /** Whether the request reached the game (false for local refusals). */
   sent: boolean;
   retryAfterMs?: number;
+  /** Where the press came from (hotkey results are pushed to the UI as toasts). */
+  source?: 'ui' | 'hotkey';
   at: number;
 };
 
@@ -238,7 +240,7 @@ export class GameControl extends EventEmitter {
   async trigger(name: string, opts: { holdMs?: number; confirmToken?: string; source?: 'ui' | 'hotkey' } = {}): Promise<ControlResult> {
     const now = this.#now();
     const local = (code: ControlResultCode, extra: Partial<ControlResult> = {}): ControlResult =>
-      this.#record({ ok: false, code, action: String(name), message: RESULT_MESSAGES[code], sent: false, at: now, ...extra });
+      this.#record({ ok: false, code, action: String(name), message: RESULT_MESSAGES[code], sent: false, source: opts.source ?? 'ui', at: now, ...extra });
 
     if (!this.#opts.isEnabled()) return local('DISABLED');
     if (typeof name !== 'string' || !ACTION_NAME_RE.test(name)) return local('INVALID');
@@ -279,13 +281,14 @@ export class GameControl extends EventEmitter {
         message: RESULT_MESSAGES[code],
         gameMessage: res?.message || undefined,
         sent: true,
+        source: opts.source ?? 'ui',
         at: now,
       });
     } catch (err) {
       const t = describeTransportError(err);
       if (t.code === 'GAME_UNREACHABLE') this.invalidate();
       // Deliberately no retry: a toggle might already have fired.
-      return this.#record({ ok: false, code: t.code, action: name, label, message: RESULT_MESSAGES[t.code], gameMessage: t.detail, sent: true, at: now });
+      return this.#record({ ok: false, code: t.code, action: name, label, message: RESULT_MESSAGES[t.code], gameMessage: t.detail, sent: true, source: opts.source ?? 'ui', at: now });
     }
   }
 

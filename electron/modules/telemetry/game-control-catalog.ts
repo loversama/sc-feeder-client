@@ -108,6 +108,10 @@ const WORDS: Record<string, string> = { ifcs: 'IFCS', hud: 'HUD', qdrive: 'QD', 
 
 export function labelFor(name: string): string {
   if (LABELS[name]) return LABELS[name];
+  const power = name.match(/^v_power_set_(shields|thrusters|weapons)_(on|off)$/);
+  if (power) return `${power[1][0].toUpperCase()}${power[1].slice(1)} ${power[2]}`;
+  const hud = name.match(/^v_flight_advanced_hud_(on|off|toggle)$/);
+  if (hud) return hud[1] === 'toggle' ? 'Advanced HUD' : `Advanced HUD ${hud[1]}`;
   const parts = name.replace(/^v_/, '').replace(/^emote_/, '').replace(/^ifcs_/, '').split('_').filter(Boolean);
   const s = parts.map((p) => WORDS[p] ?? p).join(' ');
   return s.charAt(0).toUpperCase() + s.slice(1);
