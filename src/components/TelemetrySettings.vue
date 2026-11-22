@@ -180,7 +180,7 @@ onUnmounted(() => clearInterval(timer));
         <div v-if="live" class="text-sm text-gray-300 space-y-1 font-mono">
           <div>Telemetry: <b>{{ live.telemetry.status.replace(/_/g, ' ') }}</b> · {{ live.telemetry.address }} · {{ live.telemetry.fps }} fps · {{ live.telemetry.frames }} frames</div>
           <div v-if="cfg?.channels?.length">Channels: <template v-for="(c, i) in cfg.channels" :key="c.channel"><span :class="c.active ? 'text-green-400' : ''">{{ c.channel }}{{ c.active ? ' (active)' : '' }}</span>{{ i < cfg.channels.length - 1 ? ', ' : '' }}</template></div>
-          <div>Game: {{ live.gameRunning ? 'StarCitizen.exe running' : 'not detected' }} · user.cfg seen in Game.log: {{ live.telemetry.logHints.cfgEnabled === null ? '—' : live.telemetry.logHints.cfgEnabled }}</div>
+          <div>Game: {{ live.gameRunning ? `StarCitizen running (via ${live.gameDetection?.via ?? 'process check'})` : 'not detected' }}<template v-if="live.gameDetection?.message"> - {{ live.gameDetection.message }}</template> · user.cfg seen in Game.log: {{ live.telemetry.logHints.cfgEnabled === null ? '—' : live.telemetry.logHints.cfgEnabled }}</div>
           <div>Shared: {{ live.sharing.counters.telemetrySnapshots }} snapshots, {{ live.sharing.counters.telemetryEvents }} events · server {{ live.sharing.serverConnected ? 'connected' : 'offline' }}</div>
           <div class="text-gray-500">Schema: {{ live.telemetry.schemaBuild }}</div>
         </div>
@@ -238,6 +238,7 @@ onUnmounted(() => clearInterval(timer));
           <el-switch :model-value="settings.overlayEnabled" @change="(v: boolean) => save({ overlayEnabled: v })" />
         </div>
         <p class="text-gray-400 text-sm">Bottom-right panel over the game showing all telemetry, what is shared and every event. Click-through. Needs the game in Borderless or Windowed mode (it can't draw over exclusive Fullscreen).</p>
+        <div v-if="settings.overlayEnabled && live && !live.gameRunning && !settings.overlayAlwaysShow" class="text-sm text-amber-400">Waiting for Star Citizen to start<template v-if="live.gameDetection?.message"> ({{ live.gameDetection.message }})</template></div>
         <div class="flex items-center justify-between">
           <span class="text-theme-text-white">Show even when the game isn't running</span>
           <el-switch :model-value="settings.overlayAlwaysShow" @change="(v: boolean) => save({ overlayAlwaysShow: v })" />
@@ -255,6 +256,7 @@ onUnmounted(() => clearInterval(timer));
           <el-switch :model-value="party.partyOverlayEnabled" @change="(v: boolean) => saveParty({ partyOverlayEnabled: v })" />
         </div>
         <p class="text-gray-400 text-sm">MMO-style party list on the right side of the game: names, health and status, with members in the same ship grouped under a ship dial. The order and grouping follow the layout your org (or party owner) sets on voidlog.gg. Click-through; Borderless or Windowed mode only.</p>
+        <div v-if="party.partyOverlayEnabled && live && !live.gameRunning" class="text-sm text-amber-400">Waiting for Star Citizen to start<template v-if="live.gameDetection?.message"> ({{ live.gameDetection.message }})</template></div>
         <div v-if="party.partyOverlayEnabled && partyStatus" class="text-sm" :class="partyStatus.status === 'live' ? 'text-green-400' : 'text-amber-400'">
           {{ partyStatus.status === 'live' ? `Live: ${partyStatus.source?.label ?? ''} · ${partyStatus.online} online` : (partyStatus.message || partyStatus.status) }}
         </div>

@@ -16,6 +16,7 @@ import {
 } from './telemetry-manager';
 import { getTelemetrySettings } from '../config-manager';
 import { syncOverlayFeature, toggleOverlay, isGameRunning } from './overlay-window';
+import { gameDetectionSummary } from '../game-state';
 import { getPartyOverlaySettings } from '../config-manager';
 import { applyPartyOverlaySettings, getPartyOverlayFeed, listPartyOverlayDisplays, togglePartyOverlay } from '../overlay/party-overlay-window';
 import { renderMarkdown } from '../log-diff/log-diff-tracker';
@@ -34,6 +35,7 @@ export function registerTelemetryIpc(): void {
   ipcMain.handle('telemetry:get-state', () => ({
     ...getOverlayState({ maxRowsPerSection: 200 }),
     gameRunning: isGameRunning(),
+    gameDetection: gameDetectionSummary(),
     recording: { dir: path.join(app.getPath('userData'), 'telemetry-recordings'), active: !!getTelemetryRecorder()?.active, file: getTelemetryRecorder()?.sessionFile ?? null },
   }));
   ipcMain.handle('telemetry:open-recordings', async () => {
