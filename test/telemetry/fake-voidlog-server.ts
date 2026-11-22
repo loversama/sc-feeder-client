@@ -33,6 +33,8 @@ export class FakeVoidlogServer {
   logChunks: any[] = [];
   /** When true, authenticated sockets stop being accepted (as if the server lost their session). */
   rejectUploads = false;
+  /** Extra acked events for authenticated sockets (e.g. overlay_subscribe): event → ack value. */
+  handlers = new Map<string, (data: any) => unknown>();
   #http: http.Server | null = null;
   #wss: WebSocketServer | null = null;
   #conns = new Set<Conn>();
@@ -55,6 +57,11 @@ export class FakeVoidlogServer {
     await new Promise<void>((r) => (this.#http ? this.#http.close(() => r()) : r()));
     this.#wss = null;
     this.#http = null;
+  }
+
+  /** Server push to every authenticated socket. */
+  emitAll(event: string, data?: unknown): void {
+    for (const c of this.#conns) if (c.authed) this.#send(c, event, data);
   }
 
   get openSockets(): number {
@@ -114,6 +121,9 @@ export class FakeVoidlogServer {
       }
       this.telemetry.push(data);
       if (ackId) conn.ws.send(`43/client,${ackId}${JSON.stringify([{ ok: true }])}`);
+      return;
     }
+    const handler = this.handlers.get(event);
+    if (handler && conn.authed && ackId) conn.ws.send(`43/client,${ackId}${JSON.stringify([handler(data)])}`);
   }
 }
