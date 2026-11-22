@@ -3,11 +3,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
-type Settings = { enabled: boolean; intervalSec: number; orgs: string[] };
+type Settings = { enabled: boolean; intervalSec: number; orgs: string[]; allowLive: boolean };
+type Live = { state: string; viewers: number; framesSent: number; detail?: string };
 type Status = { state: string; detail?: string; lastSentAt: number | null; framesSent: number; lastBytes: number | null };
 type Info = {
   settings: Settings;
   status: Status;
+  live?: Live;
   gameRunning: boolean;
   online: boolean;
   server: { ok?: boolean; enabled?: boolean; availableOrgs?: string[] } | null;
@@ -72,6 +74,7 @@ function toggle(on: boolean) {
 
 onMounted(async () => {
   api.on?.('bodycam:settings-changed', load);
+  api.on?.('bodycam:live-status', load);
   await load();
   timer = setInterval(load, 3000);
 });
@@ -113,6 +116,23 @@ onUnmounted(() => clearInterval(timer));
       <div class="flex items-center gap-4">
         <span class="text-theme-text-white text-sm w-28 shrink-0">Every {{ settings.intervalSec }} s</span>
         <el-slider :model-value="settings.intervalSec" :min="5" :max="60" :step="5" :disabled="busy" style="flex: 1" @change="(v: number) => save({ intervalSec: v })" />
+      </div>
+    </div>
+
+    <div v-if="settings.enabled && settings.orgs.length" class="space-y-2 border-t border-theme-border pt-4">
+      <div class="flex items-center justify-between">
+        <h5 class="text-theme-text-white font-semibold">Allow live view</h5>
+        <el-switch :model-value="settings.allowLive" :disabled="busy || serverOff" @change="(v: boolean) => save({ allowLive: v })" />
+      </div>
+      <p class="text-gray-400 text-sm">
+        Lets verified members of the same org(s) open a low-frame-rate live view (about 5 pictures a second, nothing recorded or stored). Your game is only
+        captured while someone is actually watching, and stops the moment they leave or you switch this off.
+      </p>
+      <div v-if="settings.allowLive" class="flex items-center gap-2 text-sm">
+        <span class="inline-block w-2.5 h-2.5 rounded-full" :class="info?.live?.state === 'live' ? 'bg-red-500 animate-pulse' : 'bg-gray-500'" />
+        <span class="text-theme-text-white">
+          {{ info?.live?.state === 'live' ? `LIVE - being watched by ${info.live.viewers}` : info?.live?.detail ? `Not live (${info.live.detail})` : 'Not live: nobody is watching' }}
+        </span>
       </div>
     </div>
 
