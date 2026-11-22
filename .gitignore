@@ -134,3 +134,4 @@ test/overlay/.out/
 
 # bodycam test build output
 test/bodycam/.out/
+test/settings-inputs/.out/

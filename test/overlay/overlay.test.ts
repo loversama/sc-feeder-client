@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveOverlay, type OverlayLayout, type OverlayRoster } from '../../shared/overlay/overlay-resolve';
 import { healthTone, o2Tone, shieldArcs, shieldColor, shipLabel, topViewUrl } from '../../shared/overlay/overlay-format';
+import { normalizeOrgTag, sanitizeOrgChoices } from '../../shared/overlay/org-tag';
 import { partyOverlayBounds, pickDisplay, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
 import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../electron/modules/overlay/party-overlay-feed';
 
@@ -229,4 +230,32 @@ test('feed: overlay_revoked shows no access', () => {
   link.handlers.get('overlay_revoked')!({ reason: 'access-revoked' });
   assert.equal(feed.current.status, 'no-access');
   assert.equal(feed.current.roster, null);
+});
+
+test('org tag: normalise, validate, sanitise server choices', () => {
+  assert.equal(normalizeOrgTag(' void '), 'VOID');
+  assert.equal(normalizeOrgTag(''), '');
+  assert.equal(normalizeOrgTag('bad tag!'), null);
+  assert.equal(normalizeOrgTag('X'.repeat(21)), null);
+  assert.deepEqual(
+    sanitizeOrgChoices([{ tag: 'wing', name: 'Wingmen' }, { tag: 'VOID', name: 'Voidrunners', primary: true }, { tag: 'VOID' }, { tag: 'no good' }, null]),
+    [
+      { tag: 'VOID', name: 'Voidrunners', primary: true },
+      { tag: 'WING', name: 'Wingmen', primary: false },
+    ],
+  );
+  assert.deepEqual(sanitizeOrgChoices('nope'), []);
+});
+
+test('feed.orgs: ack, timeout (older server without overlay_orgs) and offline', async () => {
+  const { link, feed, advance } = makeFeed();
+  const p1 = feed.orgs();
+  assert.equal(link.sent.at(-1)!.event, 'overlay_orgs');
+  link.sent.at(-1)!.ack!({ ok: true, orgs: [{ tag: 'void', name: 'V', primary: true }] });
+  assert.deepEqual(await p1, [{ tag: 'VOID', name: 'V', primary: true }]);
+  const p2 = feed.orgs(5000);
+  advance(5001);
+  assert.equal(await p2, null);
+  link.authenticated = false;
+  assert.equal(await feed.orgs(), null);
 });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Settings -> Body-cam: optional, opt-in screenshots of the Star Citizen window shared with chosen orgs. */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 
 type Settings = { enabled: boolean; intervalSec: number; orgs: string[]; allowLive: boolean };
@@ -33,6 +33,11 @@ const STATE_TEXT: Record<string, string> = {
 };
 
 const settings = computed(() => info.value?.settings ?? null);
+/** Slider position while dragging (v-model); saved on release and re-synced from the stored setting. */
+const intervalDraft = ref(15);
+watch(() => settings.value?.intervalSec, (v) => {
+  if (typeof v === 'number') intervalDraft.value = v;
+}, { immediate: true });
 const serverOff = computed(() => info.value?.server?.enabled === false);
 const available = computed(() => info.value?.server?.availableOrgs ?? []);
 const statusText = computed(() => {
@@ -119,8 +124,8 @@ onUnmounted(() => {
       </div>
 
       <div class="flex items-center gap-4">
-        <span class="text-theme-text-white text-sm w-28 shrink-0">Every {{ settings.intervalSec }} s</span>
-        <el-slider :model-value="settings.intervalSec" :min="5" :max="60" :step="5" :disabled="busy" style="flex: 1" @change="(v: number) => save({ intervalSec: v })" />
+        <span class="text-theme-text-white text-sm w-28 shrink-0">Every {{ intervalDraft }} s</span>
+        <el-slider v-model="intervalDraft" :min="5" :max="60" :step="5" :disabled="busy" style="flex: 1" @change="(v: number) => save({ intervalSec: v })" />
       </div>
     </div>
 

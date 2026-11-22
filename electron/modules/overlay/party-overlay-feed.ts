@@ -13,6 +13,7 @@
  */
 import type { OverlayLayout, OverlayRoster } from '../../../shared/overlay/overlay-resolve';
 import type { PartyOverlaySettings } from './party-overlay-settings';
+import { sanitizeOrgChoices, type OrgChoice } from '../../../shared/overlay/org-tag';
 
 export type FeedLink = {
   readonly authenticated: boolean;
@@ -185,6 +186,26 @@ export class PartyOverlayFeed {
   private flushPush(): void {
     this.lastPush = this.d.now();
     this.d.push(this.state);
+  }
+
+  /**
+   * The user's verified orgs (`overlay_orgs`), for the Settings tag picker. Resolves null when offline,
+   * on timeout, or when the server does not know the event yet (older server): Settings then shows a
+   * free-text tag field.
+   */
+  orgs(timeoutMs = 5000): Promise<OrgChoice[] | null> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v: OrgChoice[] | null) => {
+        if (done) return;
+        done = true;
+        this.d.clearTimer(timer);
+        resolve(v);
+      };
+      const timer = this.d.setTimer(() => finish(null), timeoutMs);
+      const sent = this.d.link.sendWithAck('overlay_orgs', {}, (ack) => finish(ack?.ok ? sanitizeOrgChoices(ack.orgs) : null));
+      if (!sent) finish(null);
+    });
   }
 
   /** Party actions from Settings: { action: 'create' | 'join' | 'leave' | 'get' | 'kick' | 'transfer' | 'rotate', code?, name?, userId? (opaque member id) }. */

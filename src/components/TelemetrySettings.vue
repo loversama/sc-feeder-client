@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** Settings → Telemetry & Overlay: game telemetry, sharing, in-game overlay, Game.log diff. */
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { normalizeOrgTag, type OrgChoice } from '../../shared/overlay/org-tag';
 import { ElMessage } from 'element-plus';
 
 type Settings = {
@@ -53,6 +54,26 @@ const isOwner = computed(() => {
   return !!p && (p.isOwner ?? (!!partyStatus.value?.selfId && p.ownerId === partyStatus.value.selfId));
 });
 const PARTY_PAGE = 'https://voidlog.gg/party';
+/** The user's verified orgs from VOIDLOG.GG (empty when offline / unknown: free-text tag instead). */
+const orgs = ref<OrgChoice[]>([]);
+
+/**
+ * Editable copies of text and slider settings. Inputs bind these with v-model (so typing and dragging
+ * work) and save on change / Enter; after every save they are re-synced from the stored settings.
+ * Never bind an el-input to a stored value with only :model-value + @change: Element Plus then
+ * throws every keystroke away.
+ */
+const drafts = reactive({ overlayHotkey: '', orgTag: '', partyHotkey: '', switchHotkey: '', scale: 1, offsetY: 18 });
+function syncDrafts() {
+  if (settings.value) drafts.overlayHotkey = settings.value.overlayHotkey ?? '';
+  if (party.value) {
+    drafts.orgTag = party.value.partyOverlayOrgTag ?? '';
+    drafts.partyHotkey = party.value.partyOverlayHotkey ?? '';
+    drafts.switchHotkey = party.value.partyOverlaySwitchHotkey ?? '';
+    drafts.scale = party.value.partyOverlayScale ?? 1;
+    drafts.offsetY = party.value.partyOverlayOffsetY ?? 18;
+  }
+}
 let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
@@ -60,6 +81,34 @@ async function load() {
   party.value = await api.invoke('party-overlay:get-settings');
   displays.value = (await api.invoke('party-overlay:displays')) ?? [];
   cfg.value = await api.invoke('telemetry:user-cfg-status');
+  syncDrafts();
+  void loadOrgs();
+}
+
+/** Verified orgs for the tag picker; an empty tag defaults to the primary org (or the only one). */
+async function loadOrgs() {
+  const r = await api.invoke('party-overlay:orgs');
+  orgs.value = Array.isArray(r) ? r : [];
+  if (party.value && !party.value.partyOverlayOrgTag) {
+    const pick = orgs.value.find((o) => o.primary) ?? (orgs.value.length === 1 ? orgs.value[0] : undefined);
+    if (pick) await saveParty({ partyOverlayOrgTag: pick.tag });
+  }
+}
+
+/** Enter in a text field commits it (blur fires the input's change event, which saves). */
+function blurTarget(e: Event) {
+  (e.target as HTMLElement | null)?.blur?.();
+}
+
+async function commitOrgTag(raw: unknown) {
+  const tag = normalizeOrgTag(raw);
+  if (tag === null) {
+    ElMessage.error('An org tag is 1 to 20 letters, digits, _ or -');
+    syncDrafts();
+    return;
+  }
+  if (tag !== party.value?.partyOverlayOrgTag) await saveParty({ partyOverlayOrgTag: tag });
+  else drafts.orgTag = tag;
 }
 
 async function refreshLive() {
@@ -69,6 +118,7 @@ async function refreshLive() {
 
 async function saveParty(patch: Partial<PartySettings>) {
   party.value = await api.invoke('party-overlay:set-settings', patch);
+  syncDrafts();
 }
 
 async function memberAction(action: 'kick' | 'transfer', userId: string, name: string) {
@@ -126,6 +176,7 @@ async function copyCode(code: string) {
 
 async function save(patch: Partial<Settings>) {
   settings.value = await api.invoke('telemetry:set-settings', patch);
+  syncDrafts();
 }
 
 async function enableCfg(channel: string = 'all') {
@@ -244,7 +295,7 @@ onUnmounted(() => clearInterval(timer));
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
-          <el-input class="max-w-xs" :model-value="settings.overlayHotkey" @change="(v: string) => save({ overlayHotkey: v.trim() })" placeholder="CommandOrControl+Alt+O" />
+          <el-input v-model="drafts.overlayHotkey" class="max-w-xs" data-test="overlay-hotkey" @keyup.enter="blurTarget" placeholder="CommandOrControl+Alt+O" @change="(v: string) => save({ overlayHotkey: v.trim() })" />
         </div>
       </div>
 
@@ -267,7 +318,29 @@ onUnmounted(() => clearInterval(timer));
         </div>
         <div v-if="party.partyOverlaySource === 'org'" class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Org tag</span>
-          <el-input class="max-w-xs" :model-value="party.partyOverlayOrgTag" @change="(v: string) => saveParty({ partyOverlayOrgTag: v })" placeholder="e.g. VOID" />
+          <el-select
+            v-if="orgs.length"
+            v-model="drafts.orgTag"
+            class="max-w-xs"
+            data-test="org-tag-select"
+            filterable
+            allow-create
+            default-first-option
+            placeholder="Choose your org"
+            @change="commitOrgTag"
+          >
+            <el-option v-for="o in orgs" :key="o.tag" :value="o.tag" :label="o.name ? `[${o.tag}] ${o.name}${o.primary ? ' · main org' : ''}` : `[${o.tag}]`" />
+          </el-select>
+          <el-input
+            v-else
+            v-model="drafts.orgTag"
+            class="max-w-xs org-tag"
+            data-test="org-tag" @keyup.enter="blurTarget"
+            placeholder="e.g. VOID"
+            maxlength="20"
+            @input="(v: string) => (drafts.orgTag = v.toUpperCase())"
+            @change="commitOrgTag"
+          />
         </div>
         <div v-else class="space-y-3">
           <div v-if="partyStatus?.party" class="party-box rounded border border-theme-border p-3 space-y-2">
@@ -303,7 +376,7 @@ onUnmounted(() => clearInterval(timer));
           <div v-if="!partyStatus?.party" class="flex items-center justify-between gap-4">
             <el-button size="small" :loading="partyBusy" @click="partyAction('create')">Create a party</el-button>
             <div class="flex gap-2">
-              <el-input :model-value="joinCode" class="w-36 join-code" size="small" placeholder="e.g. K7QX4M" maxlength="8" @update:model-value="(v: string) => (joinCode = v.toUpperCase())" />
+              <el-input :model-value="joinCode" class="w-36 join-code" data-test="join-code" size="small" placeholder="e.g. K7QX4M" maxlength="8" @update:model-value="(v: string) => (joinCode = v.toUpperCase())" />
               <el-button size="small" :loading="partyBusy" :disabled="!joinCode.trim()" @click="partyAction('join')">Join</el-button>
             </div>
           </div>
@@ -314,11 +387,11 @@ onUnmounted(() => clearInterval(timer));
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Size</span>
-          <el-slider class="max-w-xs" :model-value="party.partyOverlayScale" :min="0.75" :max="1.5" :step="0.05" @change="(v: any) => saveParty({ partyOverlayScale: Number(v) })" />
+          <el-slider v-model="drafts.scale" class="max-w-xs" :min="0.75" :max="1.5" :step="0.05" @change="(v: any) => saveParty({ partyOverlayScale: Number(v) })" />
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Distance from top (% of screen)</span>
-          <el-slider class="max-w-xs" :model-value="party.partyOverlayOffsetY" :min="0" :max="60" :step="1" @change="(v: any) => saveParty({ partyOverlayOffsetY: Number(v) })" />
+          <el-slider v-model="drafts.offsetY" class="max-w-xs" :min="0" :max="60" :step="1" @change="(v: any) => saveParty({ partyOverlayOffsetY: Number(v) })" />
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Display</span>
@@ -329,11 +402,11 @@ onUnmounted(() => clearInterval(timer));
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Party / Org switch hotkey</span>
-          <el-input class="max-w-xs" :model-value="party.partyOverlaySwitchHotkey" @change="(v: string) => saveParty({ partyOverlaySwitchHotkey: v.trim() })" placeholder="CommandOrControl+Alt+Shift+P" />
+          <el-input v-model="drafts.switchHotkey" class="max-w-xs" data-test="switch-hotkey" @keyup.enter="blurTarget" placeholder="CommandOrControl+Alt+Shift+P" @change="(v: string) => saveParty({ partyOverlaySwitchHotkey: v.trim() })" />
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
-          <el-input class="max-w-xs" :model-value="party.partyOverlayHotkey" @change="(v: string) => saveParty({ partyOverlayHotkey: v.trim() })" placeholder="CommandOrControl+Alt+P" />
+          <el-input v-model="drafts.partyHotkey" class="max-w-xs" data-test="party-hotkey" @keyup.enter="blurTarget" placeholder="CommandOrControl+Alt+P" @change="(v: string) => saveParty({ partyOverlayHotkey: v.trim() })" />
         </div>
       </div>
 
