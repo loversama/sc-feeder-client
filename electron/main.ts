@@ -26,6 +26,7 @@ const REQUIRED_APP_FILES = [
   'dist/event-details.html',
   'dist/web-content.html',
   'dist/overlay.html',
+  'dist/bodycam-live.html',
   'dist/voidlog-icon.png',
   'dist-electron/preload.mjs',
   'dist-electron/overlay-preload.mjs',

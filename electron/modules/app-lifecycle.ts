@@ -25,6 +25,7 @@ import { initializeEventProcessor } from './event-processor'; // Import EventPro
 import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry-manager';
 import { initOverlay, destroyOverlay } from './telemetry/overlay-window';
 import { registerTelemetryIpc } from './telemetry/telemetry-ipc';
+import { initBodycam, registerBodycamIpc, shutdownBodycam } from './bodycam-manager';
 import { initGameControl, shutdownGameControl } from './telemetry/game-control-manager';
 import {
   getOfflineMode,
@@ -394,6 +395,14 @@ async function onReady() {
     logger.error(MODULE_NAME, 'Failed to initialise game control (continuing without it):', error);
   }
 
+  // Optional body-cam screenshots (off unless the user opts in)
+  try {
+    registerBodycamIpc();
+    initBodycam();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise body-cam (continuing without it):', error);
+  }
+
   try {
     registerAuthIpcHandlers();
     logger.success(MODULE_NAME, 'Auth IPC handlers registered successfully');
@@ -585,6 +594,7 @@ async function performCleanup() {
     destroyOverlay();
     shutdownGameControl();
     await shutdownTelemetry();
+    await shutdownBodycam();
 
     // Stop watching log file
     await stopWatchingLogFile(); // This now also calls endCurrentSession

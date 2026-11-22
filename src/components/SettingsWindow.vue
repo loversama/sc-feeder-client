@@ -6,6 +6,7 @@ import { User, Tools } from '@element-plus/icons-vue';
 import DebugActions from './DebugActions.vue';
 import SoundPreferences from './SoundPreferences.vue';
 import TelemetrySettings from './TelemetrySettings.vue';
+import BodycamSettings from './BodycamSettings.vue';
 import GameChannels from './GameChannels.vue';
 import { useUserState } from '../composables/useUserState';
 import type { SoundPreferences as SoundPreferencesType } from '../../shared/types';
@@ -668,6 +669,7 @@ const toggleLaunchOnStartup = async () => {
         <!-- Telemetry & Overlay -->
         <section v-if="activeCategory === 'telemetry'" class="space-y-6">
           <TelemetrySettings />
+          <BodycamSettings />
         </section>
 
         <!-- Notifications Settings -->
