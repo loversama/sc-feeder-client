@@ -199,7 +199,7 @@ export class LiveSharer {
         if (!g) {
           this.#block('no frame');
         } else if (g.blank) {
-          this.#block('blank frame');
+          this.#block('Skipped a blank picture (loading or black screen)');
         } else if (g.jpeg.length > p.maxFrameBytes) {
           this.#quality = Math.max(15, this.#quality - 5); // too big: lower quality, skip this frame
         } else {

@@ -1,13 +1,14 @@
 /**
  * Browser preview of Settings → Telemetry & Overlay with a fake IPC bridge (fixture party where
  * "you" are the owner), so the party panel can be screenshotted without Electron. Not shipped.
- *   ?member=1  view as a non-owner member     ?noparty=1  not in a party yet
+ *   ?member=1  view as a non-owner member     ?noparty=1  not in a party yet     ?fresh=1  real defaults
  */
 import { createApp } from 'vue';
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import './preview.css';
 import TelemetrySettings from '../../src/components/TelemetrySettings.vue';
+import { PARTY_OVERLAY_DEFAULTS } from '../../electron/modules/overlay/party-overlay-settings';
 
 const q = new URLSearchParams(location.search);
 // Member ids are opaque room-scoped ids from the server; the code only reaches the owner.
@@ -64,6 +65,8 @@ if (q.get('source') === 'org') {
     sections: [{ source: { scope: 'org', id: 'VOID', label: '[VOID] Voidrunners' }, online: 3 }, { source: { scope: 'org', id: 'TRDR', label: '[TRDR] Night Traders' }, online: 1 }],
   };
 }
+// ?fresh=1: a fresh install (the real defaults, nothing saved yet).
+if (q.get('fresh') === '1') fixtures['party-overlay:get-settings'] = { ...PARTY_OVERLAY_DEFAULTS };
 (fixtures['party-overlay:get-settings'] as any).partyOverlayOrgTag = '';
 (fixtures['party-overlay:get-settings'] as any).partyOverlayOrgsUnticked = (q.get('unticked') ?? '').split(',').filter(Boolean);
 
