@@ -9,7 +9,7 @@ export type PartyOverlayState = {
   roster: OverlayRoster | null;
   layout: OverlayLayout | null;
   compact: boolean;
-  /** The local player's VOIDLOG user id ("you" marker). */
+  /** Our opaque member id in the subscribed room ("you" marker); member ids are room-scoped. */
   selfId?: string | null;
   hotkey?: string | null;
 };

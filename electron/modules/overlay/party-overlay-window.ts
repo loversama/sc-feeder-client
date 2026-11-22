@@ -84,7 +84,7 @@ function send(state: PartyOverlayState): void {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
   const s = getPartyOverlaySettings();
   try {
-    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale, selfId: getAuthStatus().userId });
+    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale });
   } catch (err) {
     logger.debug(MODULE_NAME, `push failed: ${err}`);
   }

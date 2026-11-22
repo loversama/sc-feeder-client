@@ -30,7 +30,8 @@ type PartyStatus = {
   status: string;
   message: string | null;
   source: { scope: string; id: string; label: string } | null;
-  party: { id: string; name: string; code: string; ownerId: string; members: { userId: string; name: string }[] } | null;
+  /** Member ids are opaque (room-scoped); `code` only arrives for the owner. */
+  party: { id: string; name: string; code?: string; ownerId: string; isOwner?: boolean; members: { userId: string; name: string }[] } | null;
   online: number;
   selfId: string | null;
 } | null;
@@ -47,7 +48,10 @@ const partyStatus = ref<PartyStatus>(null);
 const joinCode = ref('');
 const partyBusy = ref(false);
 const displays = ref<DisplayRow[]>([]);
-const isOwner = computed(() => !!partyStatus.value?.party && partyStatus.value.party.ownerId === partyStatus.value.selfId);
+const isOwner = computed(() => {
+  const p = partyStatus.value?.party;
+  return !!p && (p.isOwner ?? (!!partyStatus.value?.selfId && p.ownerId === partyStatus.value.selfId));
+});
 const PARTY_PAGE = 'https://voidlog.gg/party';
 let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -91,8 +95,20 @@ async function partyAction(action: 'create' | 'join' | 'leave') {
     else {
       if (action === 'join') joinCode.value = '';
       if (action !== 'leave' && party.value?.partyOverlaySource !== 'party') await saveParty({ partyOverlaySource: 'party' });
-      ElMessage.success(action === 'leave' ? 'Left the party' : `Party: ${r.party?.name} (code ${r.party?.code})`);
+      ElMessage.success(action === 'leave' ? 'Left the party' : r.party?.code ? `Party: ${r.party?.name} (code ${r.party.code})` : `Joined ${r.party?.name}`);
     }
+    partyStatus.value = await api.invoke('party-overlay:status');
+  } finally {
+    partyBusy.value = false;
+  }
+}
+
+async function rotateCode() {
+  partyBusy.value = true;
+  try {
+    const r = await api.invoke('party-overlay:party', { action: 'rotate' });
+    if (!r?.ok) ElMessage.error(r?.error ?? 'Could not change the code');
+    else ElMessage.success(`New invite code ${r.party?.code ?? ''}: the old one no longer works`);
     partyStatus.value = await api.invoke('party-overlay:status');
   } finally {
     partyBusy.value = false;
@@ -258,7 +274,11 @@ onUnmounted(() => clearInterval(timer));
             <div class="flex items-center justify-between gap-4">
               <span class="text-theme-text-white font-semibold">{{ partyStatus.party.name }} · {{ partyStatus.party.members.length }}/10</span>
               <div class="flex gap-2">
-                <el-button size="small" @click="copyCode(partyStatus.party.code)">Copy invite code {{ partyStatus.party.code }}</el-button>
+                <template v-if="isOwner && partyStatus.party.code">
+                  <el-button size="small" @click="copyCode(partyStatus.party.code)">Copy invite code {{ partyStatus.party.code }}</el-button>
+                  <el-button size="small" :disabled="partyBusy" title="Make a new code; the old one stops working" @click="rotateCode">New code</el-button>
+                </template>
+                <span v-else-if="!isOwner" class="text-gray-400 text-sm self-center">Invite via the owner</span>
                 <el-button size="small" :loading="partyBusy" @click="partyAction('leave')">Leave</el-button>
               </div>
             </div>

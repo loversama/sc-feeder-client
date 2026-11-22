@@ -10,19 +10,22 @@ import './preview.css';
 import TelemetrySettings from '../../src/components/TelemetrySettings.vue';
 
 const q = new URLSearchParams(location.search);
-const self = q.get('member') === '1' ? 'u-ava' : 'u-bo';
+// Member ids are opaque room-scoped ids from the server; the code only reaches the owner.
+const member = q.get('member') === '1';
+const self = member ? '5be1c09a2f7d4e61a830' : '9f3c2a1e7b4d6c8e0a12';
 const party = q.get('noparty') === '1'
   ? null
   : {
       id: 'p1',
       name: "Bo_Kestrel's party",
-      code: 'K7QX4M',
-      ownerId: 'u-bo',
+      ...(member ? { isOwner: false } : { code: 'K7QX4M', isOwner: true }),
+      selfId: self,
+      ownerId: '9f3c2a1e7b4d6c8e0a12',
       members: [
-        { userId: 'u-bo', name: 'Bo_Kestrel' },
-        { userId: 'u-ava', name: 'AvaNightjar' },
-        { userId: 'u-cy', name: 'cy-runner' },
-        { userId: 'u-hal', name: 'HalBrenner' },
+        { userId: '9f3c2a1e7b4d6c8e0a12', name: 'Bo_Kestrel' },
+        { userId: '5be1c09a2f7d4e61a830', name: 'AvaNightjar' },
+        { userId: 'c41d7e09b3a25f8e6d10', name: 'cy-runner' },
+        { userId: '0a7e3b5c9d1f2e4a6b80', name: 'HalBrenner' },
       ],
     };
 

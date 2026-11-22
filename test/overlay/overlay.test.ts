@@ -184,3 +184,45 @@ test('feed: party source, removal from the party, offline link', () => {
   feed.resubscribe();
   assert.equal(feed.current.status, 'connecting');
 });
+
+test('feed: selfId from the ack; owner keeps the code across broadcasts; members never get one', () => {
+  const { link, feed } = makeFeed({ partyOverlaySource: 'party' });
+  feed.resubscribe();
+  const party = { id: 'p1', name: 'Wing', ownerId: 'aa11', members: [{ userId: 'aa11', name: 'Bo' }] };
+  link.sent[0].ack!({ ...ackOk(), source: { scope: 'party', id: 'p1', label: 'Wing' }, selfId: 'aa11', party: { ...party, code: 'ABCDEF', selfId: 'aa11', isOwner: true } });
+  assert.equal(feed.current.selfId, 'aa11');
+  // broadcast after someone joined: no code in it, but we are still the owner
+  link.handlers.get('overlay_party')!({ ...party, members: [...party.members, { userId: 'bb22', name: 'Ava' }] });
+  assert.equal(feed.current.party?.code, 'ABCDEF');
+  assert.equal(feed.current.party?.isOwner, true);
+  assert.equal(feed.current.party?.members.length, 2);
+  // ownership handed to bb22: the code is dropped
+  link.handlers.get('overlay_party')!({ ...party, ownerId: 'bb22' });
+  assert.equal(feed.current.party?.code, undefined);
+  assert.equal(feed.current.party?.isOwner, false);
+  assert.equal(link.sent.length, 1, 'no fetch when we are not the owner');
+});
+
+test('feed: becoming owner via broadcast fetches the code; rotate replies replace it', () => {
+  const { link, feed } = makeFeed({ partyOverlaySource: 'party' });
+  feed.resubscribe();
+  const party = { id: 'p1', name: 'Wing', ownerId: 'aa11', members: [{ userId: 'aa11', name: 'Bo' }, { userId: 'bb22', name: 'Ava' }] };
+  link.sent[0].ack!({ ...ackOk(), source: { scope: 'party', id: 'p1', label: 'Wing' }, selfId: 'bb22', party: { ...party, selfId: 'bb22', isOwner: false } });
+  link.handlers.get('overlay_party')!({ ...party, ownerId: 'bb22' });
+  const get = link.sent[1];
+  assert.deepEqual(get.payload, { action: 'get' });
+  get.ack!({ ok: true, party: { ...party, ownerId: 'bb22', code: 'QWERTY', selfId: 'bb22', isOwner: true } });
+  assert.equal(feed.current.party?.code, 'QWERTY');
+  void feed.party('rotate');
+  link.sent[2].ack!({ ok: true, party: { ...party, ownerId: 'bb22', code: 'ZXCVBN', selfId: 'bb22', isOwner: true } });
+  assert.equal(feed.current.party?.code, 'ZXCVBN');
+});
+
+test('feed: overlay_revoked shows no access', () => {
+  const { link, feed } = makeFeed();
+  feed.resubscribe();
+  link.sent[0].ack!(ackOk());
+  link.handlers.get('overlay_revoked')!({ reason: 'access-revoked' });
+  assert.equal(feed.current.status, 'no-access');
+  assert.equal(feed.current.roster, null);
+});
