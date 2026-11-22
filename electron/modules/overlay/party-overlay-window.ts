@@ -19,6 +19,7 @@ import { getServerLink } from '../server-connection';
 import { isGameRunning, onGamePoll, syncOverlayFeature } from '../telemetry/overlay-window';
 import { PartyOverlayFeed, type PartyOverlayState } from './party-overlay-feed';
 import { partyOverlayBounds, pickDisplay, type PartyOverlaySettings } from './party-overlay-settings';
+import { WAITING_CARD_MS } from '../../../shared/overlay/overlay-sections';
 
 const MODULE_NAME = 'PartyOverlay';
 const MIN_HEIGHT = 60;
@@ -31,6 +32,8 @@ let registeredSwitchHotkey: string | null = null;
 let contentHeight = 0;
 let lastState: PartyOverlayState | null = null;
 let displayListener = false;
+/** When the game was last seen starting (for the overlay's "Waiting for Star Citizen" card). */
+let gameSeenAt: number | null = null;
 
 
 function bounds() {
@@ -84,7 +87,10 @@ function send(state: PartyOverlayState): void {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
   const s = getPartyOverlaySettings();
   try {
-    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale });
+    // Room the panel may use (screen minus top offset), in CSS px before scaling: the renderer auto-fits to it.
+    const display = pickDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), s.partyOverlayDisplayId);
+    const maxHeight = Math.floor(partyOverlayBounds(display.bounds, s).height / s.partyOverlayScale) - 2;
+    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale, maxHeight, gameSinceMs: gameSeenAt === null ? null : Date.now() - gameSeenAt });
   } catch (err) {
     logger.debug(MODULE_NAME, `push failed: ${err}`);
   }
@@ -94,7 +100,13 @@ function send(state: PartyOverlayState): void {
 export function refreshPartyOverlay(): void {
   const s = getPartyOverlaySettings();
   const alwaysShow = getTelemetrySettings().overlayAlwaysShow; // the debug overlay's "show without the game" testing switch
-  const shouldShow = s.partyOverlayEnabled && !hiddenByHotkey && (isGameRunning() || alwaysShow);
+  const running = isGameRunning();
+  if (running && gameSeenAt === null) {
+    gameSeenAt = Date.now();
+    // re-send after the waiting window so the card goes away even when nothing else changes
+    setTimeout(() => lastState && send(lastState), WAITING_CARD_MS + 500).unref?.();
+  } else if (!running) gameSeenAt = null;
+  const shouldShow = s.partyOverlayEnabled && !hiddenByHotkey && (running || alwaysShow);
   if (shouldShow) {
     if (!win || win.isDestroyed()) win = createWindow();
     win.setBounds(bounds());
@@ -191,7 +203,11 @@ export function initPartyOverlay(): void {
   }
   if (!displayListener) {
     displayListener = true;
-    const rebound = () => win && !win.isDestroyed() && win.setBounds(bounds());
+    const rebound = () => {
+      if (!win || win.isDestroyed()) return;
+      win.setBounds(bounds());
+      if (lastState) send(lastState); // new screen height: the renderer re-fits
+    };
     screen.on('display-metrics-changed', rebound);
     screen.on('display-added', rebound);
     screen.on('display-removed', rebound);

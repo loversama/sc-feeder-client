@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /** Settings → Telemetry & Overlay: game telemetry, sharing, in-game overlay, Game.log diff. */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
-import { normalizeOrgTag, type OrgChoice } from '../../shared/overlay/org-tag';
+import type { OrgChoice } from '../../shared/overlay/org-tag';
+import { MAX_OVERLAY_ORGS, toggleOrg } from '../../shared/overlay/overlay-sections';
 import { ElMessage } from 'element-plus';
 
 type Settings = {
@@ -19,6 +20,7 @@ type PartySettings = {
   partyOverlayEnabled: boolean;
   partyOverlaySource: 'org' | 'party';
   partyOverlayOrgTag: string;
+  partyOverlayOrgsUnticked: string[];
   partyOverlayHotkey: string;
   partyOverlayCompact: boolean;
   partyOverlayScale: number;
@@ -34,6 +36,7 @@ type PartyStatus = {
   /** Member ids are opaque (room-scoped); `code` only arrives for the owner. */
   party: { id: string; name: string; code?: string; ownerId: string; isOwner?: boolean; members: { userId: string; name: string }[] } | null;
   online: number;
+  sections?: { source: { scope: string; id: string; label: string }; online: number }[];
   selfId: string | null;
 } | null;
 
@@ -53,9 +56,16 @@ const isOwner = computed(() => {
   const p = partyStatus.value?.party;
   return !!p && (p.isOwner ?? (!!partyStatus.value?.selfId && p.ownerId === partyStatus.value.selfId));
 });
+/** "[VOID] 3 online · [WING] 1 online" (every section), for the status line. */
+const liveSummary = computed(() => {
+  const st = partyStatus.value;
+  const secs = st?.sections?.length ? st.sections : st?.source ? [{ source: st.source, online: st.online }] : [];
+  return secs.map((x) => `${x.source.label} ${x.online} online`).join(' · ');
+});
 const PARTY_PAGE = 'https://voidlog.gg/party';
-/** The user's verified orgs from VOIDLOG.GG (empty when offline / unknown: free-text tag instead). */
-const orgs = ref<OrgChoice[]>([]);
+/** The user's verified orgs from VOIDLOG.GG (null while loading). */
+const orgs = ref<OrgChoice[] | null>(null);
+const orgsError = ref(false);
 
 /**
  * Editable copies of text and slider settings. Inputs bind these with v-model (so typing and dragging
@@ -63,11 +73,10 @@ const orgs = ref<OrgChoice[]>([]);
  * Never bind an el-input to a stored value with only :model-value + @change: Element Plus then
  * throws every keystroke away.
  */
-const drafts = reactive({ overlayHotkey: '', orgTag: '', partyHotkey: '', switchHotkey: '', scale: 1, offsetY: 18 });
+const drafts = reactive({ overlayHotkey: '', partyHotkey: '', switchHotkey: '', scale: 1, offsetY: 18 });
 function syncDrafts() {
   if (settings.value) drafts.overlayHotkey = settings.value.overlayHotkey ?? '';
   if (party.value) {
-    drafts.orgTag = party.value.partyOverlayOrgTag ?? '';
     drafts.partyHotkey = party.value.partyOverlayHotkey ?? '';
     drafts.switchHotkey = party.value.partyOverlaySwitchHotkey ?? '';
     drafts.scale = party.value.partyOverlayScale ?? 1;
@@ -85,14 +94,12 @@ async function load() {
   void loadOrgs();
 }
 
-/** Verified orgs for the tag picker; an empty tag defaults to the primary org (or the only one). */
+/** Verified orgs for the checklist (null while loading; [] = none or could not load, see orgsError). */
 async function loadOrgs() {
+  orgsError.value = false;
   const r = await api.invoke('party-overlay:orgs');
+  orgsError.value = !Array.isArray(r);
   orgs.value = Array.isArray(r) ? r : [];
-  if (party.value && !party.value.partyOverlayOrgTag) {
-    const pick = orgs.value.find((o) => o.primary) ?? (orgs.value.length === 1 ? orgs.value[0] : undefined);
-    if (pick) await saveParty({ partyOverlayOrgTag: pick.tag });
-  }
 }
 
 /** Enter in a text field commits it (blur fires the input's change event, which saves). */
@@ -100,15 +107,13 @@ function blurTarget(e: Event) {
   (e.target as HTMLElement | null)?.blur?.();
 }
 
-async function commitOrgTag(raw: unknown) {
-  const tag = normalizeOrgTag(raw);
-  if (tag === null) {
-    ElMessage.error('An org tag is 1 to 20 letters, digits, _ or -');
-    syncDrafts();
-    return;
-  }
-  if (tag !== party.value?.partyOverlayOrgTag) await saveParty({ partyOverlayOrgTag: tag });
-  else drafts.orgTag = tag;
+/** The checklist stores the orgs switched OFF, so orgs joined later are on by default. */
+const unticked = computed(() => new Set(party.value?.partyOverlayOrgsUnticked ?? []));
+async function setOrg(tag: string, on: boolean) {
+  await saveParty({ partyOverlayOrgsUnticked: toggleOrg(party.value?.partyOverlayOrgsUnticked ?? [], tag, on) });
+}
+async function setAllOrgs(on: boolean) {
+  await saveParty({ partyOverlayOrgsUnticked: on ? [] : (orgs.value ?? []).map((o) => o.tag) });
 }
 
 async function refreshLive() {
@@ -309,7 +314,7 @@ onUnmounted(() => clearInterval(timer));
         <p class="text-gray-400 text-sm">MMO-style party list on the right side of the game: names, health and status, with members in the same ship grouped under a ship dial. The order and grouping follow the layout your org (or party owner) sets on voidlog.gg. Click-through; Borderless or Windowed mode only.</p>
         <div v-if="party.partyOverlayEnabled && live && !live.gameRunning" class="text-sm text-amber-400">Waiting for Star Citizen to start<template v-if="live.gameDetection?.message"> ({{ live.gameDetection.message }})</template></div>
         <div v-if="party.partyOverlayEnabled && partyStatus" class="text-sm" :class="partyStatus.status === 'live' ? 'text-green-400' : 'text-amber-400'">
-          {{ partyStatus.status === 'live' ? `Live: ${partyStatus.source?.label ?? ''} · ${partyStatus.online} online` : (partyStatus.message || partyStatus.status) }}
+          {{ partyStatus.status === 'live' ? `Live: ${liveSummary}` : (partyStatus.message || partyStatus.status) }}
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Show</span>
@@ -318,31 +323,30 @@ onUnmounted(() => clearInterval(timer));
             <el-radio-button value="party">Party</el-radio-button>
           </el-radio-group>
         </div>
-        <div v-if="party.partyOverlaySource === 'org'" class="flex items-center justify-between gap-4">
-          <span class="text-theme-text-white">Org tag</span>
-          <el-select
-            v-if="orgs.length"
-            v-model="drafts.orgTag"
-            class="max-w-xs"
-            data-test="org-tag-select"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="Choose your org"
-            @change="commitOrgTag"
-          >
-            <el-option v-for="o in orgs" :key="o.tag" :value="o.tag" :label="o.name ? `[${o.tag}] ${o.name}${o.primary ? ' · main org' : ''}` : `[${o.tag}]`" />
-          </el-select>
-          <el-input
-            v-else
-            v-model="drafts.orgTag"
-            class="max-w-xs org-tag"
-            data-test="org-tag" @keyup.enter="blurTarget"
-            placeholder="e.g. VOID"
-            maxlength="20"
-            @input="(v: string) => (drafts.orgTag = v.toUpperCase())"
-            @change="commitOrgTag"
-          />
+        <div v-if="party.partyOverlaySource === 'org'" class="space-y-2" data-test="org-list">
+          <div class="flex items-center justify-between gap-4">
+            <span class="text-theme-text-white">Orgs to show</span>
+            <div v-if="orgs && orgs.length" class="flex gap-2">
+              <el-button size="small" data-test="orgs-all" @click="setAllOrgs(true)">All</el-button>
+              <el-button size="small" data-test="orgs-none" @click="setAllOrgs(false)">None</el-button>
+            </div>
+          </div>
+          <div v-if="orgs === null" class="text-gray-400 text-sm">Loading your orgs…</div>
+          <div v-else-if="orgsError" class="text-amber-400 text-sm">Could not load your orgs. <el-button link size="small" @click="loadOrgs">Retry</el-button></div>
+          <div v-else-if="!orgs.length" class="text-gray-400 text-sm" data-test="orgs-empty">No verified org membership yet. Verify your RSI profile on voidlog.gg and your orgs appear here.</div>
+          <template v-else>
+            <el-checkbox
+              v-for="o in orgs"
+              :key="o.tag"
+              class="org-check"
+              :data-test="`org-${o.tag}`"
+              :model-value="!unticked.has(o.tag)"
+              @change="(v: any) => setOrg(o.tag, !!v)"
+            >
+              {{ o.name ? `[${o.tag}] ${o.name}` : `[${o.tag}]` }}<span v-if="o.primary" class="text-gray-400">&nbsp;· main org</span>
+            </el-checkbox>
+            <p class="text-gray-500 text-xs">Each ticked org gets its own section in the overlay, main org first (up to {{ MAX_OVERLAY_ORGS }}). Orgs you join later are shown until you untick them.</p>
+          </template>
         </div>
         <div v-else class="space-y-3">
           <div v-if="partyStatus?.party" class="party-box rounded border border-theme-border p-3 space-y-2">

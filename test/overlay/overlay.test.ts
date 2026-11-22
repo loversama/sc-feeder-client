@@ -10,6 +10,7 @@ import { healthTone, o2Tone, shieldArcs, shieldColor, shipLabel, topViewUrl } fr
 import { normalizeOrgTag, sanitizeOrgChoices } from '../../shared/overlay/org-tag';
 import { partyOverlayBounds, pickDisplay, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
 import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../electron/modules/overlay/party-overlay-feed';
+import { fitPlans, isCollapsed, mergeSections, overlayCard, planFit, selectedOrgTags, toggleOrg, WAITING_CARD_MS } from '../../shared/overlay/overlay-sections';
 
 const vectors = JSON.parse(readFileSync('shared/overlay/overlay-vectors.json', 'utf8'));
 const roster = vectors.roster as OverlayRoster;
@@ -125,11 +126,29 @@ function makeFeed(over: Partial<PartyOverlaySettings> = {}) {
 
 const ackOk = (layoutVersion = 2) => ({ ok: true, source: { scope: 'org', id: 'VOID', label: '[VOID]' }, roster: { ...roster, generatedAt: 'a' }, layout: { scope: 'org', id: 'VOID', version: layoutVersion, entries: [], shipsExpandedByDefault: true, updatedAt: null, updatedBy: null }, party: null });
 
-test('feed subscribes to the org, applies pushes, ignores stale layouts and foreign rosters', () => {
+const tick = () => new Promise((r) => setImmediate(r));
+const VOID_ORG = [{ tag: 'VOID', name: 'Void', primary: true }];
+/** Org mode: answer the overlay_orgs request, then the subscribe is sent. Returns the subscribe entry. */
+async function answerOrgs(link: FakeLink, orgs: unknown[] | null = VOID_ORG) {
+  const req = link.sent.at(-1)!;
+  assert.equal(req.event, 'overlay_orgs');
+  req.ack!(orgs ? { ok: true, orgs } : undefined);
+  await tick();
+  return link.sent.at(-1)!;
+}
+const multiAck = (...tags: string[]) => ({
+  ok: true,
+  multi: true,
+  sections: tags.map((t) => ({ source: { scope: 'org', id: t, label: `[${t}]` }, selfId: `me-${t}`, roster: { ...roster, id: t, generatedAt: 'a' }, layout: { scope: 'org', id: t, version: 1, entries: [], shipsExpandedByDefault: true, updatedAt: null, updatedBy: null } })),
+  refused: [],
+});
+
+test('feed subscribes to the org, applies pushes, ignores stale layouts and foreign rosters', async () => {
   const { link, feed, pushes, advance } = makeFeed();
   feed.resubscribe();
-  assert.deepEqual(link.sent[0].payload, { scope: 'org', tag: 'VOID' });
-  link.sent[0].ack!(ackOk(2));
+  const sub = await answerOrgs(link);
+  assert.deepEqual(sub.payload, { scope: 'org', tags: ['VOID'] });
+  sub.ack!(ackOk(2));
   advance(300);
   assert.equal(feed.current.status, 'live');
   link.handlers.get('overlay_layout')!({ scope: 'org', id: 'VOID', version: 1, entries: [{ kind: 'member', userId: 'x' }], shipsExpandedByDefault: true });
@@ -144,10 +163,10 @@ test('feed subscribes to the org, applies pushes, ignores stale layouts and fore
   assert.equal(pushes.at(-1)?.roster?.generatedAt, 'c');
 });
 
-test('feed throttles pushes to 4 Hz with a trailing push', () => {
+test('feed throttles pushes to 4 Hz with a trailing push', async () => {
   const { link, feed, pushes, advance } = makeFeed();
   feed.resubscribe();
-  link.sent[0].ack!(ackOk());
+  (await answerOrgs(link)).ack!(ackOk());
   const before = pushes.length;
   for (let i = 0; i < 20; i++) link.handlers.get('overlay_roster')!({ ...roster, generatedAt: `r${i}` });
   advance(100);
@@ -156,18 +175,24 @@ test('feed throttles pushes to 4 Hz with a trailing push', () => {
   assert.equal(pushes.at(-1)?.roster?.generatedAt, 'r19');
 });
 
-test('feed re-subscribes on authenticated; stale acks are ignored; errors map to statuses', () => {
+test('feed re-subscribes on authenticated; stale acks are ignored; errors map to statuses', async () => {
   const { link, feed, advance, setSettings } = makeFeed();
   feed.resubscribe();
+  const first = await answerOrgs(link);
   link.events.get('authenticated')!();
-  assert.equal(link.sent.length, 2);
-  link.sent[1].ack!({ ok: false, error: 'no-access' });
-  link.sent[0].ack!(ackOk()); // older request answered late: ignored
+  const second = await answerOrgs(link);
+  second.ack!({ ok: false, error: 'no-access' });
+  first.ack!(ackOk()); // older request answered late: ignored
   advance(300);
   assert.equal(feed.current.status, 'no-access');
-  setSettings({ partyOverlayOrgTag: '' });
+  assert.equal(feed.current.sections[0]?.source.label, '[VOID]', 'header label kept for the card');
+  setSettings({ partyOverlayOrgsUnticked: ['VOID'] });
+  const sentBefore = link.sent.length;
   feed.resubscribe();
+  await tick();
+  assert.equal(link.sent.length, sentBefore, 'a settings change reuses the cached org list (no overlay_orgs, nothing to subscribe)');
   assert.equal(feed.current.status, 'no-source');
+  assert.match(feed.current.message ?? '', /No orgs selected/);
   setSettings({ partyOverlayEnabled: false });
   feed.resubscribe();
   assert.equal(feed.current.status, 'off');
@@ -223,10 +248,10 @@ test('feed: becoming owner via broadcast fetches the code; rotate replies replac
   assert.equal(feed.current.party?.code, 'ZXCVBN');
 });
 
-test('feed: overlay_revoked shows no access', () => {
+test('feed: overlay_revoked shows no access', async () => {
   const { link, feed } = makeFeed();
   feed.resubscribe();
-  link.sent[0].ack!(ackOk());
+  (await answerOrgs(link)).ack!(ackOk());
   link.handlers.get('overlay_revoked')!({ reason: 'access-revoked' });
   assert.equal(feed.current.status, 'no-access');
   assert.equal(feed.current.roster, null);
@@ -258,4 +283,164 @@ test('feed.orgs: ack, timeout (older server without overlay_orgs) and offline', 
   assert.equal(await p2, null);
   link.authenticated = false;
   assert.equal(await feed.orgs(), null);
+});
+
+// --- multi-org (0.3.6) ----------------------------------------------------------------------------
+
+test('org selection: all verified orgs minus unticked, org order kept, max 10; toggle keeps the unticked set', () => {
+  const orgs = ['VOID', 'WING', 'AAA'].map((tag, i) => ({ tag, name: null, primary: i === 0 }));
+  assert.deepEqual(selectedOrgTags(orgs, []), ['VOID', 'WING', 'AAA']);
+  assert.deepEqual(selectedOrgTags(orgs, ['wing', 'GONE']), ['VOID', 'AAA']);
+  const many = Array.from({ length: 12 }, (_, i) => ({ tag: `O${i}`, name: null, primary: false }));
+  assert.equal(selectedOrgTags(many, []).length, 10);
+  assert.deepEqual(toggleOrg([], 'WING', false), ['WING']);
+  assert.deepEqual(toggleOrg(['WING', 'X'], 'WING', true), ['X']);
+  assert.deepEqual(toggleOrg(['WING'], 'WING', false), ['WING']);
+});
+
+test('settings: unticked orgs are validated (upper-cased, deduped, junk dropped)', () => {
+  assert.deepEqual(sanitizePartyOverlaySetting('partyOverlayOrgsUnticked', ['void', 'VOID', 'bad tag', 3, 'wing']), ['VOID', 'WING']);
+  assert.equal(sanitizePartyOverlaySetting('partyOverlayOrgsUnticked', 'VOID'), undefined);
+  assert.deepEqual(PARTY_OVERLAY_DEFAULTS.partyOverlayOrgsUnticked, [], 'all orgs selected by default');
+});
+
+test('feed multi-org: subscribes to every selected org, one section each; pushes and layouts go to the right one', async () => {
+  const { link, feed, advance } = makeFeed({ partyOverlayOrgsUnticked: ['MUTE'] });
+  feed.resubscribe();
+  const sub = await answerOrgs(link, [{ tag: 'VOID', name: 'Void', primary: true }, { tag: 'mute', name: 'M' }, { tag: 'WING', name: 'Wing' }]);
+  assert.deepEqual(sub.payload, { scope: 'org', tags: ['VOID', 'WING'] });
+  sub.ack!(multiAck('VOID', 'WING'));
+  advance(300);
+  assert.equal(feed.current.status, 'live');
+  assert.deepEqual(feed.current.sections.map((x) => x.source.id), ['VOID', 'WING']);
+  assert.equal(feed.current.sections[1].selfId, 'me-WING');
+  link.handlers.get('overlay_roster')!({ ...roster, id: 'WING', generatedAt: 'w2' });
+  assert.equal(feed.current.sections[1].roster?.generatedAt, 'w2');
+  assert.equal(feed.current.sections[0].roster?.generatedAt, 'a');
+  link.handlers.get('overlay_layout')!({ scope: 'org', id: 'WING', version: 5, entries: [], shipsExpandedByDefault: false });
+  assert.equal(feed.current.sections[1].layout?.version, 5);
+  assert.equal(feed.current.sections[0].layout?.version, 1);
+  // losing one org drops only its section
+  link.handlers.get('overlay_revoked')!({ reason: 'access-revoked', scope: 'org', id: 'VOID' });
+  assert.deepEqual(feed.current.sections.map((x) => x.source.id), ['WING']);
+  assert.equal(feed.current.status, 'live');
+  assert.equal(feed.current.source?.id, 'WING', 'mirror fields follow the first section');
+  link.handlers.get('overlay_revoked')!({ reason: 'access-revoked', scope: 'org', id: 'WING' });
+  assert.equal(feed.current.status, 'no-access');
+});
+
+test('feed multi-org: no verified orgs, older server fallback to the single tag, org list change re-subscribes', async () => {
+  const a = makeFeed();
+  a.feed.resubscribe();
+  await answerOrgs(a.link, []);
+  assert.equal(a.feed.current.status, 'no-source');
+  assert.match(a.feed.current.message ?? '', /No verified org/);
+
+  const b = makeFeed({ partyOverlayOrgTag: 'OLD' });
+  b.feed.resubscribe();
+  const sub = await answerOrgs(b.link, null); // server without overlay_orgs
+  assert.deepEqual(sub.payload, { scope: 'org', tag: 'OLD' });
+
+  const c = makeFeed();
+  c.feed.resubscribe();
+  (await answerOrgs(c.link)).ack!(ackOk());
+  const p = c.feed.refreshOrgs();
+  c.link.sent.at(-1)!.ack!({ ok: true, orgs: [...VOID_ORG, { tag: 'NEW', name: 'Joined later' }] });
+  await p;
+  await tick();
+  const sub2 = c.link.sent.at(-1)!;
+  assert.equal(sub2.event, 'overlay_subscribe');
+  assert.deepEqual(sub2.payload, { scope: 'org', tags: ['VOID', 'NEW'] }, 'a newly joined org is on without ticking it');
+});
+
+test('feed multi-org: a server without tags support ("bad tag") gets the first org as a single tag', async () => {
+  const { link, feed } = makeFeed();
+  feed.resubscribe();
+  const sub = await answerOrgs(link, [...VOID_ORG, { tag: 'WING', name: 'W' }]);
+  sub.ack!({ ok: false, error: 'bad tag' });
+  const retry = link.sent.at(-1)!;
+  assert.deepEqual(retry.payload, { scope: 'org', tag: 'VOID' });
+  retry.ack!(ackOk());
+  assert.equal(feed.current.status, 'live');
+  assert.deepEqual(feed.current.sections.map((x) => x.source.id), ['VOID']);
+});
+
+test('feed multi-org: org list cached across settings saves; a failed refetch on reconnect keeps it', async () => {
+  const { link, feed, advance, setSettings } = makeFeed();
+  feed.resubscribe();
+  (await answerOrgs(link, [...VOID_ORG, { tag: 'WING', name: 'W' }])).ack!(multiAck('VOID', 'WING'));
+  const orgsCalls = () => link.sent.filter((x) => x.event === 'overlay_orgs').length;
+  for (let i = 0; i < 5; i++) {
+    setSettings({ partyOverlayCompact: i % 2 === 0 });
+    feed.resubscribe();
+    await tick();
+  }
+  assert.equal(orgsCalls(), 1, 'five settings saves, still one overlay_orgs');
+  assert.deepEqual(link.sent.at(-1)!.payload, { scope: 'org', tags: ['VOID', 'WING'] });
+  // reconnect: refetch; it times out (rate-limited / slow) -> the cached list is used, not the legacy tag
+  link.events.get('authenticated')!();
+  assert.equal(orgsCalls(), 2);
+  advance(5001);
+  await tick();
+  assert.deepEqual(link.sent.at(-1)!.payload, { scope: 'org', tags: ['VOID', 'WING'] });
+});
+
+test('sections: a member in two orgs is listed once, in the first section (by vid, not name); online = real org total', () => {
+  const m = (userId: string, name: string, status = 'on-foot') => ({ userId, name, status, health: 100, o2: null, shipKey: null }) as any;
+  const sec = (id: string, members: any[], vids?: Record<string, string>) => ({ source: { scope: 'org' as const, id, label: `[${id}]` }, selfId: null, layout: null, vids, roster: { scope: 'org' as const, id, generatedAt: 'x', members, ships: [] } });
+  // Bo is a1 in A and b1 in B (room ids differ) with the same vid; "Twin" in B is a different person with the same name
+  const out = mergeSections([
+    sec('A', [m('a1', 'Bo'), m('a2', 'Ava', 'offline'), m('a3', 'Twin')], { a1: 'v-bo', a2: 'v-ava', a3: 'v-twin1' }),
+    sec('B', [m('b1', 'Bo'), m('b2', 'Cy'), m('b3', 'Twin')], { b1: 'v-bo', b2: 'v-cy', b3: 'v-twin2' }),
+  ]);
+  assert.deepEqual(out[0].roster!.members.map((x) => x.name), ['Bo', 'Ava', 'Twin']);
+  assert.deepEqual(out[1].roster!.members.map((x) => x.name), ['Cy', 'Twin'], 'same name, different vid: both shown');
+  assert.deepEqual(out.map((x) => x.online), [2, 3], 'header count = the org\'s real online total');
+  assert.deepEqual(out.map((x) => x.shownOnline), [2, 2]);
+  // no vids (single org / older server): nothing is merged
+  const plain = mergeSections([sec('A', [m('a1', 'Bo')]), sec('B', [m('b1', 'Bo')])]);
+  assert.deepEqual(plain.map((x) => x.roster!.members.length), [1, 1]);
+});
+
+test('feed multi-org: vids from the ack and overlay_vids updates land on the right section', async () => {
+  const { link, feed } = makeFeed();
+  feed.resubscribe();
+  const ack = multiAck('VOID', 'WING');
+  (ack.sections[0] as any).vids = { x1: 'v1' };
+  (ack.sections[1] as any).vids = { y1: 'v1' };
+  (await answerOrgs(link, [...VOID_ORG, { tag: 'WING', name: 'W' }])).ack!(ack);
+  assert.deepEqual(feed.current.sections[1].vids, { y1: 'v1' });
+  link.handlers.get('overlay_vids')!({ scope: 'org', id: 'WING', vids: { y1: 'v1', y2: 'v9' } });
+  assert.deepEqual(feed.current.sections[1].vids, { y1: 'v1', y2: 'v9' });
+  assert.deepEqual(feed.current.sections[0].vids, { x1: 'v1' });
+  link.handlers.get('overlay_vids')!({ scope: 'org', id: 'NOPE', vids: { z: 'z' } });
+  link.handlers.get('overlay_vids')!(undefined);
+  assert.equal(feed.current.sections.length, 2);
+});
+
+test('status card: shown without a live roster; "Waiting for Star Citizen" only for the first 30 s', () => {
+  assert.equal(overlayCard({ status: 'off' }, null), null);
+  assert.equal(overlayCard({ status: 'no-source', message: 'No orgs selected. Tick one in Settings' }, 0)?.detail, 'No orgs selected. Tick one in Settings');
+  assert.equal(overlayCard({ status: 'connecting' }, null)?.title, 'Connecting to VOIDLOG.GG');
+  const offlineSelf = [{ source: { scope: 'org' as const, id: 'A', label: '[A]' }, selfId: 'me', layout: null, roster: { scope: 'org' as const, id: 'A', generatedAt: 'x', ships: [], members: [{ userId: 'me', name: 'Me', status: 'offline', health: null, o2: null, shipKey: null }] } }] as any;
+  assert.equal(overlayCard({ status: 'live', sections: offlineSelf }, 1000)?.title, 'Waiting for Star Citizen');
+  assert.equal(overlayCard({ status: 'live', sections: offlineSelf }, WAITING_CARD_MS + 1), null);
+  const onlineSelf = JSON.parse(JSON.stringify(offlineSelf));
+  onlineSelf[0].roster.members[0].status = 'on-foot';
+  assert.equal(overlayCard({ status: 'live', sections: onlineSelf }, 1000), null);
+});
+
+test('auto-fit: full if it fits, else compact, else collapse the lowest sections; the main org never collapses', async () => {
+  // fake renderer: 3 sections, full rows 400 px each, compact 250, a collapsed section 30
+  const height = (p: { compact: boolean; collapsed: number }) => [0, 1, 2].reduce((h, i) => h + (isCollapsed(p, i, 3) ? 30 : p.compact ? 250 : 400), 0);
+  const fit = (max: number, userCompact = false) => planFit(3, userCompact, max, async (p) => height(p));
+  assert.deepEqual(await fit(1300), { compact: false, collapsed: 0 }, 'everything fits');
+  assert.deepEqual(await fit(869), { compact: true, collapsed: 0 }, '1080p: compact fits');
+  assert.deepEqual(await fit(600), { compact: true, collapsed: 1 }, 'lowest section folded');
+  assert.deepEqual(await fit(320), { compact: true, collapsed: 2 }, 'all but the main org folded');
+  assert.deepEqual(await fit(100), { compact: true, collapsed: 2 }, 'nothing fits: most folded, main org still open');
+  assert.deepEqual(await fit(1300, true), { compact: true, collapsed: 0 }, 'user compact: never goes back to full');
+  assert.deepEqual(await planFit(3, false, null, async () => 99999), { compact: false, collapsed: 0 }, 'unknown height: no fitting');
+  assert.equal(isCollapsed({ compact: true, collapsed: 5 }, 0, 3), false);
+  assert.deepEqual(fitPlans(1, false), [{ compact: false, collapsed: 0 }, { compact: true, collapsed: 0 }]);
 });

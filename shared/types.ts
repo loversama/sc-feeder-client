@@ -139,6 +139,7 @@ export interface StoreSchema {
   partyOverlayEnabled: boolean;
   partyOverlaySource: 'org' | 'party';
   partyOverlayOrgTag: string;
+  partyOverlayOrgsUnticked: string[];
   partyOverlayHotkey: string;
   partyOverlayCompact: boolean;
   partyOverlayScale: number;

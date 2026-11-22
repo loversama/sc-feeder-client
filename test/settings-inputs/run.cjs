@@ -56,26 +56,38 @@ async function open(query) {
 }
 
 async function main() {
-  // 1. No org list from the server: free-text tag. Typing shows (upper-cased) and Enter saves.
-  let p = await open({ source: 'org', orgs: 'none', tag: '' });
-  check(await p.exists('[data-test=org-tag]'), 'free-text org tag field is shown when no org list is available');
-  await p.type('[data-test=org-tag]', 'void');
-  check((await p.value('[data-test=org-tag]')) === 'VOID', 'typed org tag stays in the field, upper-cased', await p.value('[data-test=org-tag]'));
-  await p.enter();
-  check((await p.saves()).some((s) => s.partyOverlayOrgTag === 'VOID'), 'Enter saves partyOverlayOrgTag = VOID', await p.saves());
-  await p.type('[data-test=org-tag]', 'bad tag!', { clear: true });
-  await p.enter();
-  check(!(await p.saves()).some((s) => /\s|!/.test(s.partyOverlayOrgTag ?? '')), 'an invalid tag is not saved');
-  check((await p.value('[data-test=org-tag]')) === 'VOID', 'an invalid tag reverts to the saved one', await p.value('[data-test=org-tag]'));
+  // 1. Org checklist: every verified org, all ticked by default; the free-text tag box is gone.
+  let p = await open({ source: 'org' });
+  check(!(await p.exists('[data-test=org-tag]')) && !(await p.exists('[data-test=org-tag-select]')), 'no free-text org tag box any more');
+  const ticked = () => p.js(`[...document.querySelectorAll('.el-checkbox[data-test^=org-]')].map((e) => (e.classList.contains('is-checked') ? '+' : '-') + e.getAttribute('data-test').slice(4)).join(',')`);
+  check((await ticked()) === '+VOID,+WING,+TRDR', 'every verified org is listed in org order and ticked by default', await ticked());
+  await p.js(`document.querySelector('[data-test=org-WING]').click()`);
+  await sleep(300);
+  check(JSON.stringify((await p.saves()).at(-1)) === JSON.stringify({ partyOverlayOrgsUnticked: ['WING'] }), 'unticking an org saves the UNTICKED set', (await p.saves()).at(-1));
+  check((await ticked()) === '+VOID,-WING,+TRDR', 'the unticked org shows unticked', await ticked());
+  await p.js(`document.querySelector('[data-test=orgs-none]').click()`);
+  await sleep(300);
+  check(JSON.stringify((await p.saves()).at(-1)?.partyOverlayOrgsUnticked) === JSON.stringify(['VOID', 'WING', 'TRDR']), 'None unticks every org', (await p.saves()).at(-1));
+  await p.js(`document.querySelector('[data-test=orgs-all]').click()`);
+  await sleep(300);
+  check(JSON.stringify((await p.saves()).at(-1)) === JSON.stringify({ partyOverlayOrgsUnticked: [] }), 'All ticks every org again (empty unticked set)', (await p.saves()).at(-1));
+  check((await ticked()) === '+VOID,+WING,+TRDR', 'all ticked after All', await ticked());
+  const status = await p.js(`document.body.innerText`);
+  check(/\[VOID\] Voidrunners 3 online · \[TRDR\] Night Traders 1 online/.test(status), 'status line lists every live org section');
   p.win.destroy();
 
-  // 2. Org list available and no tag stored: defaults to the verified main org; picker shown.
-  p = await open({ source: 'org', tag: '' });
-  await sleep(300);
-  check(await p.exists('[data-test=org-tag-select]'), 'verified orgs are offered as a picker');
-  check((await p.saves()).some((s) => s.partyOverlayOrgTag === 'VOID'), 'empty tag defaults to the verified main org', await p.saves());
-  const shown = await p.js(`document.querySelector('[data-test=org-tag-select]')?.closest('.el-select')?.innerText ?? document.querySelector('.el-select')?.innerText ?? ''`);
-  check(/VOID/.test(shown), 'the picker shows the main org', shown);
+  // 2. A stored unticked set; and the no-orgs / load-failure messages.
+  p = await open({ source: 'org', unticked: 'TRDR,GONE' });
+  check((await ticked()) === '+VOID,+WING,-TRDR', 'a stored unticked set is shown; orgs not in it stay ticked', await ticked());
+  p.win.destroy();
+  p = await open({ source: 'org', orgs: 'none' });
+  check(await p.js(`!!document.querySelector('[data-test=orgs-empty]')`), 'no verified orgs: explains how to get them');
+  p.win.destroy();
+  p = await open({ source: 'org', orgs: 'fail' });
+  check(/Could not load your orgs/.test(await p.js(`document.body.innerText`)), 'org list failure: says so with a Retry');
+  p.win.destroy();
+
+  p = await open({ source: 'org' });
   // 3. Hotkey fields accept typing and save on Enter.
   for (const [sel, key, text] of [
     ['[data-test=party-hotkey]', 'partyOverlayHotkey', 'Ctrl+Alt+K'],

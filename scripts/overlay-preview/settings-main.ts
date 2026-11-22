@@ -51,13 +51,21 @@ const fixtures: Record<string, unknown> = {
   'party-overlay:status': { status: party ? 'live' : 'no-party', message: party ? null : 'Not in a party', source: party ? { scope: 'party', id: 'p1', label: party.name } : null, party, selfId: self, online: 3 },
 };
 
-// ?orgs=none: the server sent no org list (free-text tag field). ?tag=VOID: a stored org tag.
-fixtures['party-overlay:orgs'] = q.get('orgs') === 'none' ? [] : [
+// ?orgs=none: no verified orgs. ?orgs=fail: the list could not be loaded. ?unticked=WING,X: stored unticked set.
+fixtures['party-overlay:orgs'] = q.get('orgs') === 'none' ? [] : q.get('orgs') === 'fail' ? null : [
   { tag: 'VOID', name: 'Voidrunners', primary: true },
   { tag: 'WING', name: 'Wingmen', primary: false },
+  { tag: 'TRDR', name: 'Night Traders', primary: false },
 ];
-if (q.get('source') === 'org') (fixtures['party-overlay:get-settings'] as any).partyOverlaySource = 'org';
-(fixtures['party-overlay:get-settings'] as any).partyOverlayOrgTag = q.get('tag') ?? '';
+if (q.get('source') === 'org') {
+  (fixtures['party-overlay:get-settings'] as any).partyOverlaySource = 'org';
+  (fixtures['party-overlay:status'] as any) = {
+    status: 'live', message: null, source: { scope: 'org', id: 'VOID', label: '[VOID] Voidrunners' }, party: null, selfId: null, online: 3,
+    sections: [{ source: { scope: 'org', id: 'VOID', label: '[VOID] Voidrunners' }, online: 3 }, { source: { scope: 'org', id: 'TRDR', label: '[TRDR] Night Traders' }, online: 1 }],
+  };
+}
+(fixtures['party-overlay:get-settings'] as any).partyOverlayOrgTag = '';
+(fixtures['party-overlay:get-settings'] as any).partyOverlayOrgsUnticked = (q.get('unticked') ?? '').split(',').filter(Boolean);
 
 /** Every invoke is recorded so tests can check what was saved (window.__calls). Saves merge like the real IPC. */
 const calls: Array<{ channel: string; arg: unknown }> = [];

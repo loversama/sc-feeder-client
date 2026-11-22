@@ -2,7 +2,9 @@
  * Party / org overlay data feed (main process).
  *
  * Holds the overlay subscription on the authenticated /client socket (OVERLAY-SPEC.md):
- *  - subscribes with `overlay_subscribe` whenever the link (re)authenticates and the feature is on;
+ *  - subscribes with `overlay_subscribe` whenever the link (re)authenticates and the feature is on.
+ *    Org mode first asks for the user's verified orgs (`overlay_orgs`) and subscribes to all of them
+ *    minus the ones unticked in Settings (`{ scope: 'org', tags }`, max 10): one section per org;
  *  - keeps the latest roster / layout from the ack and from `overlay_roster` / `overlay_layout` /
  *    `overlay_party` pushes (older layout versions are ignored), and `overlay_revoked` (org access lost);
  *  - member ids are opaque, room-scoped ids from the server; `selfId` (from the ack) is ours.
@@ -14,6 +16,7 @@
 import type { OverlayLayout, OverlayRoster } from '../../../shared/overlay/overlay-resolve';
 import type { PartyOverlaySettings } from './party-overlay-settings';
 import { sanitizeOrgChoices, type OrgChoice } from '../../../shared/overlay/org-tag';
+import { selectedOrgTags, type OverlaySectionState } from '../../../shared/overlay/overlay-sections';
 
 export type FeedLink = {
   readonly authenticated: boolean;
@@ -27,6 +30,11 @@ export type FeedStatus = 'off' | 'connecting' | 'live' | 'signed-out' | 'no-acce
 export type PartyOverlayState = {
   status: FeedStatus;
   message?: string;
+  /** One per subscribed room, in display order (org mode: the user's org order). */
+  sections: OverlaySectionState[];
+  /** The user's verified orgs as last fetched (null = not known: offline / older server). */
+  orgs: OrgChoice[] | null;
+  /** The fields below mirror the first section (party mode has exactly one). */
   source: { scope: 'org' | 'party'; id: string; label: string } | null;
   roster: OverlayRoster | null;
   layout: OverlayLayout | null;
@@ -67,6 +75,17 @@ const MESSAGES: Partial<Record<FeedStatus | 'rate-limited', string>> = {
   'no-party': 'Not in a party',
   'no-source': 'Pick an org or party in Settings',
 };
+const NO_ORGS_SELECTED = 'No orgs selected. Tick one in Settings';
+const NO_VERIFIED_ORGS = 'No verified org membership. Verify your RSI profile on voidlog.gg';
+const ORGS_UNKNOWN = 'Could not load your orgs';
+
+const EMPTY = { sections: [] as OverlaySectionState[], source: null, roster: null, layout: null, selfId: null };
+
+/** Top-level mirror fields from the first section. */
+function mirror(sections: OverlaySectionState[]) {
+  const f = sections[0];
+  return { sections, source: f?.source ?? null, roster: f?.roster ?? null, layout: f?.layout ?? null, selfId: f?.selfId ?? null };
+}
 
 export class PartyOverlayFeed {
   private state: PartyOverlayState;
@@ -83,14 +102,15 @@ export class PartyOverlayFeed {
       now: Date.now,
       ...deps,
     };
-    this.state = { status: 'off', source: null, roster: null, layout: null, party: null, selfId: null, compact: deps.getSettings().partyOverlayCompact };
+    this.state = { status: 'off', ...EMPTY, orgs: null, party: null, compact: deps.getSettings().partyOverlayCompact };
     const { link } = this.d;
-    link.on('authenticated', () => this.resubscribe());
+    link.on('authenticated', () => this.resubscribe({ refetchOrgs: true }));
     link.on('unauthenticated', () => this.enabled() && this.set({ status: 'connecting', message: undefined }));
     link.onServer('overlay_roster', (r: OverlayRoster) => this.onRoster(r));
     link.onServer('overlay_layout', (l: OverlayLayout) => this.onLayout(l));
     link.onServer('overlay_party', (p: PartyInfo | null) => this.onParty(p));
-    link.onServer('overlay_revoked', () => this.onRevoked());
+    link.onServer('overlay_vids', (v: { scope?: string; id?: string; vids?: Record<string, string> } | undefined) => this.onVids(v));
+    link.onServer('overlay_revoked', (r: { scope?: string; id?: string } | undefined) => this.onRevoked(r));
   }
 
   get current(): PartyOverlayState {
@@ -101,27 +121,53 @@ export class PartyOverlayFeed {
     return this.d.getSettings().partyOverlayEnabled;
   }
 
-  /** Settings changed (or startup): subscribe to the configured source. */
-  resubscribe(): void {
+  /**
+   * Settings changed (or startup): subscribe to the configured source. The org list is fetched on
+   * (re)connect (`refetchOrgs`) or when none is cached; settings saves reuse the cached list, so sliders and
+   * checkboxes do not spend the server's `overlay_orgs` rate limit. A failed fetch keeps the cached list.
+   */
+  resubscribe(opts: { refetchOrgs?: boolean } = {}): void {
     const s = this.d.getSettings();
     const seq = ++this.seq;
     this.state.compact = s.partyOverlayCompact;
-    if (!s.partyOverlayEnabled) return this.set({ status: 'off', source: null, roster: null, layout: null, party: null, selfId: null, message: undefined });
-    if (!this.d.isSignedIn()) return this.set({ status: 'signed-out', roster: null, message: MESSAGES['signed-out'] });
-    if (s.partyOverlaySource === 'org' && !s.partyOverlayOrgTag) return this.set({ status: 'no-source', roster: null, message: MESSAGES['no-source'] });
+    if (!s.partyOverlayEnabled) return this.set({ status: 'off', ...EMPTY, party: null, message: undefined });
+    if (!this.d.isSignedIn()) return this.set({ status: 'signed-out', ...EMPTY, message: MESSAGES['signed-out'] });
     if (!this.d.link.authenticated) return this.set({ status: 'connecting', message: undefined });
-    const payload = s.partyOverlaySource === 'org' ? { scope: 'org', tag: s.partyOverlayOrgTag } : { scope: 'party' };
+    if (s.partyOverlaySource === 'party') return this.subscribe(seq, { scope: 'party' });
+    // Org mode: which orgs? (all verified ones minus the unticked set)
+    const cached = this.state.orgs;
+    const list = cached && !opts.refetchOrgs ? Promise.resolve(cached) : this.orgs().then((o) => o ?? cached);
+    void list.then((orgs) => {
+      if (seq !== this.seq) return;
+      if (orgs) this.state.orgs = orgs;
+      const cur = this.d.getSettings();
+      let tags: string[];
+      if (orgs) tags = selectedOrgTags(orgs, cur.partyOverlayOrgsUnticked);
+      else if (cur.partyOverlayOrgTag) tags = [cur.partyOverlayOrgTag]; // older server: the 0.3.5 single tag
+      else return this.set({ status: this.d.link.authenticated ? 'error' : 'connecting', ...EMPTY, message: this.d.link.authenticated ? ORGS_UNKNOWN : undefined });
+      if (!tags.length) return this.set({ status: 'no-source', ...EMPTY, message: orgs?.length ? NO_ORGS_SELECTED : NO_VERIFIED_ORGS });
+      this.subscribe(seq, orgs ? { scope: 'org', tags } : { scope: 'org', tag: tags[0] }, tags);
+    });
+  }
+
+  private subscribe(seq: number, payload: { scope: 'org' | 'party'; tag?: string; tags?: string[] }, tags: string[] = []): void {
     const sent = this.d.link.sendWithAck('overlay_subscribe', payload, (ack) => {
       if (seq !== this.seq) return; // superseded by a newer subscribe
       if (!ack) return this.set({ status: 'error', message: 'No answer from VOIDLOG.GG' });
+      // A server from before multi-org (0.3.5) only reads `tag`: show the first selected org instead.
+      if (!ack.ok && ack.error === 'bad tag' && payload.tags?.length) return this.subscribe(seq, { scope: 'org', tag: payload.tags[0] }, payload.tags.slice(0, 1));
       if (!ack.ok) {
         const status: FeedStatus = ack.error === 'no-access' || ack.error === 'no-party' || ack.error === 'signed-out' ? ack.error : 'error';
-        // Keep a header label for the overlay even though the server sent no source.
-        const source = s.partyOverlaySource === 'org' ? { scope: 'org' as const, id: s.partyOverlayOrgTag, label: `[${s.partyOverlayOrgTag}]` } : null;
-        return this.set({ status, source, roster: null, layout: null, selfId: null, message: MESSAGES[status] ?? MESSAGES[ack.error as 'rate-limited'] ?? String(ack.error ?? 'Unavailable') });
+        // Keep header labels for the overlay even though the server sent no source.
+        const sections: OverlaySectionState[] = tags.map((t) => ({ source: { scope: 'org', id: t, label: `[${t}]` }, roster: null, layout: null, selfId: null }));
+        return this.set({ status, ...mirror(sections), roster: null, message: MESSAGES[status] ?? MESSAGES[ack.error as 'rate-limited'] ?? String(ack.error ?? 'Unavailable') });
       }
-      this.d.log?.('info', `Overlay subscribed to ${ack.source?.scope} ${ack.source?.label}`);
-      this.set({ status: 'live', message: undefined, source: ack.source ?? null, roster: ack.roster ?? null, layout: ack.layout ?? null, party: ack.party ?? null, selfId: ack.selfId ?? null });
+      const sections: OverlaySectionState[] = ack.multi
+        ? (Array.isArray(ack.sections) ? ack.sections : []).map((x: any) => ({ source: x.source, roster: x.roster ?? null, layout: x.layout ?? null, selfId: x.selfId ?? null, vids: x.vids ?? null }))
+        : [{ source: ack.source, roster: ack.roster ?? null, layout: ack.layout ?? null, selfId: ack.selfId ?? null }];
+      this.d.log?.('info', `Overlay subscribed to ${sections.map((x) => `${x.source?.scope} ${x.source?.label}`).join(', ')}`);
+      if (ack.refused?.length) this.d.log?.('warn', `Overlay refused: ${ack.refused.map((r: any) => `${r.tag} (${r.error})`).join(', ')}`);
+      this.set({ status: 'live', message: undefined, ...mirror(sections.filter((x) => x.source)), party: ack.party ?? null });
     });
     if (!sent) this.set({ status: 'connecting', message: undefined });
   }
@@ -130,20 +176,38 @@ export class PartyOverlayFeed {
   unsubscribe(): void {
     this.seq++;
     if (this.d.link.authenticated) this.d.link.sendWithAck('overlay_unsubscribe', {});
-    this.set({ status: 'off', source: null, roster: null, layout: null, party: null, selfId: null });
+    this.set({ status: 'off', ...EMPTY, party: null });
+  }
+
+  private sectionIndex(scope: string, id: string): number {
+    return this.state.sections.findIndex((x) => x.source.scope === scope && x.source.id === id);
+  }
+
+  private patchSection(i: number, patch: Partial<OverlaySectionState>): void {
+    const sections = this.state.sections.map((x, j) => (j === i ? { ...x, ...patch } : x));
+    this.set(mirror(sections));
   }
 
   private onRoster(r: OverlayRoster): void {
-    if (!this.enabled() || !r || !this.state.source) return;
-    if (r.scope !== this.state.source.scope || r.id !== this.state.source.id) return;
-    this.set({ roster: r });
+    if (!this.enabled() || !r) return;
+    const i = this.sectionIndex(r.scope, r.id);
+    if (i >= 0) this.patchSection(i, { roster: r });
+  }
+
+  /** Fresh viewer-scoped ids for one room (its member set changed). */
+  private onVids(v?: { scope?: string; id?: string; vids?: Record<string, string> }): void {
+    if (!this.enabled() || !v?.scope || !v.id || !v.vids || typeof v.vids !== 'object') return;
+    const i = this.sectionIndex(v.scope, v.id);
+    if (i >= 0) this.patchSection(i, { vids: v.vids });
   }
 
   private onLayout(l: OverlayLayout): void {
-    if (!this.enabled() || !l || !this.state.source) return;
-    if (l.scope !== this.state.source.scope || l.id !== this.state.source.id) return;
-    if (this.state.layout && l.version < this.state.layout.version) return;
-    this.set({ layout: l });
+    if (!this.enabled() || !l) return;
+    const i = this.sectionIndex(l.scope, l.id);
+    if (i < 0) return;
+    const cur = this.state.sections[i].layout;
+    if (cur && l.version < cur.version) return;
+    this.patchSection(i, { layout: l });
   }
 
   /**
@@ -157,14 +221,19 @@ export class PartyOverlayFeed {
     const isOwner = !!selfId && p.ownerId === selfId;
     const prev = this.state.party;
     const code = isOwner && prev?.id === p.id ? prev.code : undefined;
-    this.set({ party: { ...p, selfId, isOwner, code }, source: { scope: 'party', id: p.id, label: p.name } });
+    const first = this.state.sections[0];
+    const source = { scope: 'party' as const, id: p.id, label: p.name };
+    this.set({ party: { ...p, selfId, isOwner, code }, ...mirror([{ source, roster: first?.roster ?? null, layout: first?.layout ?? null, selfId: first?.selfId ?? null }]) });
     if (isOwner) void this.party('get');
   }
 
-  /** The server removed us from an org room (no longer a verified member). */
-  private onRevoked(): void {
+  /** The server removed us from an org room (no longer a verified member): drop that section. */
+  private onRevoked(r?: { scope?: string; id?: string }): void {
     if (!this.enabled()) return;
-    this.set({ status: 'no-access', roster: null, layout: null, message: MESSAGES['no-access'] });
+    const i = r?.scope && r.id ? this.sectionIndex(r.scope, r.id) : -1;
+    const rest = i >= 0 ? this.state.sections.filter((_, j) => j !== i) : [];
+    if (rest.length) return this.set(mirror(rest));
+    this.set({ status: 'no-access', ...EMPTY, message: MESSAGES['no-access'] });
   }
 
   private set(patch: Partial<PartyOverlayState>): void {
@@ -189,9 +258,24 @@ export class PartyOverlayFeed {
   }
 
   /**
-   * The user's verified orgs (`overlay_orgs`), for the Settings tag picker. Resolves null when offline,
-   * on timeout, or when the server does not know the event yet (older server): Settings then shows a
-   * free-text tag field.
+   * Fresh org list for Settings. When it differs from the list the overlay subscribed with (joined or
+   * left an org), re-subscribe so a new org shows up without a restart.
+   */
+  async refreshOrgs(): Promise<OrgChoice[] | null> {
+    const before = this.state.orgs?.map((o) => o.tag).join() ?? null;
+    const orgs = await this.orgs();
+    if (orgs) {
+      const s = this.d.getSettings();
+      const changed = orgs.map((o) => o.tag).join() !== before;
+      this.state.orgs = orgs;
+      if (changed && s.partyOverlayEnabled && s.partyOverlaySource === 'org' && this.state.status !== 'off') this.resubscribe();
+    }
+    return orgs;
+  }
+
+  /**
+   * The user's verified orgs (`overlay_orgs`), for the Settings org checklist. Resolves null when offline,
+   * on timeout, or when the server does not know the event yet (older server).
    */
   orgs(timeoutMs = 5000): Promise<OrgChoice[] | null> {
     return new Promise((resolve) => {
