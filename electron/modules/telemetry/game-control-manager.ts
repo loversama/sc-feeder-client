@@ -6,9 +6,9 @@
  *
  * Nothing here talks to VOIDLOG.GG: no remote triggering in this release.
  */
-import { ipcMain, globalShortcut, type IpcMainInvokeEvent } from 'electron';
+import { app, ipcMain, globalShortcut, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import * as logger from '../logger';
 import { getGameControlSettings, setGameControlSettings, getTelemetrySettings } from '../config-manager';
 import { getMainWindow, getSettingsWindow } from '../window-manager';
@@ -27,7 +27,6 @@ let hotkeys: HotkeyBinder | null = null;
 let client: TelemetryClient | null = null;
 let triggerCfgEnabled: boolean | null = null;
 
-const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
 function getClient(): ControlClient {
   const address = getTelemetryService()?.address ?? '127.0.0.1:2942';
@@ -86,7 +85,8 @@ function isTrusted(e: IpcMainInvokeEvent): boolean {
     { webContentsId: e.sender.id, frameUrl: frame?.url, isMainFrame: !!frame && frame.parent === null },
     {
       trustedWebContentsIds: trusted,
-      appFileRoot: pathToFileURL(path.join(thisDir, '..', 'dist')).href + '/',
+      // Renderer pages live in <app>/dist (app.asar/dist when packaged), same as window-manager loads them.
+      appFileRoot: pathToFileURL(path.join(app.getAppPath(), 'dist')).href + '/',
       devServerUrl: process.env['VITE_DEV_SERVER_URL'] || null,
     },
   );
