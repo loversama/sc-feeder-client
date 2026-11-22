@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { resolveOverlay, type OverlayLayout, type OverlayRoster } from '../../shared/overlay/overlay-resolve';
 import { healthTone, o2Tone, shieldArcs, shieldColor, shipLabel, topViewUrl } from '../../shared/overlay/overlay-format';
 import { normalizeOrgTag, sanitizeOrgChoices } from '../../shared/overlay/org-tag';
-import { partyOverlayBounds, pickDisplay, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
+import { markOverlaySwitchTouched, partyOverlayBounds, partyOverlayDefaultOnMigration, pickDisplay, PARTY_OVERLAY_DEFAULTS, runPartyOverlayMigration, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
 import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../electron/modules/overlay/party-overlay-feed';
 import { fitPlans, isCollapsed, mergeSections, overlayCard, planFit, selectedOrgTags, toggleOrg, WAITING_CARD_MS } from '../../shared/overlay/overlay-sections';
 
@@ -443,4 +443,40 @@ test('auto-fit: full if it fits, else compact, else collapse the lowest sections
   assert.deepEqual(await planFit(3, false, null, async () => 99999), { compact: false, collapsed: 0 }, 'unknown height: no fitting');
   assert.equal(isCollapsed({ compact: true, collapsed: 5 }, 0, 3), false);
   assert.deepEqual(fitPlans(1, false), [{ compact: false, collapsed: 0 }, { compact: true, collapsed: 0 }]);
+});
+
+// --- 0.3.7: on by default -----------------------------------------------------------------------
+
+test('defaults (fresh install): overlay on, source Org, every verified org ticked', () => {
+  assert.equal(PARTY_OVERLAY_DEFAULTS.partyOverlayEnabled, true);
+  assert.equal(PARTY_OVERLAY_DEFAULTS.partyOverlaySource, 'org');
+  assert.deepEqual(PARTY_OVERLAY_DEFAULTS.partyOverlayOrgsUnticked, []);
+});
+
+test('default-on migration: upgrade switches on once; a later "off" sticks; users who chose sticks', () => {
+  const store = (init: Record<string, unknown>) => {
+    const m = new Map(Object.entries(init));
+    return { m, get: (k: string) => m.get(k), set: (k: string, v: unknown) => void m.set(k, v) };
+  };
+  // upgrade from 0.3.6: the old default (off) was stored, no flags yet -> on, migration recorded
+  const up = store({ partyOverlayEnabled: false });
+  assert.equal(runPartyOverlayMigration(up), true);
+  assert.equal(up.m.get('partyOverlayEnabled'), true);
+  assert.equal(up.m.get('partyOverlayDefaultOnMigrated'), true);
+  // the user turns it off in Settings -> touched; next start: the migration does nothing, it stays off
+  markOverlaySwitchTouched(up, { partyOverlayEnabled: false });
+  up.set('partyOverlayEnabled', false);
+  assert.equal(runPartyOverlayMigration(up), false);
+  assert.equal(up.m.get('partyOverlayEnabled'), false);
+  // other settings saves do not count as touching the switch
+  const other = store({});
+  markOverlaySwitchTouched(other, { partyOverlayCompact: true });
+  assert.equal(other.m.get('partyOverlayEnabledTouched'), undefined);
+  // fresh install: nothing stored -> on (same as the default), recorded
+  const fresh = store({});
+  assert.equal(runPartyOverlayMigration(fresh), true);
+  assert.equal(fresh.m.get('partyOverlayEnabled'), true);
+  // touched but not yet migrated (switch used in 0.3.7 before the migration ran): the choice wins
+  assert.deepEqual(partyOverlayDefaultOnMigration({ migrated: undefined, touched: true }), { migrated: true });
+  assert.equal(partyOverlayDefaultOnMigration({ migrated: true, touched: undefined }), null);
 });

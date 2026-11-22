@@ -3,7 +3,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { StoreSchema, ProfileData, SessionInfo, EventCategory, SoundPreferences } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
-import { PARTY_OVERLAY_DEFAULTS, PARTY_OVERLAY_KEYS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from './overlay/party-overlay-settings';
+import { markOverlaySwitchTouched, PARTY_OVERLAY_DEFAULTS, PARTY_OVERLAY_KEYS, runPartyOverlayMigration, sanitizePartyOverlaySetting, type PartyOverlaySettings } from './overlay/party-overlay-settings';
 
 /** Built-in Game.log location, used only until the player's own install is detected or chosen. */
 export const DEFAULT_LOG_FILE_PATH = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
@@ -558,12 +558,19 @@ export function getPartyOverlaySettings(): PartyOverlaySettings {
 }
 
 export function setPartyOverlaySettings(patch: Partial<PartyOverlaySettings>): PartyOverlaySettings {
+  // The user used the on/off switch: from now on their choice wins over the default-on migration.
+  markOverlaySwitchTouched(store as any, patch);
   for (const k of PARTY_OVERLAY_KEYS) {
     if (!patch || patch[k] === undefined) continue;
     const v = sanitizePartyOverlaySetting(k, patch[k]);
     if (v !== undefined) (store as any).set(k, v);
   }
   return getPartyOverlaySettings();
+}
+
+/** One-time 0.3.7 upgrade: overlay on for everyone who never used its switch (see partyOverlayDefaultOnMigration). */
+export function migratePartyOverlayDefaults(): boolean {
+  return runPartyOverlayMigration(store as any);
 }
 
 export function setTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {

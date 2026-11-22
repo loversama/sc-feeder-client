@@ -309,7 +309,7 @@ onUnmounted(() => clearInterval(timer));
       <div v-if="party" class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border space-y-4">
         <div class="flex items-center justify-between">
           <h4 class="text-lg font-semibold text-theme-text-white">In-game party / org overlay</h4>
-          <el-switch :model-value="party.partyOverlayEnabled" @change="(v: boolean) => saveParty({ partyOverlayEnabled: v })" />
+          <el-switch :model-value="party.partyOverlayEnabled" data-test="party-overlay-switch" @change="(v: boolean) => saveParty({ partyOverlayEnabled: v })" />
         </div>
         <p class="text-gray-400 text-sm">MMO-style party list on the right side of the game: names, health and status, with members in the same ship grouped under a ship dial. The order and grouping follow the layout your org (or party owner) sets on voidlog.gg. Click-through; Borderless or Windowed mode only.</p>
         <div v-if="party.partyOverlayEnabled && live && !live.gameRunning" class="text-sm text-amber-400">Waiting for Star Citizen to start<template v-if="live.gameDetection?.message"> ({{ live.gameDetection.message }})</template></div>

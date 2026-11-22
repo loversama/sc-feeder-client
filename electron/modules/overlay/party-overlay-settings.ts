@@ -27,7 +27,7 @@ export type PartyOverlaySettings = {
 };
 
 export const PARTY_OVERLAY_DEFAULTS: PartyOverlaySettings = {
-  partyOverlayEnabled: false,
+  partyOverlayEnabled: true, // on by default since 0.3.7: shows by itself when Star Citizen is detected
   partyOverlaySource: 'org',
   partyOverlayOrgTag: '',
   partyOverlayOrgsUnticked: [],
@@ -76,6 +76,36 @@ export function sanitizePartyOverlaySetting<K extends keyof PartyOverlaySettings
     default:
       return undefined;
   }
+}
+
+/**
+ * 0.3.7: the overlay is on by default. Older versions stored the old default (off) for everyone, so the
+ * stored value cannot tell "never touched" from "turned off". Once per install (`migrated`), users who never
+ * used the switch in 0.3.7+ (`touched` unset) are switched on; the switch then sets `touched`, so turning it
+ * off later sticks. Returns the store writes to make (null = nothing to do).
+ */
+export function partyOverlayDefaultOnMigration(stored: { migrated: unknown; touched: unknown }): { partyOverlayEnabled?: true; migrated: true } | null {
+  if (stored.migrated === true) return null;
+  return stored.touched === true ? { migrated: true } : { partyOverlayEnabled: true, migrated: true };
+}
+
+/** Store keys of the 0.3.7 default-on migration. */
+export const OVERLAY_MIGRATED_KEY = 'partyOverlayDefaultOnMigrated';
+export const OVERLAY_TOUCHED_KEY = 'partyOverlayEnabledTouched';
+type Kv = { get(key: string): unknown; set(key: string, value: unknown): void };
+
+/** Run the default-on migration against a store (electron-store in the app, a Map in tests). True = switched on. */
+export function runPartyOverlayMigration(kv: Kv): boolean {
+  const writes = partyOverlayDefaultOnMigration({ migrated: kv.get(OVERLAY_MIGRATED_KEY), touched: kv.get(OVERLAY_TOUCHED_KEY) });
+  if (!writes) return false;
+  if (writes.partyOverlayEnabled) kv.set('partyOverlayEnabled', true);
+  kv.set(OVERLAY_MIGRATED_KEY, true);
+  return !!writes.partyOverlayEnabled;
+}
+
+/** A settings patch from the user: remember that they used the on/off switch. */
+export function markOverlaySwitchTouched(kv: Kv, patch: Partial<PartyOverlaySettings> | null | undefined): void {
+  if (patch && typeof patch.partyOverlayEnabled === 'boolean') kv.set(OVERLAY_TOUCHED_KEY, true);
 }
 
 /** Window geometry on a display: right edge, `MARGIN` px in, top at offsetY %, height capped. */

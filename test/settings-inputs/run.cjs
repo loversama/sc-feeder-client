@@ -56,8 +56,15 @@ async function open(query) {
 }
 
 async function main() {
+  // 0. Fresh install (real defaults): overlay switched on, showing Org, every verified org ticked.
+  let p = await open({ fresh: '1' });
+  check(await p.js(`document.querySelector('[data-test=party-overlay-switch]')?.classList.contains('is-checked') === true`), 'fresh install: party/org overlay is ON');
+  check(await p.js(`document.querySelector('.el-radio-button.is-active')?.innerText.trim() === 'Org'`), 'fresh install: shows Org');
+  check(await p.js(`[...document.querySelectorAll('.el-checkbox[data-test^=org-]')].every((e) => e.classList.contains('is-checked'))`), 'fresh install: every verified org ticked');
+  p.win.destroy();
+
   // 1. Org checklist: every verified org, all ticked by default; the free-text tag box is gone.
-  let p = await open({ source: 'org' });
+  p = await open({ source: 'org' });
   check(!(await p.exists('[data-test=org-tag]')) && !(await p.exists('[data-test=org-tag-select]')), 'no free-text org tag box any more');
   const ticked = () => p.js(`[...document.querySelectorAll('.el-checkbox[data-test^=org-]')].map((e) => (e.classList.contains('is-checked') ? '+' : '-') + e.getAttribute('data-test').slice(4)).join(',')`);
   check((await ticked()) === '+VOID,+WING,+TRDR', 'every verified org is listed in org order and ticked by default', await ticked());

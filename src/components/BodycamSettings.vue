@@ -40,7 +40,7 @@ const STATE_TEXT: Record<string, string> = {
   sharing: 'Sharing',
   'game-not-running': 'Waiting for Star Citizen to start',
   'window-not-found': 'Game window not found (is it minimised?)',
-  'blank-frame': 'Game window is blank (exclusive fullscreen?). Try borderless windowed',
+  'blank-frame': 'Skipped a blank picture (loading or black screen)',
   offline: 'Not connected to VOIDLOG.GG',
   rejected: 'The server did not accept the frame',
   error: 'Capture error',
@@ -155,7 +155,7 @@ onUnmounted(() => {
       <div v-if="settings.allowLive" class="flex items-center gap-2 text-sm">
         <span class="inline-block w-2.5 h-2.5 rounded-full" :class="info?.live?.state === 'live' ? 'bg-red-500 animate-pulse' : 'bg-gray-500'" />
         <span class="text-theme-text-white">
-          {{ info?.live?.state === 'live' ? `LIVE - being watched by ${info.live.viewers}` : info?.live?.detail ? `Not live (${info.live.detail})` : 'Not live: nobody is watching' }}
+          {{ info?.live?.state === 'live' ? `LIVE - being watched by ${info.live.viewers}` : info?.live?.detail ? `Not live: ${info.live.detail}` : 'Not live: nobody is watching' }}
         </span>
       </div>
     </div>

@@ -13,7 +13,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'node:path';
 import * as logger from '../logger';
 import { getPreloadPath } from '../window-manager';
-import { getPartyOverlaySettings, getTelemetrySettings, setPartyOverlaySettings } from '../config-manager';
+import { getPartyOverlaySettings, getTelemetrySettings, migratePartyOverlayDefaults, setPartyOverlaySettings } from '../config-manager';
 import { getAuthStatus } from '../auth-manager';
 import { getServerLink } from '../server-connection';
 import { isGameRunning, onGamePoll, syncOverlayFeature } from '../telemetry/overlay-window';
@@ -180,6 +180,7 @@ export function getPartyOverlayFeed(): PartyOverlayFeed | null {
 }
 
 export function initPartyOverlay(): void {
+  if (migratePartyOverlayDefaults()) logger.info(MODULE_NAME, 'Overlay switched on by default (0.3.7 upgrade; the Settings switch turns it off)');
   if (!feed) {
     const link = getServerLink();
     feed = new PartyOverlayFeed({

@@ -98,7 +98,7 @@ test('blank frames are skipped', async () => {
   live.start(PARAMS);
   await live.tick();
   assert.equal(log.sent, 0);
-  assert.equal(live.status.detail, 'blank frame');
+  assert.equal(live.status.detail, 'Skipped a blank picture (loading or black screen)');
 });
 
 test('dead-man: stops by itself when the server keepalive is missing for 60 s; keepalive prevents it', async () => {
