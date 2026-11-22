@@ -4,20 +4,26 @@
  * Settings live in the existing electron-store under bodycam* keys (defaults applied here, so the
  * schema in config-manager.ts is untouched). OFF by default.
  */
-import { desktopCapturer, ipcMain, BrowserWindow, Notification, type IpcMainInvokeEvent } from 'electron';
+import { app, desktopCapturer, ipcMain, nativeImage, session, BrowserWindow, Notification, type IpcMainInvokeEvent } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import { execFile } from 'node:child_process';
 import * as logger from './logger';
 import { store } from './config-manager';
 import { getServerLink } from './server-connection';
 import { getSettingsWindow, createSettingsWindow } from './window-manager';
 import { setBodycamTrayState } from './tray-manager';
-import { makeProcessChecker, resolveWindowProcessName } from './bodycam-window';
+import { makeProcessChecker, resolveWindowProcessName, hwndFromSourceId } from './bodycam-window';
+import { LiveSharer, type LiveParams, type LiveStatus } from './bodycam-live';
 import { getAuthStatus, getPersistedClientId } from './auth-manager';
 import {
   BodycamSharer,
   BODYCAM_DEFAULT_INTERVAL_S,
   BODYCAM_DEFAULT_TITLE_PATTERN,
   clampInterval,
+  isBlankBitmap,
+  makeTitleMatcher,
+  matchingWindows,
   type BodycamStatus,
   type CamSource,
 } from './bodycam';
@@ -27,7 +33,7 @@ const GAME_EXE = 'StarCitizen.exe';
 const PROCESS_POLL_MS = 5000;
 
 /** What the renderer may read/write. The window-title matcher is deliberately NOT here. */
-export type BodycamSettings = { enabled: boolean; intervalSec: number; orgs: string[] };
+export type BodycamSettings = { enabled: boolean; intervalSec: number; orgs: string[]; allowLive: boolean };
 type InternalSettings = BodycamSettings & { titlePattern: string };
 
 /** Main-process-only debugging override for the window-title matcher (never a user setting). */
@@ -41,6 +47,7 @@ export function getBodycamSettings(): InternalSettings {
   const orgs = s.get('bodycamOrgs');
   return {
     enabled: s.get('bodycamEnabled') === true,
+    allowLive: s.get('bodycamAllowLive') === true,
     intervalSec: clampInterval(s.get('bodycamIntervalSec') ?? BODYCAM_DEFAULT_INTERVAL_S),
     orgs: Array.isArray(orgs) ? orgs.filter((t: unknown): t is string => typeof t === 'string').map((t) => t.toUpperCase()) : [],
     titlePattern: titlePattern(),
@@ -48,19 +55,95 @@ export function getBodycamSettings(): InternalSettings {
 }
 
 function publicSettings(): BodycamSettings {
-  const { enabled, intervalSec, orgs } = getBodycamSettings();
-  return { enabled, intervalSec, orgs };
+  const { enabled, intervalSec, orgs, allowLive } = getBodycamSettings();
+  return { enabled, intervalSec, orgs, allowLive };
 }
 
 function saveBodycamSettings(patch: Partial<BodycamSettings>): BodycamSettings {
   const s = store as any;
   if (typeof patch.enabled === 'boolean') s.set('bodycamEnabled', patch.enabled);
+  if (typeof patch.allowLive === 'boolean') s.set('bodycamAllowLive', patch.allowLive);
   if (patch.intervalSec !== undefined) s.set('bodycamIntervalSec', clampInterval(patch.intervalSec));
   if (Array.isArray(patch.orgs)) s.set('bodycamOrgs', [...new Set(patch.orgs.filter((t) => typeof t === 'string').map((t) => t.trim().toUpperCase()).filter(Boolean))].slice(0, 20));
   return publicSettings();
 }
 
 let sharer: BodycamSharer | null = null;
+let live: LiveSharer | null = null;
+let liveStatus: LiveStatus = { state: 'idle', viewers: 0, framesSent: 0 };
+const isGameWindow = makeProcessChecker((hwnd) => resolveWindowProcessName(hwnd));
+
+// ---- live capture adapter -------------------------------------------------------------------
+// Primary: ONE window captured through getUserMedia(chromeMediaSourceId) in a hidden, sandboxed
+// window (efficient, touches only that window). Fallback: ~1 fps thumbnails of that exact source id.
+let capWin: BrowserWindow | null = null;
+let capMode: 'media' | 'thumb' | null = null;
+let capSourceId: string | null = null;
+let lastThumbAt = 0;
+
+/** THE verified game window or null: exact title, exactly one match, owned by StarCitizen.exe. */
+async function findGameWindow(): Promise<{ sourceId: string } | null> {
+  const sources = (await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 16, height: 9 }, fetchWindowIcons: false })) as unknown as CamSource[];
+  const matches = matchingWindows(sources, makeTitleMatcher(getBodycamSettings().titlePattern));
+  if (matches.length !== 1 || matches[0].thumbnail.isEmpty()) return null;
+  const hwnd = hwndFromSourceId(matches[0].id);
+  if (!hwnd || !(await isGameWindow(hwnd))) return null;
+  return { sourceId: matches[0].id };
+}
+
+function closeCapture(): void {
+  capMode = null;
+  capSourceId = null;
+  if (capWin && !capWin.isDestroyed()) capWin.destroy(); // destroying the window ends the media stream
+  capWin = null;
+}
+
+async function openCapture(sourceId: string, size: { width: number; height: number }, fps: number): Promise<void> {
+  if (!/^window:\d+:\d+$/.test(sourceId)) throw new Error('bad source id');
+  closeCapture();
+  capSourceId = sourceId;
+  try {
+    const page = path.join(app.getPath('userData'), 'bodycam-live.html');
+    fs.writeFileSync(page, '<!doctype html><meta charset="utf-8"><title>bodycam</title>');
+    const ses = session.fromPartition('bodycam-live');
+    ses.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
+    capWin = new BrowserWindow({ show: false, width: size.width, height: size.height, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, session: ses } });
+    await capWin.loadFile(page);
+    await capWin.webContents.executeJavaScript(`(async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ${JSON.stringify(sourceId)}, maxFrameRate: ${Math.round(fps)} } } });
+      const v = document.createElement('video'); v.muted = true; v.srcObject = stream; await v.play();
+      const c = document.createElement('canvas'); c.width = ${size.width}; c.height = ${size.height};
+      window.__bc = { stream, v, c, ctx: c.getContext('2d') };
+    })()`);
+    capMode = 'media';
+  } catch (err) {
+    logger.warn(MODULE_NAME, `Live getUserMedia capture unavailable (${(err as Error).message}); falling back to ~1 fps thumbnails`);
+    if (capWin && !capWin.isDestroyed()) capWin.destroy();
+    capWin = null;
+    capMode = 'thumb';
+  }
+}
+
+async function grabFrame(quality: number, size: { width: number; height: number }): Promise<{ jpeg: Buffer; blank: boolean } | null> {
+  if (capMode === 'media' && capWin && !capWin.isDestroyed()) {
+    const url: string | null = await capWin.webContents.executeJavaScript(
+      `(() => { const b = window.__bc; if (!b || !b.v.videoWidth) return null; b.ctx.drawImage(b.v, 0, 0, b.c.width, b.c.height); return b.c.toDataURL('image/jpeg', ${(quality / 100).toFixed(2)}); })()`,
+    );
+    if (!url || !url.startsWith('data:image/jpeg;base64,')) return null;
+    const jpeg = Buffer.from(url.slice('data:image/jpeg;base64,'.length), 'base64');
+    const img = nativeImage.createFromBuffer(jpeg);
+    return { jpeg, blank: img.isEmpty() || isBlankBitmap(img.toBitmap()) };
+  }
+  if (capMode === 'thumb' && capSourceId) {
+    if (Date.now() - lastThumbAt < 1000) return null; // enumerating windows is costly: cap the fallback at ~1 fps
+    lastThumbAt = Date.now();
+    const sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: size, fetchWindowIcons: false });
+    const src = sources.find((x) => x.id === capSourceId); // exact id of the verified window only
+    if (!src || src.thumbnail.isEmpty()) return null;
+    return { jpeg: src.thumbnail.toJPEG(quality), blank: isBlankBitmap(src.thumbnail.toBitmap()) };
+  }
+  return null;
+}
 let gameRunning = false;
 let pollTimer: NodeJS.Timeout | null = null;
 let lastStatus: BodycamStatus = { state: 'off', lastSentAt: null, framesSent: 0, lastBytes: null };
@@ -90,8 +173,14 @@ function emitAck<T = any>(event: string, payload?: unknown): Promise<T | undefin
 async function syncServer(): Promise<void> {
   if (!isOnline()) return;
   const s = getBodycamSettings();
-  if (s.enabled && s.orgs.length) await emitAck('bodycam_config', { orgs: s.orgs });
-  else await emitAck('bodycam_stop');
+  if (s.enabled && s.orgs.length) {
+    const ack = await emitAck<{ ok?: boolean; live?: LiveParams | null }>('bodycam_config', { orgs: s.orgs, allowLive: s.allowLive });
+    // A viewer may already be watching (e.g. after a reconnect): the server includes the live params.
+    if (ack?.ok && ack.live) live?.start(ack.live);
+  } else {
+    live?.stop('sharing off');
+    await emitAck('bodycam_stop');
+  }
 }
 
 function applyRunState(): void {
@@ -100,16 +189,28 @@ function applyRunState(): void {
   if (s.enabled && s.orgs.length) {
     sharer?.start();
     // Always-visible indicator while screenshots are being shared (tray tooltip + menu entry).
-    setBodycamTrayState({ text: `Sharing game screenshots with ${s.orgs.join(', ')}`, onStop: () => void stopSharing() });
+    refreshBanner();
   } else {
     sharer?.stop();
     setBodycamTrayState(null);
   }
+  if (!(s.enabled && s.allowLive && s.orgs.length)) live?.stop('live view off');
+}
+
+/** Tray text: screenshots, or LIVE with the viewer count while a live stream is running. */
+function refreshBanner(): void {
+  const s = getBodycamSettings();
+  if (!(s.enabled && s.orgs.length)) return;
+  const text = liveStatus.state === 'live' || (live?.active && liveStatus.viewers > 0)
+    ? `LIVE - being watched by ${liveStatus.viewers}`
+    : `Sharing game screenshots with ${s.orgs.join(', ')}`;
+  setBodycamTrayState({ text, onStop: () => void stopSharing() });
 }
 
 /** Switch sharing off (tray "Stop", notification action, settings). The server deletes the frame immediately. */
 export async function stopSharing(): Promise<void> {
-  saveBodycamSettings({ enabled: false });
+  saveBodycamSettings({ enabled: false, allowLive: false });
+  live?.stop('stopped');
   applyRunState();
   await syncServer();
   for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('bodycam:settings-changed');
@@ -119,7 +220,7 @@ export async function stopSharing(): Promise<void> {
 function announceAutoResume(): void {
   const s = getBodycamSettings();
   if (!(s.enabled && s.orgs.length)) return;
-  const body = `VOIDLOG is sharing small screenshots of your Star Citizen window with ${s.orgs.join(', ')} while the game runs. Click to open settings.`;
+  const body = `VOIDLOG is sharing small screenshots of your Star Citizen window with ${s.orgs.join(', ')} while the game runs${s.allowLive ? ', and org members may open a live view' : ''}. Click to open settings.`;
   try {
     if (Notification.isSupported()) {
       // Shown even when general notifications are off: this is a privacy notice.
@@ -163,6 +264,32 @@ export function initBodycam(): void {
     },
     log: (lvl, msg) => logger[lvl === 'debug' ? 'debug' : lvl](MODULE_NAME, msg),
   });
+  live = new LiveSharer({
+    getSettings: () => {
+      const g = getBodycamSettings();
+      return { enabled: g.enabled, allowLive: g.allowLive, orgs: g.orgs };
+    },
+    isGameRunning: () => gameRunning,
+    isOnline,
+    findWindow: findGameWindow,
+    openCapture,
+    grab: grabFrame,
+    closeCapture,
+    send: (jpeg) => getServerLink().send('submit_bodycam_live', { frame: jpeg }),
+    onStatus: (st) => {
+      liveStatus = st;
+      refreshBanner();
+      for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('bodycam:live-status', st);
+    },
+    log: (lvl, msg) => logger[lvl === 'debug' ? 'debug' : lvl](MODULE_NAME, msg),
+  });
+  // Server tells us when someone starts/stops watching (and re-sends start every 20 s as a keepalive).
+  getServerLink().onServer('bodycam_live_start', (p: any) => {
+    const n = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    live?.start({ fps: n(p?.fps, 5), width: Math.min(640, Math.max(64, n(p?.width, 480))), height: Math.min(360, Math.max(36, n(p?.height, 270))), maxFrameBytes: n(p?.maxFrameBytes, 10_000), maxKbps: n(p?.maxKbps, 400), viewers: n(p?.viewers, 1) });
+  });
+  getServerLink().onServer('bodycam_live_stop', () => live?.stop('stopped'));
+  getServerLink().on('unauthenticated', () => live?.stop('disconnected'));
   pollGame();
   pollTimer = setInterval(pollGame, PROCESS_POLL_MS);
   pollTimer.unref?.();
@@ -177,6 +304,7 @@ export function initBodycam(): void {
 
 export async function shutdownBodycam(): Promise<void> {
   sharer?.stop();
+  live?.stop('shutdown');
   setBodycamTrayState(null);
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
@@ -187,7 +315,7 @@ export function registerBodycamIpc(): void {
   ipcMain.handle('bodycam:get', async (e) => {
     assertSettingsSender(e);
     const server = isOnline() ? await emitAck('bodycam_get') : undefined;
-    return { settings: publicSettings(), status: lastStatus, gameRunning, online: isOnline(), server: server ?? null };
+    return { settings: publicSettings(), status: lastStatus, live: liveStatus, gameRunning, online: isOnline(), server: server ?? null };
   });
   ipcMain.handle('bodycam:set-settings', async (e, patch: Partial<BodycamSettings>) => {
     assertSettingsSender(e);
