@@ -9,7 +9,12 @@ permissions:
   contents: write # publish GitHub Releases with the built-in token (the old GH_TOKEN PAT expired)
 
 jobs:
+  # Packaged smoke test on all three OSes; nothing below runs (nothing is published) unless it passes.
+  smoke:
+    uses: ./.github/workflows/package-smoke.yml
+
   release:
+    needs: smoke
     runs-on: ${{ matrix.os }} # Build on multiple OS
 
     strategy:
@@ -33,7 +38,7 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build Vue/Vite Frontend
-        run: npm run build # Creates the dist/ directory
+        run: npm run build # Creates dist/ + dist-electron/ and fails on non-native externals
 
       - name: Build and Publish Electron app
         env:

@@ -1,4 +1,4 @@
-import { Notification } from 'electron';
+import { app, nativeImage, Notification } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url'; // Added for ESM __dirname
 import { getShowNotifications } from './config-manager.ts'; // Added .ts
@@ -12,8 +12,9 @@ const __dirname = path.dirname(__filename);
 const MODULE_NAME = 'NotificationManager'; // Define module name for logger
 
 // --- Constants ---
-const VITE_PUBLIC = process.env.VITE_PUBLIC || path.join(process.env.APP_ROOT || path.join(__dirname, '..', '..'), 'public');
-const ICON_PATH = path.join(VITE_PUBLIC, 'voidlog-icon.png'); // Adjust if icon name/path changes
+// Resolved lazily (VITE_PUBLIC is set once the app is ready): public/ in dev, <app>/dist when packaged (app.asar).
+const iconPath = () =>
+  path.join(process.env.VITE_PUBLIC || path.join(app.getAppPath(), app.isPackaged ? 'dist' : 'public'), 'voidlog-icon.png');
 
 // --- Function ---
 
@@ -33,7 +34,7 @@ export function showNotification(title: string, body: string) {
         const notification = new Notification({
             title: title,
             body: body,
-            icon: ICON_PATH, // Use app icon
+            icon: nativeImage.createFromPath(iconPath()), // reads from app.asar too
             silent: false // Make noise unless configured otherwise
         });
 

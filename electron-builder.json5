@@ -2,7 +2,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.voidlog.gg",
-  "asar": false,
+  // app code + node_modules in one app.asar: an update replaces one file instead of thousands of
+  // loose ones (launching mid-update crashed with ERR_MODULE_NOT_FOUND). Native modules are
+  // unpacked next to it (app.asar.unpacked). Keep asar on: see CLAUDE.md "Packaging rules".
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "node_modules/better-sqlite3/**",
+    "node_modules/bindings/**",
+    "node_modules/file-uri-to-path/**"
+  ],
   "productName": "VOIDLOG.GG",
   "directories": {
     "output": "release/${version}"
@@ -53,6 +62,8 @@
     ]
   },
   "nsis": {
+    // removes resources\app left by pre-asar installs (Electron would prefer it over app.asar)
+    "include": "installer/installer.nsh",
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,

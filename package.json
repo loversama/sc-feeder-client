@@ -4,11 +4,11 @@
   "description": "VOIDLOG.GG Client - Star Citizen Kill Feed Monitor",
   "author": "VOIDLOG.GG Team",
   "private": true,
-  "version": "0.3.3-alpha",
+  "version": "0.3.4-alpha",
   "type": "module",
   "scripts": {
     "dev": "cross-env NODE_ENV=development FORCE_COLOR=1 vite",
-    "build": "vue-tsc && vite build",
+    "build": "vue-tsc && vite build && node scripts/check-externals.mjs",
     "preview": "vite preview",
     "log-diff": "esbuild scripts/log-diff.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/log-diff.mjs --log-level=warning && node test/telemetry/.out/log-diff.mjs",
     "test:telemetry": "esbuild test/telemetry/telemetry.test.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/telemetry.test.mjs && node --test test/telemetry/.out/telemetry.test.mjs",
@@ -16,7 +16,10 @@
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
-    "release": "npm run build && electron-builder --publish always"
+    "release": "npm run build && electron-builder --dir --publish never && npm run smoke:packaged && electron-builder --publish always",
+    "check:externals": "node scripts/check-externals.mjs",
+    "package:dir": "npm run build && electron-builder --dir --publish never",
+    "smoke:packaged": "node scripts/smoke-packaged.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
