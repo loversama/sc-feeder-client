@@ -6,21 +6,12 @@
  * layout edited on the website; the only local override is "compact".
  */
 import { computed } from 'vue';
-import { resolveOverlay, type OverlayLayout, type OverlayRoster } from '../../../shared/overlay/overlay-resolve';
+import { resolveOverlay } from '../../../shared/overlay/overlay-resolve';
 import { shipLabel } from '../../../shared/overlay/overlay-format';
 import MemberRow from './MemberRow.vue';
+import type { PartyOverlayState } from './types';
 import ShipDial from './ShipDial.vue';
 
-export type PartyOverlayState = {
-  /** live | connecting | signed-out | no-access | no-source | error */
-  status: string;
-  message?: string;
-  source: { scope: 'org' | 'party'; id: string; label: string } | null;
-  roster: OverlayRoster | null;
-  layout: OverlayLayout | null;
-  compact: boolean;
-  hotkey?: string | null;
-};
 
 const props = defineProps<{ state: PartyOverlayState }>();
 

@@ -130,3 +130,4 @@ build/
 # User specific ignores
 .git_disabled/
 test/telemetry/.out/
+test/overlay/.out/

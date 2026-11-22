@@ -40,6 +40,8 @@ export default defineConfig({
           'webcontents-view-preload': path.join(__dirname, 'electron/webcontents-view-preload.ts'),
           // Preload for the in-game telemetry overlay
           'overlay-preload': path.join(__dirname, 'electron/overlay-preload.ts'),
+          // Preload for the in-game party / org overlay
+          'party-overlay-preload': path.join(__dirname, 'electron/party-overlay-preload.ts'),
         },
         vite: {
           build: {
@@ -65,6 +67,7 @@ export default defineConfig({
         webContent: path.resolve(__dirname, 'web-content.html'),
         login: path.resolve(__dirname, 'login.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
+        partyOverlay: path.resolve(__dirname, 'party-overlay.html'),
       },
       output: {
         // Explicitly disable inlineDynamicImports for multiple inputs

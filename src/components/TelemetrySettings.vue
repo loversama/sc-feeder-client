@@ -14,6 +14,23 @@ type Settings = {
   telemetryRecord: boolean;
 };
 
+type PartySettings = {
+  partyOverlayEnabled: boolean;
+  partyOverlaySource: 'org' | 'party';
+  partyOverlayOrgTag: string;
+  partyOverlayHotkey: string;
+  partyOverlayCompact: boolean;
+  partyOverlayScale: number;
+  partyOverlayOffsetY: number;
+};
+type PartyStatus = {
+  status: string;
+  message: string | null;
+  source: { scope: string; id: string; label: string } | null;
+  party: { id: string; name: string; code: string; ownerId: string; members: { userId: string; name: string }[] } | null;
+  online: number;
+} | null;
+
 type CfgRow = { channel: string; active: boolean; path: string; exists: boolean; enabled: boolean };
 
 const api = (window as any).logMonitorApi;
@@ -21,15 +38,50 @@ const settings = ref<Settings | null>(null);
 const cfg = ref<{ path: string; exists: boolean; enabled: boolean; channels: CfgRow[] } | null>(null);
 const live = ref<any>(null);
 const busy = ref(false);
+const party = ref<PartySettings | null>(null);
+const partyStatus = ref<PartyStatus>(null);
+const joinCode = ref('');
+const partyBusy = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
   settings.value = await api.invoke('telemetry:get-settings');
+  party.value = await api.invoke('party-overlay:get-settings');
   cfg.value = await api.invoke('telemetry:user-cfg-status');
 }
 
 async function refreshLive() {
   live.value = await api.invoke('telemetry:get-state');
+  partyStatus.value = await api.invoke('party-overlay:status');
+}
+
+async function saveParty(patch: Partial<PartySettings>) {
+  party.value = await api.invoke('party-overlay:set-settings', patch);
+}
+
+async function partyAction(action: 'create' | 'join' | 'leave') {
+  partyBusy.value = true;
+  try {
+    const r = await api.invoke('party-overlay:party', { action, code: action === 'join' ? joinCode.value : undefined });
+    if (!r?.ok) ElMessage.error(r?.error ?? 'Party action failed');
+    else {
+      if (action === 'join') joinCode.value = '';
+      if (action !== 'leave' && party.value?.partyOverlaySource !== 'party') await saveParty({ partyOverlaySource: 'party' });
+      ElMessage.success(action === 'leave' ? 'Left the party' : `Party: ${r.party?.name} (code ${r.party?.code})`);
+    }
+    partyStatus.value = await api.invoke('party-overlay:status');
+  } finally {
+    partyBusy.value = false;
+  }
+}
+
+async function copyCode(code: string) {
+  try {
+    await navigator.clipboard.writeText(code);
+    ElMessage.success('Invite code copied');
+  } catch {
+    ElMessage.info(`Invite code: ${code}`);
+  }
 }
 
 async function save(patch: Partial<Settings>) {
@@ -153,6 +205,61 @@ onUnmounted(() => clearInterval(timer));
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
           <el-input class="max-w-xs" :model-value="settings.overlayHotkey" @change="(v: string) => save({ overlayHotkey: v.trim() })" placeholder="CommandOrControl+Alt+O" />
+        </div>
+      </div>
+
+      <!-- Party / org overlay -->
+      <div v-if="party" class="bg-theme-bg-panel/80 rounded-lg p-6 border border-theme-border space-y-4">
+        <div class="flex items-center justify-between">
+          <h4 class="text-lg font-semibold text-theme-text-white">In-game party / org overlay</h4>
+          <el-switch :model-value="party.partyOverlayEnabled" @change="(v: boolean) => saveParty({ partyOverlayEnabled: v })" />
+        </div>
+        <p class="text-gray-400 text-sm">MMO-style party list on the right side of the game: names, health and status, with members in the same ship grouped under a ship dial. The order and grouping follow the layout your org (or party owner) sets on voidlog.gg. Click-through; Borderless or Windowed mode only.</p>
+        <div v-if="party.partyOverlayEnabled && partyStatus" class="text-sm" :class="partyStatus.status === 'live' ? 'text-green-400' : 'text-amber-400'">
+          {{ partyStatus.status === 'live' ? `Live: ${partyStatus.source?.label ?? ''} · ${partyStatus.online} online` : (partyStatus.message || partyStatus.status) }}
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Show</span>
+          <el-radio-group :model-value="party.partyOverlaySource" size="small" @change="(v: any) => saveParty({ partyOverlaySource: v })">
+            <el-radio-button value="org">Org</el-radio-button>
+            <el-radio-button value="party">Party</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div v-if="party.partyOverlaySource === 'org'" class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Org tag</span>
+          <el-input class="max-w-xs" :model-value="party.partyOverlayOrgTag" @change="(v: string) => saveParty({ partyOverlayOrgTag: v })" placeholder="e.g. VOID" />
+        </div>
+        <div v-else class="space-y-3">
+          <div v-if="partyStatus?.party" class="flex items-center justify-between gap-4">
+            <span class="text-theme-text-white">{{ partyStatus.party.name }} · {{ partyStatus.party.members.length }}/10</span>
+            <div class="flex gap-2">
+              <el-button size="small" @click="copyCode(partyStatus.party.code)">Invite code {{ partyStatus.party.code }}</el-button>
+              <el-button size="small" :loading="partyBusy" @click="partyAction('leave')">Leave</el-button>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <el-button size="small" :loading="partyBusy" @click="partyAction('create')">Create a party</el-button>
+            <div class="flex gap-2">
+              <el-input v-model="joinCode" class="w-36" size="small" placeholder="Invite code" maxlength="8" />
+              <el-button size="small" :loading="partyBusy" :disabled="!joinCode.trim()" @click="partyAction('join')">Join</el-button>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-theme-text-white">Compact (just for me)</span>
+          <el-switch :model-value="party.partyOverlayCompact" @change="(v: boolean) => saveParty({ partyOverlayCompact: v })" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Size</span>
+          <el-slider class="max-w-xs" :model-value="party.partyOverlayScale" :min="0.75" :max="1.5" :step="0.05" @change="(v: any) => saveParty({ partyOverlayScale: Number(v) })" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Distance from top (% of screen)</span>
+          <el-slider class="max-w-xs" :model-value="party.partyOverlayOffsetY" :min="0" :max="60" :step="1" @change="(v: any) => saveParty({ partyOverlayOffsetY: Number(v) })" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
+          <el-input class="max-w-xs" :model-value="party.partyOverlayHotkey" @change="(v: string) => saveParty({ partyOverlayHotkey: v.trim() })" placeholder="CommandOrControl+Alt+P" />
         </div>
       </div>
 
