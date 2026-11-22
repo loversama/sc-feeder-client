@@ -169,6 +169,13 @@ async function openCfgDialog() {
   }
 }
 
+async function pickGameFolder() {
+  if (!api) return;
+  const r = await api.selectGameRoot();
+  cfgPreview.value = r.preview;
+  if (!r.ok && !r.canceled) pushToast({ ok: false, code: 'ERROR', action: 'user.cfg', label: 'Star Citizen folder', message: r.error ?? 'Not a Star Citizen folder', sent: false, at: Date.now() });
+}
+
 async function enableCfg() {
   if (!api) return;
   cfgPreview.value = null;
@@ -396,6 +403,11 @@ const ago = (t: number) => {
         <h3>Enable game control in user.cfg</h3>
         <p class="muted">This line will be added (or an existing value changed to 1). A dated <code>.bak</code> copy of each existing file is saved first. Restart Star Citizen afterwards.</p>
         <pre class="cfg-line">{{ cfgPreview.line }}</pre>
+        <div class="cfg-root" :class="{ warn: cfgPreview.source === 'default' }">
+          <span v-if="cfgPreview.source === 'default'">No Star Citizen folder is configured yet, so this is the default install path. Pick your folder if the game is elsewhere.</span>
+          <span v-else>Star Citizen folder: <code>{{ cfgPreview.root }}</code> {{ cfgPreview.source === 'log-path' ? '(from your Game.log path)' : '' }}</span>
+          <button class="btn-small" @click="pickGameFolder">Change folder...</button>
+        </div>
         <ul class="cfg-files">
           <li v-for="f in cfgPreview.files" :key="f.path">
             <span class="cfg-ch">{{ f.channel }}</span>
@@ -487,6 +499,8 @@ h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacin
 .modal-wide { width: 560px; }
 .modal code { font-size: 11px; background: #1a1a1a; padding: 1px 4px; border-radius: 3px; }
 .cfg-line { margin: 0 0 10px; padding: 10px 12px; background: #161616; border: 1px solid #404040; border-radius: 6px; font-size: 12.5px; color: #c7c7ff; white-space: pre-wrap; word-break: break-all; }
+.cfg-root { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #d4d4d4; margin: 0 0 10px; }
+.cfg-root.warn { color: #fbbf24; }
 .cfg-files { list-style: none; padding: 0; margin: 0; font-size: 11.5px; border: 1px solid #333; border-radius: 6px; }
 .cfg-files li { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; padding: 6px 10px; border-top: 1px solid #2a2a2a; align-items: baseline; }
 .cfg-files li:first-child { border-top: 0; }

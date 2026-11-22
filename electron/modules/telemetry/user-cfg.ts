@@ -28,3 +28,43 @@ export function enableCfgFlag(text: string, key: string): { text: string; change
   if (m) return { text: text.replace(re, `${m[1]}${line}`), changed: true };
   return { text: `${text}${text && !text.endsWith('\n') ? eol : ''}${line}${eol}`, changed: true };
 }
+
+export type CfgTarget = { channel: string; path: string };
+export type CfgTargets = {
+  targets: CfgTarget[];
+  /** Folder the channels were found in (shown to the player). */
+  root: string;
+  /** game-folder = configured Star Citizen folder; log-path = siblings of the configured Game.log; default = nothing configured */
+  source: 'game-folder' | 'log-path' | 'default';
+};
+
+const dirOf = (p: string) => p.replace(/[\\/]+[^\\/]*$/, '');
+const sepOf = (p: string) => (p.includes('\\') ? '\\' : '/');
+
+/**
+ * Which user.cfg files to edit, from the player's configured install (the built-in default path is
+ * used only when nothing is configured):
+ *   1. channels of the configured game folder (LIVE / PTU / EPTU / TECH-PREVIEW ... that exist)
+ *   2. else sibling channel folders of the configured Game.log (E:\StarCitizen\LIVE\Game.log → E:\StarCitizen\*)
+ *   3. else the configured Game.log's own folder
+ */
+export async function resolveCfgTargets(o: {
+  trackerChannels: Array<{ name: string; userCfgPath: string }>;
+  gameRoot: string;
+  logPath: string;
+  defaultLogPath: string;
+  discover: (root: string) => Promise<Array<{ name: string; userCfgPath: string }>>;
+}): Promise<CfgTargets> {
+  const isDefault = !o.gameRoot && (!o.logPath || o.logPath === o.defaultLogPath);
+  if (o.gameRoot && o.trackerChannels.length) {
+    return { targets: o.trackerChannels.map((c) => ({ channel: c.name, path: c.userCfgPath })), root: o.gameRoot, source: 'game-folder' };
+  }
+  const logPath = o.logPath || o.defaultLogPath;
+  const channelDir = dirOf(logPath);
+  const root = dirOf(channelDir);
+  const siblings = root ? await o.discover(root) : [];
+  const source = isDefault ? 'default' : 'log-path';
+  if (siblings.length) return { targets: siblings.map((c) => ({ channel: c.name, path: c.userCfgPath })), root, source };
+  const name = channelDir.split(/[\\/]/).pop() || 'LIVE';
+  return { targets: [{ channel: name, path: `${channelDir}${sepOf(channelDir)}user.cfg` }], root: channelDir, source };
+}

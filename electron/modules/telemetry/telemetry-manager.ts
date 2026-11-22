@@ -250,7 +250,7 @@ export async function getUserCfgStatus(): Promise<UserCfgStatus & { channels: Ch
   return { path: own.path, exists: own.exists, enabled: own.enabled, triggerEnabled: own.triggerEnabled, channels: channels.length ? channels : [own] };
 }
 
-async function readUserCfgStatus(p: string): Promise<UserCfgStatus> {
+export async function readUserCfgStatus(p: string): Promise<UserCfgStatus> {
   try {
     const text = await fsp.readFile(p, 'utf8');
     return { path: p, exists: true, enabled: cfgFlag(text, TELEMETRY_CFG_KEY), triggerEnabled: cfgFlag(text, TRIGGER_CFG_KEY) };
@@ -280,9 +280,11 @@ export async function enableTelemetryInUserCfg(
   return { path: first.path, changed: results.some((r) => r.changed), backup: first.backup, results };
 }
 
-/** Enable game control (TriggerGameAction) in user.cfg; same rules as enableTelemetryInUserCfg. */
-export function enableGameControlInUserCfg(channel: string | 'all' = 'all') {
-  return enableTelemetryInUserCfg(channel, TRIGGER_CFG_KEY);
+/** Set `key=1` in exactly these files (each existing file backed up first). */
+export async function enableKeyInCfgFiles(targets: Array<{ channel: string; path: string }>, key: string) {
+  const results = [];
+  for (const tg of targets) results.push({ channel: tg.channel, ...(await enableInCfgFile(tg.path, tg.channel, key)) });
+  return { changed: results.some((r) => r.changed), results };
 }
 
 async function enableInCfgFile(p: string, channel: string, key: string): Promise<{ path: string; changed: boolean; backup?: string }> {

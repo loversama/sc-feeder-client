@@ -66,13 +66,17 @@ export function installFixtureControlBridge(params: URLSearchParams): void {
       return { state: { ...state }, problem: null };
     },
     checkHotkey: async () => null,
+    // Mirrors a player whose configured Game.log is E:\StarCitizen\LIVE\Game.log (LIVE + PTU folders exist).
     userCfgPreview: async () => ({
       line: 'server.game.telemetry.trigger.actions.enabled=1',
+      root: 'E:\\StarCitizen',
+      source: params.get('cfgsrc') === 'default' ? 'default' : 'game-folder',
       files: [
-        { channel: 'LIVE', path: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\user.cfg', exists: true, alreadyEnabled: false },
-        { channel: 'PTU', path: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\PTU\\user.cfg', exists: false, alreadyEnabled: false },
+        { channel: 'LIVE', path: 'E:\\StarCitizen\\LIVE\\user.cfg', exists: true, alreadyEnabled: false },
+        { channel: 'PTU', path: 'E:\\StarCitizen\\PTU\\user.cfg', exists: false, alreadyEnabled: false },
       ],
     }),
+    selectGameRoot: async () => ({ ok: false, canceled: true, preview: await api.userCfgPreview() }),
     enableTriggerInUserCfg: async () => ({ ok: true, changed: true }),
     onEvent: (cb) => (listeners.add(cb), () => listeners.delete(cb)),
   };

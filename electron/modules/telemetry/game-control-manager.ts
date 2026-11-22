@@ -6,18 +6,22 @@
  *
  * Nothing here talks to VOIDLOG.GG: no remote triggering in this release.
  */
-import { app, ipcMain, globalShortcut, type IpcMainInvokeEvent } from 'electron';
+import { app, dialog, ipcMain, globalShortcut, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as logger from '../logger';
-import { getGameControlSettings, setGameControlSettings, getTelemetrySettings } from '../config-manager';
+import { getGameControlSettings, setGameControlSettings, getTelemetrySettings, getGameRoot, getStoredLogPath, DEFAULT_LOG_FILE_PATH } from '../config-manager';
+import { getChannelTracker, selectGameRoot } from '../channel-manager';
+import { discoverChannels } from '../game-channels';
+import { applyGameRootChange } from '../log-watcher';
+import { resolveCfgTargets, type CfgTarget } from './user-cfg';
 import { getMainWindow, getSettingsWindow } from '../window-manager';
 import { GameControl, type ControlClient } from './game-control';
 import { HotkeyBinder } from './game-control-hotkeys';
 import { dangerInfo } from './game-control-catalog';
 import { isTrustedControlSender } from './game-control-security';
 import { TelemetryClient } from './telemetry-client';
-import { getTelemetryService, getUserCfgStatus, enableGameControlInUserCfg, TRIGGER_CFG_KEY } from './telemetry-manager';
+import { getTelemetryService, getUserCfgStatus, enableKeyInCfgFiles, readUserCfgStatus, TRIGGER_CFG_KEY } from './telemetry-manager';
 
 const MODULE_NAME = 'GameControl';
 const EVENT_CHANNEL = 'game-control:event';
@@ -26,6 +30,26 @@ let control: GameControl | null = null;
 let hotkeys: HotkeyBinder | null = null;
 let client: TelemetryClient | null = null;
 let triggerCfgEnabled: boolean | null = null;
+/** Files listed in the last preview shown to the player: the only files "Write" may touch. */
+let previewTargets: CfgTarget[] | null = null;
+
+async function userCfgPreview() {
+  const r = await resolveCfgTargets({
+    trackerChannels: getChannelTracker()?.channels ?? [],
+    gameRoot: getGameRoot(),
+    logPath: getStoredLogPath(),
+    defaultLogPath: DEFAULT_LOG_FILE_PATH,
+    discover: discoverChannels,
+  });
+  previewTargets = r.targets;
+  const files = await Promise.all(
+    r.targets.map(async (t) => {
+      const st = await readUserCfgStatus(t.path);
+      return { channel: t.channel, path: t.path, exists: st.exists, alreadyEnabled: st.triggerEnabled };
+    }),
+  );
+  return { line: `${TRIGGER_CFG_KEY}=1`, root: r.root, source: r.source, files };
+}
 
 
 function getClient(): ControlClient {
@@ -187,18 +211,23 @@ export function initGameControl(): void {
     broadcastState();
     return { state: snapshot(), problem };
   });
-  /** Exactly what "Add to user.cfg" would write, per channel (shown to the player before any write). */
-  handle('game-control:user-cfg-preview', async () => {
-    const st = await getUserCfgStatus();
-    return {
-      line: `${TRIGGER_CFG_KEY}=1`,
-      files: st.channels.map((c) => ({ channel: c.channel, path: c.path, exists: c.exists, alreadyEnabled: c.triggerEnabled })),
-    };
+  /** Exactly what "Write to user.cfg" would change, from the player's configured install. */
+  handle('game-control:user-cfg-preview', () => userCfgPreview());
+  /** Let the player pick their Star Citizen folder (same as Settings → channels), then re-preview. */
+  handle('game-control:select-game-root', async () => {
+    const r = await dialog.showOpenDialog({ title: 'Select your Star Citizen folder (the one containing LIVE, PTU, ...)', defaultPath: getGameRoot() || undefined, properties: ['openDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true, preview: await userCfgPreview() };
+    const res = await selectGameRoot(r.filePaths[0]);
+    if (res.ok) await applyGameRootChange();
+    return { ok: res.ok, error: res.error, preview: await userCfgPreview() };
   });
   // Only ever called from the confirm dialog's button (explicit player click); backs up each file first.
   handle('game-control:enable-user-cfg', async () => {
     try {
-      const r = await enableGameControlInUserCfg('all');
+      const targets = previewTargets;
+      if (!targets?.length) return { ok: false, error: 'Open the preview first.' };
+      previewTargets = null;
+      const r = await enableKeyInCfgFiles(targets, TRIGGER_CFG_KEY);
       await refreshCfgStatus();
       broadcastState();
       return { ok: true, changed: r.changed };

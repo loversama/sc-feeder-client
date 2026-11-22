@@ -10,7 +10,7 @@ import { GameControl, mapGameStatus, type ControlClient } from '../../electron/m
 import { classifyAction, dangerInfo } from '../../electron/modules/telemetry/game-control-catalog';
 import { HotkeyBinder, normalizeAccelerator, type ShortcutApi } from '../../electron/modules/telemetry/game-control-hotkeys';
 import { isTrustedControlSender } from '../../electron/modules/telemetry/game-control-security';
-import { enableCfgFlag, cfgFlag, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
+import { enableCfgFlag, cfgFlag, resolveCfgTargets, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
 import { SAMPLE_ACTIONS as FIXTURE } from './fixtures/sample-actions';
 
 // --- user.cfg edits (player's real game config) -----------------------------------------------
@@ -39,6 +39,28 @@ test('user.cfg: enable telemetry / game control keys safely', () => {
   assert.equal(cfgFlag(`${TEL}=\n1\n`, TEL), false);
   // empty / new file
   assert.equal(enableCfgFlag('', TEL).text, `${TEL}=1\n`);
+});
+
+test('user.cfg: targets come from the configured install, default path only when nothing is configured', async () => {
+  const DEFAULT = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
+  const fs: Record<string, string[]> = { 'E:\\StarCitizen': ['LIVE', 'PTU'], 'C:\\Program Files\\Roberts Space Industries\\StarCitizen': ['LIVE'] };
+  const discover = async (root: string) => (fs[root] ?? []).map((n) => ({ name: n, userCfgPath: `${root}\\${n}\\user.cfg` }));
+  // 1. configured game folder → its channels
+  let r = await resolveCfgTargets({ trackerChannels: await discover('E:\\StarCitizen'), gameRoot: 'E:\\StarCitizen', logPath: 'E:\\StarCitizen\\LIVE\\Game.log', defaultLogPath: DEFAULT, discover });
+  assert.equal(r.source, 'game-folder');
+  assert.deepEqual(r.targets.map((t) => t.path), ['E:\\StarCitizen\\LIVE\\user.cfg', 'E:\\StarCitizen\\PTU\\user.cfg']);
+  // 2. only a Game.log configured → sibling channel folders of it
+  r = await resolveCfgTargets({ trackerChannels: [], gameRoot: '', logPath: 'E:\\StarCitizen\\LIVE\\Game.log', defaultLogPath: DEFAULT, discover });
+  assert.equal(r.source, 'log-path');
+  assert.equal(r.root, 'E:\\StarCitizen');
+  assert.deepEqual(r.targets.map((t) => t.channel), ['LIVE', 'PTU']);
+  // 3. odd layout → the Game.log's own folder
+  r = await resolveCfgTargets({ trackerChannels: [], gameRoot: '', logPath: 'D:\\Games\\SC\\Game.log', defaultLogPath: DEFAULT, discover });
+  assert.deepEqual(r.targets, [{ channel: 'SC', path: 'D:\\Games\\SC\\user.cfg' }]);
+  // 4. nothing configured → default install, flagged so the UI asks the player to pick a folder
+  r = await resolveCfgTargets({ trackerChannels: [], gameRoot: '', logPath: DEFAULT, defaultLogPath: DEFAULT, discover });
+  assert.equal(r.source, 'default');
+  assert.equal(r.targets[0].path, 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\user.cfg');
 });
 
 const root = loadTelemetryRoot();

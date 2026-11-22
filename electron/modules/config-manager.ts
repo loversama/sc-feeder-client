@@ -4,13 +4,16 @@ import { app } from 'electron';
 import { StoreSchema, ProfileData, SessionInfo, EventCategory, SoundPreferences } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
 
+/** Built-in Game.log location, used only until the player's own install is detected or chosen. */
+export const DEFAULT_LOG_FILE_PATH = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
+
 const MODULE_NAME = 'ConfigManager'; // Define module name for logger
 
 // Schema definition helps with type safety and defaults
 const schema = {
   logFilePath: {
     type: 'string',
-    default: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log' // Default path - Consider making this OS-aware or prompting user
+    default: DEFAULT_LOG_FILE_PATH // Default path - Consider making this OS-aware or prompting user
   },
   /** Star Citizen install root (the folder holding LIVE, PTU, ...). '' = single-file mode (logFilePath only). */
   gameRoot: { type: 'string', default: '' },

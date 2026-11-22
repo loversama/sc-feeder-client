@@ -39,7 +39,12 @@ export type ControlEvent =
   | { type: 'state'; state: ControlState }
   | { type: 'result'; result: ControlResult };
 
-export type UserCfgPreview = { line: string; files: Array<{ channel: string; path: string; exists: boolean; alreadyEnabled: boolean }> };
+export type UserCfgPreview = {
+  line: string;
+  root: string;
+  source: 'game-folder' | 'log-path' | 'default';
+  files: Array<{ channel: string; path: string; exists: boolean; alreadyEnabled: boolean }>;
+};
 
 export type VoidlogControlApi = {
   getState(): Promise<ControlState>;
@@ -52,6 +57,7 @@ export type VoidlogControlApi = {
   setHotkey(action: string, accelerator: string | null): Promise<{ state: ControlState; problem: string | null }>;
   checkHotkey(action: string, accelerator: string): Promise<string | null>;
   userCfgPreview(): Promise<UserCfgPreview>;
+  selectGameRoot(): Promise<{ ok: boolean; canceled?: boolean; error?: string; preview: UserCfgPreview }>;
   enableTriggerInUserCfg(): Promise<{ ok: boolean; error?: string; changed?: boolean }>;
   onEvent(cb: (e: ControlEvent) => void): () => void;
 };
