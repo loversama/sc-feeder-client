@@ -9,5 +9,7 @@ export type PartyOverlayState = {
   roster: OverlayRoster | null;
   layout: OverlayLayout | null;
   compact: boolean;
+  /** The local player's VOIDLOG user id ("you" marker). */
+  selfId?: string | null;
   hotkey?: string | null;
 };

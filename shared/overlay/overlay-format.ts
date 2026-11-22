@@ -49,6 +49,9 @@ export function shieldColor(level: number): string {
   return 'rgb(132,132,252)';
 }
 
+/** Health bar colour: same ramp as the shields (violet healthy, amber, orange, red critical). */
+export const healthColor = shieldColor;
+
 export type Tone = 'ok' | 'warn' | 'bad' | 'dim';
 
 /** Health bar tone: red below 25 %, amber below 50 %. */

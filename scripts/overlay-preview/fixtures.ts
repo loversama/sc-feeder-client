@@ -8,6 +8,7 @@ export const previewRoster: OverlayRoster = {
   ships: [
     { key: '877604806898', className: 'RSI_Galaxy', name: 'RSI_Galaxy_877604806898', hull: 92, shields: 61, faces: [100, 64, 0, 80] },
     { key: '555000111222', className: 'DRAK_Cutlass_Black', name: 'DRAK_Cutlass_Black_555000111222', hull: 18, shields: 12, faces: [12] },
+    { key: '877600000001', className: 'RSI_Galaxy', name: 'RSI_Galaxy_877600000001', hull: 47, shields: 30, faces: [40, 22, 0, 35] },
     { key: '555000111999', className: 'ANVL_Arrow', name: 'ANVL_Arrow_555000111999', hull: 100, shields: 100, faces: [100, 100] },
   ],
   members: [
@@ -20,7 +21,7 @@ export const previewRoster: OverlayRoster = {
     { userId: 'u-jo', name: 'JoHalloran', status: 'ship', health: 21, o2: 9, shipKey: '555000111222', crewRole: 'TURRET' },
     { userId: 'u-fen', name: 'Fen', status: 'ship', health: 100, o2: 100, shipKey: '555000111999', crewRole: 'PILOT' },
     { userId: 'u-gus', name: 'GusOrtega', status: 'dead', health: null, o2: null, shipKey: null },
-    { userId: 'u-ivy', name: 'IvyQuill', status: 'foot', health: 100, o2: 100, shipKey: null },
+    { userId: 'u-ivy', name: 'IvyQuill', status: 'ship', health: 42, o2: 100, shipKey: '877600000001', crewRole: 'PILOT' },
   ],
 };
 

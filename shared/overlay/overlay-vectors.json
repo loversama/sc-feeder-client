@@ -1,61 +1,405 @@
 {
-  "_comment": "Shared test vectors for overlay-resolve.ts. Copied verbatim into the client and website repos; every copy must pass all of them.",
+  "_comment": "Shared test vectors for overlay-resolve.ts. Copied verbatim into the client and website repos; every copy must pass all of them. A case may carry its own \"roster\"; otherwise the top-level roster is used.",
   "roster": {
     "scope": "org",
     "id": "VOID",
     "generatedAt": "2026-11-22T12:00:00.000Z",
     "ships": [
-      { "key": "877604806898", "className": "RSI_Galaxy", "name": "RSI_Galaxy_877604806898", "hull": 92, "shields": 71, "faces": [100, 64, 0, 80] },
-      { "key": "555000111222", "className": "DRAK_Cutlass_Black", "name": "DRAK_Cutlass_Black_555000111222", "hull": 40, "shields": 12, "faces": [12] },
-      { "key": "555000111999", "className": "DRAK_Cutlass_Black", "name": "DRAK_Cutlass_Black_555000111999", "hull": 100, "shields": 100, "faces": [100] }
+      {
+        "key": "877604806898",
+        "className": "RSI_Galaxy",
+        "name": "RSI_Galaxy_877604806898",
+        "hull": 92,
+        "shields": 71,
+        "faces": [
+          100,
+          64,
+          0,
+          80
+        ]
+      },
+      {
+        "key": "555000111222",
+        "className": "DRAK_Cutlass_Black",
+        "name": "DRAK_Cutlass_Black_555000111222",
+        "hull": 40,
+        "shields": 12,
+        "faces": [
+          12
+        ]
+      },
+      {
+        "key": "555000111999",
+        "className": "DRAK_Cutlass_Black",
+        "name": "DRAK_Cutlass_Black_555000111999",
+        "hull": 100,
+        "shields": 100,
+        "faces": [
+          100
+        ]
+      }
     ],
     "members": [
-      { "userId": "u-ava", "name": "Ava", "status": "ship", "health": 100, "o2": 100, "shipKey": "877604806898", "crewRole": "TURRET" },
-      { "userId": "u-bo", "name": "Bo", "status": "ship", "health": 88, "o2": 100, "shipKey": "877604806898", "crewRole": "PILOT" },
-      { "userId": "u-cy", "name": "cy", "status": "foot", "health": 55, "o2": 22, "shipKey": null },
-      { "userId": "u-dee", "name": "Dee", "status": "downed", "health": null, "o2": 100, "shipKey": null },
-      { "userId": "u-eli", "name": "Eli", "status": "ship", "health": 100, "o2": 100, "shipKey": "555000111222", "crewRole": "PILOT" },
-      { "userId": "u-fen", "name": "Fen", "status": "ship", "health": 100, "o2": 100, "shipKey": "555000111999", "crewRole": "PILOT" },
-      { "userId": "u-gus", "name": "Gus", "status": "dead", "health": null, "o2": null, "shipKey": null },
-      { "userId": "u-hal", "name": "Hal", "status": "offline", "health": null, "o2": null, "shipKey": null },
-      { "userId": "u-ivy", "name": "Ivy", "status": "foot", "health": 100, "o2": 100, "shipKey": "gone-ship" }
+      {
+        "userId": "u-ava",
+        "name": "Ava",
+        "status": "ship",
+        "health": 100,
+        "o2": 100,
+        "shipKey": "877604806898",
+        "crewRole": "TURRET"
+      },
+      {
+        "userId": "u-bo",
+        "name": "Bo",
+        "status": "ship",
+        "health": 88,
+        "o2": 100,
+        "shipKey": "877604806898",
+        "crewRole": "PILOT"
+      },
+      {
+        "userId": "u-cy",
+        "name": "cy",
+        "status": "foot",
+        "health": 55,
+        "o2": 22,
+        "shipKey": null
+      },
+      {
+        "userId": "u-dee",
+        "name": "Dee",
+        "status": "downed",
+        "health": null,
+        "o2": 100,
+        "shipKey": null
+      },
+      {
+        "userId": "u-eli",
+        "name": "Eli",
+        "status": "ship",
+        "health": 100,
+        "o2": 100,
+        "shipKey": "555000111222",
+        "crewRole": "PILOT"
+      },
+      {
+        "userId": "u-fen",
+        "name": "Fen",
+        "status": "ship",
+        "health": 100,
+        "o2": 100,
+        "shipKey": "555000111999",
+        "crewRole": "PILOT"
+      },
+      {
+        "userId": "u-gus",
+        "name": "Gus",
+        "status": "dead",
+        "health": null,
+        "o2": null,
+        "shipKey": null
+      },
+      {
+        "userId": "u-hal",
+        "name": "Hal",
+        "status": "offline",
+        "health": null,
+        "o2": null,
+        "shipKey": null
+      },
+      {
+        "userId": "u-ivy",
+        "name": "Ivy",
+        "status": "foot",
+        "health": 100,
+        "o2": 100,
+        "shipKey": "gone-ship"
+      }
     ]
   },
   "cases": [
     {
       "name": "no layout: ships first by class, then members by name, offline last",
       "layout": null,
-      "expect": ["ship:555000111222", "ship:555000111999", "ship:877604806898", "member:u-cy", "member:u-dee", "member:u-gus", "member:u-ivy", "member:u-hal"],
-      "expanded": { "ship:877604806898": true },
-      "crew": { "ship:877604806898": ["u-bo", "u-ava"] }
+      "expect": [
+        "ship:555000111222",
+        "ship:555000111999",
+        "ship:877604806898",
+        "member:u-cy",
+        "member:u-dee",
+        "member:u-gus",
+        "member:u-ivy",
+        "member:u-hal"
+      ],
+      "expanded": {
+        "ship:877604806898": true
+      },
+      "crew": {
+        "ship:877604806898": [
+          "u-bo",
+          "u-ava"
+        ]
+      }
     },
     {
       "name": "listed member and ship order, unlisted ship follows its listed crew member, collapsed flag",
       "layout": {
-        "scope": "org", "id": "VOID", "version": 3, "updatedAt": null, "updatedBy": null, "shipsExpandedByDefault": true,
+        "scope": "org",
+        "id": "VOID",
+        "version": 3,
+        "updatedAt": null,
+        "updatedBy": null,
+        "shipsExpandedByDefault": true,
         "entries": [
-          { "kind": "member", "userId": "u-dee" },
-          { "kind": "ship", "shipClass": "rsi_galaxy", "expanded": false },
-          { "kind": "member", "userId": "u-fen" },
-          { "kind": "member", "userId": "u-cy" }
+          {
+            "kind": "member",
+            "userId": "u-dee"
+          },
+          {
+            "kind": "ship",
+            "shipClass": "rsi_galaxy",
+            "expanded": false
+          },
+          {
+            "kind": "member",
+            "userId": "u-fen"
+          },
+          {
+            "kind": "member",
+            "userId": "u-cy"
+          }
         ]
       },
-      "expect": ["member:u-dee", "ship:877604806898", "ship:555000111999", "member:u-cy", "ship:555000111222", "member:u-gus", "member:u-ivy", "member:u-hal"],
-      "expanded": { "ship:877604806898": false, "ship:555000111999": true }
+      "expect": [
+        "member:u-dee",
+        "ship:877604806898",
+        "ship:555000111999",
+        "member:u-cy",
+        "ship:555000111222",
+        "member:u-gus",
+        "member:u-ivy",
+        "member:u-hal"
+      ],
+      "expanded": {
+        "ship:877604806898": false,
+        "ship:555000111999": true
+      }
     },
     {
       "name": "same-class ships share one entry; default collapsed",
       "layout": {
-        "scope": "org", "id": "VOID", "version": 1, "updatedAt": null, "updatedBy": null, "shipsExpandedByDefault": false,
+        "scope": "org",
+        "id": "VOID",
+        "version": 1,
+        "updatedAt": null,
+        "updatedBy": null,
+        "shipsExpandedByDefault": false,
         "entries": [
-          { "kind": "ship", "shipClass": "DRAK_Cutlass_Black", "expanded": true },
-          { "kind": "member", "userId": "u-ava" },
-          { "kind": "member", "userId": "u-ava" }
+          {
+            "kind": "ship",
+            "shipClass": "DRAK_Cutlass_Black",
+            "expanded": true
+          },
+          {
+            "kind": "member",
+            "userId": "u-ava"
+          },
+          {
+            "kind": "member",
+            "userId": "u-ava"
+          }
         ]
       },
-      "expect": ["ship:555000111222", "ship:555000111999", "ship:877604806898", "member:u-cy", "member:u-dee", "member:u-gus", "member:u-ivy", "member:u-hal"],
-      "expanded": { "ship:555000111222": true, "ship:555000111999": true, "ship:877604806898": false },
-      "crew": { "ship:877604806898": ["u-bo", "u-ava"] }
+      "expect": [
+        "ship:555000111222",
+        "ship:555000111999",
+        "ship:877604806898",
+        "member:u-cy",
+        "member:u-dee",
+        "member:u-gus",
+        "member:u-ivy",
+        "member:u-hal"
+      ],
+      "expanded": {
+        "ship:555000111222": true,
+        "ship:555000111999": true,
+        "ship:877604806898": false
+      },
+      "crew": {
+        "ship:877604806898": [
+          "u-bo",
+          "u-ava"
+        ]
+      }
+    },
+    {
+      "name": "two ships of the same class: each its own group at the class position, bigger crew first",
+      "roster": {
+        "scope": "org",
+        "id": "VOID",
+        "generatedAt": "2026-11-22T12:00:00.000Z",
+        "ships": [
+          {
+            "key": "877604806898",
+            "className": "RSI_Galaxy",
+            "name": "RSI_Galaxy_877604806898",
+            "hull": 92,
+            "shields": 71,
+            "faces": [
+              100,
+              64,
+              0,
+              80
+            ]
+          },
+          {
+            "key": "555000111222",
+            "className": "DRAK_Cutlass_Black",
+            "name": "DRAK_Cutlass_Black_555000111222",
+            "hull": 40,
+            "shields": 12,
+            "faces": [
+              12
+            ]
+          },
+          {
+            "key": "555000111999",
+            "className": "DRAK_Cutlass_Black",
+            "name": "DRAK_Cutlass_Black_555000111999",
+            "hull": 100,
+            "shields": 100,
+            "faces": [
+              100
+            ]
+          },
+          {
+            "key": "877600000001",
+            "className": "RSI_Galaxy",
+            "name": "RSI_Galaxy_877600000001",
+            "hull": 100,
+            "shields": 100,
+            "faces": [
+              100,
+              100,
+              100,
+              100
+            ]
+          }
+        ],
+        "members": [
+          {
+            "userId": "u-ava",
+            "name": "Ava",
+            "status": "ship",
+            "health": 100,
+            "o2": 100,
+            "shipKey": "877604806898",
+            "crewRole": "TURRET"
+          },
+          {
+            "userId": "u-bo",
+            "name": "Bo",
+            "status": "ship",
+            "health": 88,
+            "o2": 100,
+            "shipKey": "877604806898",
+            "crewRole": "PILOT"
+          },
+          {
+            "userId": "u-cy",
+            "name": "cy",
+            "status": "foot",
+            "health": 55,
+            "o2": 22,
+            "shipKey": null
+          },
+          {
+            "userId": "u-dee",
+            "name": "Dee",
+            "status": "downed",
+            "health": null,
+            "o2": 100,
+            "shipKey": null
+          },
+          {
+            "userId": "u-eli",
+            "name": "Eli",
+            "status": "ship",
+            "health": 100,
+            "o2": 100,
+            "shipKey": "555000111222",
+            "crewRole": "PILOT"
+          },
+          {
+            "userId": "u-fen",
+            "name": "Fen",
+            "status": "ship",
+            "health": 100,
+            "o2": 100,
+            "shipKey": "555000111999",
+            "crewRole": "PILOT"
+          },
+          {
+            "userId": "u-gus",
+            "name": "Gus",
+            "status": "ship",
+            "health": 100,
+            "o2": 100,
+            "shipKey": "877600000001",
+            "crewRole": "PILOT"
+          },
+          {
+            "userId": "u-hal",
+            "name": "Hal",
+            "status": "offline",
+            "health": null,
+            "o2": null,
+            "shipKey": null
+          },
+          {
+            "userId": "u-ivy",
+            "name": "Ivy",
+            "status": "foot",
+            "health": 100,
+            "o2": 100,
+            "shipKey": "gone-ship"
+          }
+        ]
+      },
+      "layout": {
+        "scope": "org",
+        "id": "VOID",
+        "version": 1,
+        "updatedAt": null,
+        "updatedBy": null,
+        "shipsExpandedByDefault": true,
+        "entries": [
+          {
+            "kind": "member",
+            "userId": "u-cy"
+          },
+          {
+            "kind": "ship",
+            "shipClass": "RSI_Galaxy",
+            "expanded": false
+          }
+        ]
+      },
+      "expect": [
+        "member:u-cy",
+        "ship:877604806898",
+        "ship:877600000001",
+        "ship:555000111222",
+        "ship:555000111999",
+        "member:u-dee",
+        "member:u-ivy",
+        "member:u-hal"
+      ],
+      "expanded": {
+        "ship:877604806898": false,
+        "ship:877600000001": false
+      }
     }
   ]
 }

@@ -12,7 +12,9 @@
  *    crew nested under it. A ship with a single member is still a group (the dial is the point).
  *  - Ships are ordered by a layout `ship` entry matching their class (case-insensitive); an unlisted
  *    ship takes the position of its highest-placed listed crew member; otherwise it goes after the
- *    listed items. Two ships of the same class share the entry and keep a stable order by key.
+ *    listed items. Every live ship is its own group (keyed by vehicle entity id); all ships of one
+ *    class share that class entry's position, bigger crew first, then by key. There is no per-ship
+ *    override: entity ids change on every spawn, so there is no stable id to save.
  *  - Members (not in a ship) are ordered by their layout `member` entry; unlisted members go after the
  *    listed items, by name. Offline members (parties only) always go last.
  *  - Crew inside a ship: pilot first, then layout order, then name.
@@ -130,7 +132,8 @@ export function resolveOverlay(roster: OverlayRoster, layout: OverlayLayout | nu
       row: { kind: 'ship', key: `ship:${key}`, ship, expanded: entry ? entry.expanded : expandedDefault, crew },
       rank,
       listed: Number.isFinite(rank),
-      tie: `0${ship.className.toLowerCase()}\u0000${key}`,
+      // Same position: by class, then bigger crew first, then key (stable).
+      tie: `0${ship.className.toLowerCase()}\u0000${String(999 - Math.min(crew.length, 999)).padStart(3, '0')}\u0000${key}`,
     });
   }
   for (const m of loose) {

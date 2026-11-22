@@ -13,9 +13,9 @@ import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../e
 const vectors = JSON.parse(readFileSync('shared/overlay/overlay-vectors.json', 'utf8'));
 const roster = vectors.roster as OverlayRoster;
 
-for (const c of vectors.cases as Array<{ name: string; layout: OverlayLayout | null; expect: string[]; expanded?: Record<string, boolean>; crew?: Record<string, string[]> }>) {
+for (const c of vectors.cases as Array<{ name: string; roster?: OverlayRoster; layout: OverlayLayout | null; expect: string[]; expanded?: Record<string, boolean>; crew?: Record<string, string[]> }>) {
   test(`resolver vector: ${c.name}`, () => {
-    const rows = resolveOverlay(roster, c.layout);
+    const rows = resolveOverlay(c.roster ?? roster, c.layout);
     assert.deepEqual(rows.map((r) => r.key), c.expect);
     for (const [key, exp] of Object.entries(c.expanded ?? {})) {
       const row = rows.find((r) => r.key === key);

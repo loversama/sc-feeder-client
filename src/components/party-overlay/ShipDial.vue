@@ -1,8 +1,10 @@
 <script setup lang="ts">
 /**
- * Mini ship dial for the in-game overlay: the FleetYards top view of the ship (nose up) inside a
- * perfect circle, with the shield faces as ring segments around it. A face at 0 is a gap.
- * Deliberately cheap: one <img>, a few SVG arcs, no filters, no animation.
+ * Mini ship dial for the in-game overlay, matching the website's compact ShipScope: the FleetYards top
+ * view of the ship (nose up) inside a perfect circle, the shield faces as separate ring segments with
+ * visible gaps (a face at 0 is left out), and N/E/S/W letters outside the ring (no heading in the
+ * roster, so the bezel rests with N up). Deliberately cheap: one <img>, a few SVG arcs and letters,
+ * no filters, no animation.
  */
 import { computed, ref, watch } from 'vue';
 import { shieldArcs, topViewUrl } from '../../../shared/overlay/overlay-format';
@@ -12,19 +14,26 @@ const props = defineProps<{ className: string; faces: number[]; shields: number 
 const url = computed(() => topViewUrl(props.className));
 const failed = ref(false);
 watch(url, () => (failed.value = false));
-const arcs = computed(() => shieldArcs(props.faces, props.shields, 50, 45));
+const arcs = computed(() => shieldArcs(props.faces, props.shields, 50, 40, 14));
 const hullBad = computed(() => props.hull !== null && props.hull < 25);
+const LETTERS = [
+  { l: 'N', x: 50, y: 2.5 },
+  { l: 'E', x: 97.5, y: 50 },
+  { l: 'S', x: 50, y: 97.5 },
+  { l: 'W', x: 2.5, y: 50 },
+];
 </script>
 
 <template>
   <div class="dial" :style="{ width: `${size}px`, height: `${size}px` }">
     <svg viewBox="0 0 100 100" class="dial-svg" aria-hidden="true">
-      <circle cx="50" cy="50" r="45" class="track" />
-      <circle cx="50" cy="50" r="38" class="face" :class="{ bad: hullBad }" />
+      <circle cx="50" cy="50" r="40" class="track" />
+      <circle cx="50" cy="50" r="34" class="face" :class="{ bad: hullBad }" />
       <template v-for="(a, i) in arcs" :key="i">
-        <circle v-if="a.full" cx="50" cy="50" r="45" fill="none" :stroke="a.color" stroke-width="6" />
-        <path v-else :d="a.d!" fill="none" :stroke="a.color" stroke-width="6" stroke-linecap="butt" />
+        <circle v-if="a.full" cx="50" cy="50" r="40" fill="none" :stroke="a.color" stroke-width="5" />
+        <path v-else :d="a.d!" fill="none" :stroke="a.color" stroke-width="5" stroke-linecap="butt" />
       </template>
+      <text v-for="c in LETTERS" :key="c.l" :x="c.x" :y="c.y" class="letter" text-anchor="middle" dominant-baseline="central">{{ c.l }}</text>
     </svg>
     <div class="ship">
       <img v-if="url && !failed" :src="url" alt="" draggable="false" @error="failed = true" />
@@ -45,36 +54,41 @@ const hullBad = computed(() => props.hull !== null && props.hull < 25);
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 .track {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 6;
+  stroke: none;
+  stroke-width: 5;
 }
 .face {
-  fill: rgba(132, 132, 252, 0.06);
-  stroke: rgba(255, 255, 255, 0.1);
-  stroke-width: 1;
+  fill: rgba(132, 132, 252, 0.1);
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 0.8;
 }
 .face.bad {
-  fill: rgba(239, 68, 68, 0.14);
+  fill: rgba(239, 68, 68, 0.16);
+}
+.letter {
+  font-size: 8px;
+  font-weight: 700;
+  fill: #a1a1ae;
 }
 .ship {
   position: absolute;
-  inset: 19%;
+  inset: 22%;
   border-radius: 50%;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-/* FleetYards top views have the nose pointing LEFT: turn them nose-up. */
+/* FleetYards top views have the nose pointing LEFT: turn them nose-up. Full opacity over the lighter face. */
 .ship img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   transform: rotate(90deg);
-  opacity: 0.92;
 }
 .generic {
   width: 70%;

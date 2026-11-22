@@ -57,10 +57,10 @@ const STATUS_TEXT: Record<string, string> = {
             </div>
           </div>
           <div v-if="row.expanded" class="crew">
-            <MemberRow v-for="m in row.crew" :key="m.userId" :member="m" :compact="compact" nested />
+            <MemberRow v-for="m in row.crew" :key="m.userId" :member="m" :compact="compact" :self="m.userId === state.selfId" nested />
           </div>
         </section>
-        <MemberRow v-else :member="row.member" :compact="compact" />
+        <MemberRow v-else :member="row.member" :compact="compact" :self="row.member.userId === state.selfId" />
       </template>
     </div>
   </div>
@@ -79,7 +79,7 @@ const STATUS_TEXT: Record<string, string> = {
   align-items: baseline;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(11, 11, 14, 0.88);
+  background: rgba(11, 11, 14, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-top: 2px solid rgb(132, 132, 252);
 }
@@ -123,7 +123,7 @@ const STATUS_TEXT: Record<string, string> = {
 }
 .ship {
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(11, 11, 14, 0.82);
+  background: rgba(11, 11, 14, 0.9);
 }
 .ship-head {
   display: flex;

@@ -1,10 +1,18 @@
 <script setup lang="ts">
+/**
+ * One member row of the in-game overlay (same rules and look as the website preview's OverlayMemberRow):
+ *  - health bar coloured on a ramp: brand violet when healthy, amber, orange, red when critical
+ *  - downed: no empty bar; a hatched amber strip and "needs revive" instead (health is unknown)
+ *  - dead: greyed name, red label, no bar fill
+ *  - "you" marker for the viewer
+ */
 import { computed } from 'vue';
 import type { OverlayMember } from '../../../shared/overlay/overlay-resolve';
-import { healthTone, o2Tone } from '../../../shared/overlay/overlay-format';
+import { healthColor } from '../../../shared/overlay/overlay-format';
 
-const props = defineProps<{ member: OverlayMember; compact: boolean; nested?: boolean }>();
+const props = withDefaults(defineProps<{ member: OverlayMember; compact?: boolean; nested?: boolean; self?: boolean }>(), { compact: false, nested: false, self: false });
 
+const ROLE: Record<string, string> = { PILOT: 'Pilot', COPILOT: 'Co-pilot', TURRET: 'Turret', GUNNER: 'Gunner', ENGINEER: 'Engineer' };
 const STATUS: Record<string, { label: string; tone: string }> = {
   foot: { label: 'On foot', tone: 'dim' },
   ship: { label: 'Seated', tone: 'dim' },
@@ -12,46 +20,46 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   dead: { label: 'Dead', tone: 'bad' },
   offline: { label: 'Offline', tone: 'faint' },
 };
-const ROLE: Record<string, string> = { PILOT: 'Pilot', COPILOT: 'Co-pilot', TURRET: 'Turret', GUNNER: 'Gunner', ENGINEER: 'Engineer' };
-
-const status = computed(() => {
-  const m = props.member;
-  if (m.status === 'ship' && m.crewRole && ROLE[m.crewRole]) return { label: ROLE[m.crewRole], tone: 'dim' };
-  return STATUS[m.status] ?? STATUS.foot;
+const m = computed(() => props.member);
+const status = computed(() => (m.value.status === 'ship' && m.value.crewRole && ROLE[m.value.crewRole] ? { label: ROLE[m.value.crewRole], tone: 'dim' } : STATUS[m.value.status] ?? STATUS.foot));
+const o2 = computed(() => (m.value.o2 === null || m.value.o2 >= 35 ? null : m.value.o2 < 15 ? 'bad' : 'warn'));
+const fill = computed(() => {
+  if (m.value.status === 'dead' || m.value.status === 'offline' || m.value.health === null) return null;
+  return { width: `${m.value.health}%`, background: healthColor(m.value.health) };
 });
-const hp = computed(() => (props.member.health === null ? null : Math.round(props.member.health)));
-const tone = computed(() => (props.member.status === 'dead' ? 'bad' : props.member.status === 'downed' ? 'warn' : healthTone(hp.value)));
-const o2 = computed(() => o2Tone(props.member.o2));
-const inactive = computed(() => props.member.status === 'offline' || props.member.status === 'dead');
 </script>
 
 <template>
-  <div class="row" :class="{ compact, nested, inactive }">
+  <div class="mrow" :class="{ compact, nested, self, inactive: m.status === 'offline' || m.status === 'dead' }">
     <div class="line">
-      <span class="name">{{ member.name }}</span>
-      <span v-if="o2" class="chip" :class="o2">O2 {{ Math.round(member.o2!) }}%</span>
-      <span class="status" :class="status.tone">{{ status.label }}</span>
+      <span v-if="self" class="you">You</span>
+      <span class="name">{{ m.name }}</span>
+      <span v-if="o2" class="lbl" :class="o2">O2 {{ Math.round(m.o2!) }}%</span>
+      <span class="lbl" :class="status.tone">{{ status.label }}</span>
     </div>
-    <div class="bar" :class="tone">
-      <i :style="{ width: `${member.status === 'dead' ? 0 : hp ?? 0}%` }" />
-    </div>
+    <div v-if="m.status === 'downed'" class="downed"><span>Needs revive</span></div>
+    <div v-else class="bar"><i v-if="fill" :style="fill" /></div>
   </div>
 </template>
 
 <style scoped>
-.row {
+.mrow {
   padding: 6px 10px 7px;
-  background: rgba(11, 11, 14, 0.82);
+  background: rgba(11, 11, 14, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-.row.nested {
-  background: rgba(19, 19, 23, 0.82);
-  border-left: 2px solid rgba(132, 132, 252, 0.45);
-}
-.row.compact {
+.mrow.compact {
   padding: 3px 8px 4px;
 }
-.row.inactive .name {
+.mrow.nested {
+  background: rgba(19, 19, 23, 0.9);
+  border-left: 2px solid rgba(132, 132, 252, 0.45);
+  border-right: none;
+}
+.mrow.self {
+  border-left: 2px solid rgb(132, 132, 252);
+}
+.mrow.inactive .name {
   color: #6c6c7a;
 }
 .line {
@@ -73,26 +81,33 @@ const inactive = computed(() => props.member.status === 'offline' || props.membe
 .compact .name {
   font-size: 12px;
 }
-.status,
-.chip {
+.you {
   flex: none;
-  font-size: 9.5px;
+  padding: 0 4px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: #0b0b0e;
+  background: rgb(132, 132, 252);
+  align-self: center;
 }
-.status.dim {
+.lbl {
+  flex: none;
+  white-space: nowrap;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
   color: #a1a1ae;
 }
-.status.faint {
+.lbl.faint {
   color: #6c6c7a;
 }
-.status.warn,
-.chip.warn {
+.lbl.warn {
   color: #fbbf24;
 }
-.status.bad,
-.chip.bad {
+.lbl.bad {
   color: #f87171;
 }
 .bar {
@@ -107,18 +122,25 @@ const inactive = computed(() => props.member.status === 'offline' || props.membe
 }
 .bar i {
   position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: rgb(132, 132, 252);
+  inset: 0 auto 0 0;
 }
-.bar.warn i {
-  background: #fbbf24;
+.downed {
+  margin-top: 3px;
+  height: 8px;
+  display: flex;
+  align-items: center;
+  /* Static hatch (no animation): health is unknown while downed. */
+  background: repeating-linear-gradient(-45deg, rgba(251, 191, 36, 0.35) 0 3px, transparent 3px 6px);
 }
-.bar.bad i {
-  background: #f87171;
-}
-.bar.dim i {
-  background: #6c6c7a;
+.downed span {
+  margin-left: auto;
+  padding-left: 6px;
+  background: rgba(11, 11, 14, 0.88);
+  font-size: 9px;
+  line-height: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fbbf24;
 }
 </style>
