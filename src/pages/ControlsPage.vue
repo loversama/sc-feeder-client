@@ -72,12 +72,23 @@ async function press(a: ControlAction, holdMs = 0) {
 }
 
 // Pointer handling: dangerous = hold-to-confirm; holdable = hold sends hold_ms; others = click.
+/** Action whose button is physically held right now (set synchronously, before any await). */
+let pressed: string | null = null;
+
 async function onDown(a: ControlAction, ev: PointerEvent | KeyboardEvent) {
-  if (!api || holding.value) return;
+  if (!api || holding.value || pressed) return;
   if ('button' in ev && ev.button !== 0) return;
+  if ('repeat' in ev && ev.repeat) return; // held Space must not re-press
+  pressed = a.name;
   if (a.dangerous) {
     const arm = await api.arm(a.name);
+    if (arm.ok && pressed !== a.name) {
+      // Released (or window lost focus) while arm() was in flight: never start the hold.
+      api.disarm(arm.token);
+      return;
+    }
     if (!arm.ok) {
+      pressed = null;
       onResult({ ok: false, code: arm.code, action: a.name, label: a.label, message: arm.message, sent: false, at: Date.now() });
       return;
     }
@@ -87,6 +98,7 @@ async function onDown(a: ControlAction, ev: PointerEvent | KeyboardEvent) {
     holding.value = { name: a.name, startedAt: performance.now(), holdMs: 5000, dangerous: false };
     tick();
   } else {
+    pressed = null;
     press(a);
   }
 }
@@ -101,6 +113,7 @@ function tick() {
     const a = actions.value.find((x) => x.name === h.name);
     holding.value = null;
     holdProgress.value = 0;
+    pressed = null;
     if (a && api) api.trigger(a.name, { confirmToken: token }).then(onResult);
     return;
   }
@@ -108,6 +121,7 @@ function tick() {
 }
 
 function onUp(a: ControlAction) {
+  if (pressed === a.name) pressed = null;
   const h = holding.value;
   if (!h || h.name !== a.name) return;
   cancelAnimationFrame(holdRaf);
@@ -195,16 +209,33 @@ function prettyAccel(a: string) {
   return a.replace('CommandOrControl', 'Ctrl').replace('Super', 'Win');
 }
 
+/** Losing focus (alt-tab into the game) cancels any hold: no blind confirmations. */
+function cancelHold() {
+  const h = holding.value;
+  pressed = null;
+  if (!h) return;
+  const a = actions.value.find((x) => x.name === h.name);
+  if (a) onUp(a);
+}
+
+const loadError = ref<string | null>(null);
 let off: (() => void) | null = null;
 onMounted(async () => {
+  window.addEventListener('blur', cancelHold);
   if (!api) return;
-  applyState(await api.getState());
+  try {
+    applyState(await api.getState());
+  } catch (err) {
+    loadError.value = (err as Error)?.message ?? String(err);
+    return;
+  }
   off = api.onEvent((e) => {
     if (e.type === 'state') applyState(e.state);
     else if (e.type === 'result' && e.result.source === 'hotkey') onResult(e.result); // UI presses are shown from the return value
   });
 });
 onUnmounted(() => {
+  window.removeEventListener('blur', cancelHold);
   off?.();
   cancelAnimationFrame(holdRaf);
 });
@@ -219,6 +250,7 @@ const ago = (t: number) => {
 <template>
   <div class="controls-page">
     <div v-if="!api" class="empty">Game control is not available in this window.</div>
+    <div v-else-if="loadError" class="empty">Game control could not start: {{ loadError }}</div>
     <template v-else-if="state">
       <!-- Header -->
       <header class="cp-header">

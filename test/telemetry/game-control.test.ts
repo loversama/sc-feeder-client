@@ -10,7 +10,36 @@ import { GameControl, mapGameStatus, type ControlClient } from '../../electron/m
 import { classifyAction, dangerInfo } from '../../electron/modules/telemetry/game-control-catalog';
 import { HotkeyBinder, normalizeAccelerator, type ShortcutApi } from '../../electron/modules/telemetry/game-control-hotkeys';
 import { isTrustedControlSender } from '../../electron/modules/telemetry/game-control-security';
+import { enableCfgFlag, cfgFlag, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
 import FIXTURE from './fixtures/sc-actions-5.0-ptu.json';
+
+// --- user.cfg edits (player's real game config) -----------------------------------------------
+
+test('user.cfg: enable telemetry / game control keys safely', () => {
+  // missing key → appended, existing lines untouched
+  let r = enableCfgFlag('r_DisplayInfo = 2\n', TRG);
+  assert.equal(r.changed, true);
+  assert.equal(r.text, `r_DisplayInfo = 2\n${TRG}=1\n`);
+  // no trailing newline + CRLF file keeps CRLF
+  r = enableCfgFlag('a=1\r\nb=2', TEL);
+  assert.equal(r.text, `a=1\r\nb=2\r\n${TEL}=1\r\n`);
+  // =0 replaced in place, CRLF and other lines kept
+  r = enableCfgFlag(`a=1\r\n  ${TRG} = 0\r\nb=2\r\n`, TRG);
+  assert.equal(r.text, `a=1\r\n  ${TRG}=1\r\nb=2\r\n`);
+  // already on → no-op
+  r = enableCfgFlag(`${TRG}=1\n`, TRG);
+  assert.equal(r.changed, false);
+  // the two keys never match each other's lines
+  const both = `${TEL}=1\n`;
+  assert.equal(cfgFlag(both, TEL), true);
+  assert.equal(cfgFlag(both, TRG), false);
+  assert.equal(enableCfgFlag(both, TRG).text, `${TEL}=1\n${TRG}=1\n`);
+  assert.equal(enableCfgFlag(`${TRG}=1\n`, TEL).text, `${TRG}=1\n${TEL}=1\n`);
+  // a value on the next line is not read as this key's value
+  assert.equal(cfgFlag(`${TEL}=\n1\n`, TEL), false);
+  // empty / new file
+  assert.equal(enableCfgFlag('', TEL).text, `${TEL}=1\n`);
+});
 
 const root = loadTelemetryRoot();
 const T = (n: string) => root.lookupType(`${TELEMETRY_PACKAGE}.${n}`);

@@ -23,6 +23,7 @@ import { LogDiffTracker, type LogDiffReport } from '../log-diff/log-diff-tracker
 import { extractBuildInfo, type LogBuildInfo } from '../log-diff/log-signature';
 import { TelemetryRecorder, computeFieldUniverse, computeGameEventTypes } from './telemetry-recorder';
 import { loadTelemetryRoot } from './telemetry-client';
+import { TELEMETRY_CFG_KEY, TRIGGER_CFG_KEY, cfgFlag, enableCfgFlag } from './user-cfg';
 
 const MODULE_NAME = 'Telemetry';
 
@@ -227,10 +228,7 @@ export function noteLogChunk(chunk: string): void {
 
 // --- user.cfg -----------------------------------------------------------------
 
-const TELEMETRY_CFG_KEY = 'server.game.telemetry.enabled';
-/** Lets local tools trigger allowlisted actions (game control). Name from third-party notes, unverified in a live game. */
-export const TRIGGER_CFG_KEY = 'server.game.telemetry.trigger.actions.enabled';
-const escapeRe = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export { TRIGGER_CFG_KEY };
 
 /** user.cfg sits next to Game.log at the root of the game channel (LIVE / PTU / EPTU). */
 export function getUserCfgPath(logPath = getCurrentLogPath()): string {
@@ -250,11 +248,6 @@ export async function getUserCfgStatus(): Promise<UserCfgStatus & { channels: Ch
   let own: ChannelCfgStatus | undefined = channels.find((c) => c.active);
   if (!own) own = { channel: channelNow(), active: true, ...(await readUserCfgStatus(getUserCfgPath())) };
   return { path: own.path, exists: own.exists, enabled: own.enabled, triggerEnabled: own.triggerEnabled, channels: channels.length ? channels : [own] };
-}
-
-function cfgFlag(text: string, key: string): boolean {
-  const m = text.match(new RegExp(`^\\s*${escapeRe(key)}\\s*=\\s*(\\S+)`, 'im'));
-  return !!m && /^(1|true)$/i.test(m[1]);
 }
 
 async function readUserCfgStatus(p: string): Promise<UserCfgStatus> {
@@ -293,23 +286,19 @@ export function enableGameControlInUserCfg(channel: string | 'all' = 'all') {
 }
 
 async function enableInCfgFile(p: string, channel: string, key: string): Promise<{ path: string; changed: boolean; backup?: string }> {
-  const line = `${key}=1`;
   let text = '';
   try {
     text = await fsp.readFile(p, 'utf8');
   } catch {
     /* new file */
   }
-  const re = new RegExp(`^(\\s*)${escapeRe(key)}\\s*=\\s*(\\S*)\\s*$`, 'im');
-  const m = text.match(re);
-  if (m && /^(1|true)$/i.test(m[2])) return { path: p, changed: false };
+  const { text: next, changed } = enableCfgFlag(text, key);
+  if (!changed) return { path: p, changed: false };
   let backup: string | undefined;
   if (text) {
     backup = `${p}.${new Date().toISOString().replace(/[:.]/g, '-')}.bak`;
     await fsp.writeFile(backup, text);
   }
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const next = m ? text.replace(re, `${m[1]}${line}`) : `${text}${text && !text.endsWith('\n') ? eol : ''}${line}${eol}`;
   await fsp.writeFile(p, next);
   logger.info(MODULE_NAME, `Enabled ${key} in ${p}`);
   const what = key === TELEMETRY_CFG_KEY ? 'Telemetry' : 'Game control';

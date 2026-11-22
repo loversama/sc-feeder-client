@@ -97,8 +97,9 @@ onUnmounted(() => {
 
     <!-- Page content -->
     <main class="flex-1 min-h-0">
+      <!-- The feed stays mounted (keeps its listeners and scroll position) while Controls is open -->
       <ControlsPage v-if="activePage === 'controls'" />
-      <KillFeedPage v-else />
+      <KillFeedPage v-show="activePage !== 'controls'" />
     </main>
   </div>
 </template>

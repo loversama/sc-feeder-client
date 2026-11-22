@@ -52,7 +52,12 @@ export function installFixtureControlBridge(params: URLSearchParams): void {
       emit();
       return r;
     },
-    arm: async () => ({ ok: true, token: 'preview', holdMs: state.confirmHoldMs, expiresAt: Date.now() + 10_000 }),
+    arm: async () => {
+      // ?armDelay=150 simulates IPC latency (used to check a quick click never confirms)
+      const delay = Number(params.get('armDelay') ?? 0);
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      return { ok: true, token: 'preview', holdMs: state.confirmHoldMs, expiresAt: Date.now() + 10_000 };
+    },
     disarm: async () => {},
     setFavourites: async (names) => ((state.favourites = names), { ...state }),
     setHotkey: async (action, accel) => {
