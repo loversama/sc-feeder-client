@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as logger from '../logger';
 import { getPreloadPath } from '../window-manager';
-import { getTelemetrySettings } from '../config-manager';
+import { getTelemetrySettings, getPartyOverlaySettings } from '../config-manager';
 import { getOverlayState } from './telemetry-manager';
 import { pushDebugEvent } from './debug-bus';
 
@@ -41,6 +41,17 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
 export function isGameRunning(): boolean {
   return gameRunning;
+}
+
+/** Other overlays (party overlay) follow the same StarCitizen.exe poll. */
+const gameStateListeners: Array<(running: boolean) => void> = [];
+export function onGamePoll(fn: (running: boolean) => void): void {
+  gameStateListeners.push(fn);
+}
+
+/** Poll the game process while either overlay is enabled. */
+function pollWanted(): boolean {
+  return getTelemetrySettings().overlayEnabled || getPartyOverlaySettings().partyOverlayEnabled;
 }
 
 /** Windows: is StarCitizen.exe running? (tasklist, no extra deps) */
@@ -173,6 +184,13 @@ async function poll(): Promise<void> {
     pushDebugEvent({ source: 'system', type: running ? 'game_started' : 'game_exited', summary: `${GAME_EXE} ${running ? 'running' : 'exited'}` });
   }
   refreshOverlay();
+  for (const fn of gameStateListeners) {
+    try {
+      fn(gameRunning);
+    } catch (err) {
+      logger.debug(MODULE_NAME, `game poll listener failed: ${err}`);
+    }
+  }
 }
 
 /** Apply the overlay setting: start/stop process polling and the hotkey. Safe to call repeatedly. */
@@ -180,17 +198,20 @@ export function syncOverlayFeature(): void {
   const s = getTelemetrySettings();
   if (s.overlayEnabled) {
     if (registeredHotkey !== s.overlayHotkey) registerOverlayHotkey();
-    if (!pollTimer) {
-      poll();
-      pollTimer = setInterval(poll, PROCESS_POLL_MS);
-    }
   } else {
     if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
     registeredHotkey = null;
+    hiddenByHotkey = false;
+  }
+  if (pollWanted()) {
+    if (!pollTimer) {
+      void poll();
+      pollTimer = setInterval(poll, PROCESS_POLL_MS);
+    }
+  } else {
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = null;
     gameRunning = false;
-    hiddenByHotkey = false;
   }
   refreshOverlay();
 }

@@ -14,6 +14,7 @@ const PRELOADS: Record<string, string> = {
   'webcontents-header-preload': 'electron/webcontents-header-preload.ts',
   'webcontents-view-preload': 'electron/webcontents-view-preload.ts',
   'overlay-preload': 'electron/overlay-preload.ts', // in-game telemetry overlay
+  'party-overlay-preload': 'electron/party-overlay-preload.ts', // in-game party / org overlay
 }
 
 const preloadBuilds = Object.entries(PRELOADS).map(([name, file]) => ({
@@ -77,6 +78,7 @@ export default defineConfig({
         webContent: path.resolve(__dirname, 'web-content.html'),
         login: path.resolve(__dirname, 'login.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
+        partyOverlay: path.resolve(__dirname, 'party-overlay.html'),
         bodycamLive: path.resolve(__dirname, 'bodycam-live.html'),
       },
       output: {

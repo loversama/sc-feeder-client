@@ -24,6 +24,7 @@ import { registerAuthIpcHandlers, initializeAuth, getPersistedClientId, setGuest
 import { initializeEventProcessor } from './event-processor'; // Import EventProcessor initialization
 import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry-manager';
 import { initOverlay, destroyOverlay } from './telemetry/overlay-window';
+import { initPartyOverlay, destroyPartyOverlay } from './overlay/party-overlay-window';
 import { registerTelemetryIpc } from './telemetry/telemetry-ipc';
 import { initBodycam, registerBodycamIpc, shutdownBodycam } from './bodycam-manager';
 import { initGameControl, shutdownGameControl } from './telemetry/game-control-manager';
@@ -491,6 +492,12 @@ async function onReady() {
   } catch (error) {
     logger.error(MODULE_NAME, 'Failed to initialise overlay:', error);
   }
+  // In-game party / org overlay (hidden unless enabled; right side of the screen)
+  try {
+    initPartyOverlay();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise party overlay:', error);
+  }
   
   // If launched at startup, minimize the window after creation
   if (startMinimized && mainWindow) {
@@ -592,6 +599,7 @@ async function performCleanup() {
 
     // Overlay + telemetry (saves the Game.log diff baseline)
     destroyOverlay();
+    destroyPartyOverlay();
     shutdownGameControl();
     await shutdownTelemetry();
     await shutdownBodycam();

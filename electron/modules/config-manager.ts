@@ -3,6 +3,7 @@ import path from 'node:path';
 import { app } from 'electron';
 import { StoreSchema, ProfileData, SessionInfo, EventCategory, SoundPreferences } from '../../shared/types';
 import * as logger from './logger'; // Import the logger utility
+import { PARTY_OVERLAY_DEFAULTS, PARTY_OVERLAY_KEYS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from './overlay/party-overlay-settings';
 
 /** Built-in Game.log location, used only until the player's own install is detected or chosen. */
 export const DEFAULT_LOG_FILE_PATH = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
@@ -155,6 +156,16 @@ const schema = {
   /** Show the overlay even when StarCitizen.exe isn't detected (for testing) */
   overlayAlwaysShow: { type: 'boolean', default: false },
   overlayHotkey: { type: 'string', default: 'CommandOrControl+Alt+O' },
+  // --- In-game party / org overlay (right side; see electron/modules/overlay) ---
+  partyOverlayEnabled: { type: 'boolean', default: PARTY_OVERLAY_DEFAULTS.partyOverlayEnabled },
+  partyOverlaySource: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlaySource },
+  partyOverlayOrgTag: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlayOrgTag },
+  partyOverlayHotkey: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlayHotkey },
+  partyOverlayCompact: { type: 'boolean', default: PARTY_OVERLAY_DEFAULTS.partyOverlayCompact },
+  partyOverlayScale: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayScale },
+  partyOverlayOffsetY: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayOffsetY },
+  partyOverlayDisplayId: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayDisplayId },
+  partyOverlaySwitchHotkey: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlaySwitchHotkey },
   /** Track Game.log line signatures and diff against the previous log */
   logDiffEnabled: { type: 'boolean', default: true },
   /** Record telemetry changes to <userData>/telemetry-recordings/*.log (local only) */
@@ -533,6 +544,25 @@ export function getTelemetrySettings(): TelemetrySettings {
   const out: any = {};
   for (const k of TELEMETRY_SETTING_KEYS) out[k] = (store as any).get(k);
   return out as TelemetrySettings;
+}
+
+// --- Party / org overlay settings (validated by party-overlay-settings.ts) ---
+export function getPartyOverlaySettings(): PartyOverlaySettings {
+  const out: any = {};
+  for (const k of PARTY_OVERLAY_KEYS) {
+    const v = (store as any).get(k);
+    out[k] = sanitizePartyOverlaySetting(k, v) ?? PARTY_OVERLAY_DEFAULTS[k];
+  }
+  return out as PartyOverlaySettings;
+}
+
+export function setPartyOverlaySettings(patch: Partial<PartyOverlaySettings>): PartyOverlaySettings {
+  for (const k of PARTY_OVERLAY_KEYS) {
+    if (!patch || patch[k] === undefined) continue;
+    const v = sanitizePartyOverlaySetting(k, patch[k]);
+    if (v !== undefined) (store as any).set(k, v);
+  }
+  return getPartyOverlaySettings();
 }
 
 export function setTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {

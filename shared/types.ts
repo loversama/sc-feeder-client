@@ -136,6 +136,15 @@ export interface StoreSchema {
   overlayEnabled: boolean;
   overlayAlwaysShow: boolean;
   overlayHotkey: string;
+  partyOverlayEnabled: boolean;
+  partyOverlaySource: 'org' | 'party';
+  partyOverlayOrgTag: string;
+  partyOverlayHotkey: string;
+  partyOverlayCompact: boolean;
+  partyOverlayScale: number;
+  partyOverlayOffsetY: number;
+  partyOverlayDisplayId: number;
+  partyOverlaySwitchHotkey: string;
   logDiffEnabled: boolean;
   telemetryRecord: boolean;
   logFilePath: string;
