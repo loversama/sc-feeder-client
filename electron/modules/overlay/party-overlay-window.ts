@@ -18,7 +18,7 @@ import { getAuthStatus } from '../auth-manager';
 import { getServerLink } from '../server-connection';
 import { isGameRunning, onGamePoll, syncOverlayFeature } from '../telemetry/overlay-window';
 import { PartyOverlayFeed, type PartyOverlayState } from './party-overlay-feed';
-import { partyOverlayBounds, type PartyOverlaySettings } from './party-overlay-settings';
+import { partyOverlayBounds, pickDisplay, type PartyOverlaySettings } from './party-overlay-settings';
 
 const MODULE_NAME = 'PartyOverlay';
 const MIN_HEIGHT = 60;
@@ -27,6 +27,7 @@ let win: BrowserWindow | null = null;
 let feed: PartyOverlayFeed | null = null;
 let hiddenByHotkey = false;
 let registeredHotkey: string | null = null;
+let registeredSwitchHotkey: string | null = null;
 let contentHeight = 0;
 let lastState: PartyOverlayState | null = null;
 let displayListener = false;
@@ -34,7 +35,8 @@ let displayListener = false;
 
 function bounds() {
   const s = getPartyOverlaySettings();
-  const b = partyOverlayBounds(screen.getPrimaryDisplay().bounds, s);
+  const display = pickDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), s.partyOverlayDisplayId);
+  const b = partyOverlayBounds(display.bounds, s);
   // Shrink to the content (transparent area costs compositing too), never beyond the screen.
   if (contentHeight > 0) b.height = Math.max(MIN_HEIGHT, Math.min(b.height, Math.ceil(contentHeight * s.partyOverlayScale) + 2));
   return b;
@@ -113,6 +115,26 @@ export function togglePartyOverlay(): boolean {
   return !hiddenByHotkey;
 }
 
+/** Switch hotkey: Party <-> Org, remembered in settings (the overlay itself is click-through). */
+export function switchPartyOverlaySource(): PartyOverlaySettings {
+  const s = getPartyOverlaySettings();
+  return applyPartyOverlaySettings({ partyOverlaySource: s.partyOverlaySource === 'org' ? 'party' : 'org' });
+}
+
+function syncSwitchHotkey(s: PartyOverlaySettings): void {
+  const want = s.partyOverlayEnabled ? s.partyOverlaySwitchHotkey : '';
+  if (registeredSwitchHotkey === want) return;
+  if (registeredSwitchHotkey) globalShortcut.unregister(registeredSwitchHotkey);
+  registeredSwitchHotkey = null;
+  if (!want) return;
+  try {
+    if (globalShortcut.register(want, () => switchPartyOverlaySource())) registeredSwitchHotkey = want;
+    else logger.warn(MODULE_NAME, `Party/Org switch hotkey ${want} is in use by another app`);
+  } catch (err) {
+    logger.warn(MODULE_NAME, `Invalid party/org switch hotkey ${want}: ${err}`);
+  }
+}
+
 function syncHotkey(s: PartyOverlaySettings): void {
   const want = s.partyOverlayEnabled ? s.partyOverlayHotkey : '';
   if (registeredHotkey === want) return;
@@ -131,6 +153,7 @@ function syncHotkey(s: PartyOverlaySettings): void {
 export function syncPartyOverlay(): void {
   const s = getPartyOverlaySettings();
   syncHotkey(s);
+  syncSwitchHotkey(s);
   if (!s.partyOverlayEnabled) hiddenByHotkey = false;
   if (feed) {
     if (s.partyOverlayEnabled) feed.resubscribe();
@@ -168,7 +191,10 @@ export function initPartyOverlay(): void {
   }
   if (!displayListener) {
     displayListener = true;
-    screen.on('display-metrics-changed', () => win && !win.isDestroyed() && win.setBounds(bounds()));
+    const rebound = () => win && !win.isDestroyed() && win.setBounds(bounds());
+    screen.on('display-metrics-changed', rebound);
+    screen.on('display-added', rebound);
+    screen.on('display-removed', rebound);
   }
   syncPartyOverlay();
 }
@@ -179,9 +205,17 @@ export function applyPartyOverlaySettings(patch: Partial<PartyOverlaySettings>):
   return s;
 }
 
+/** Displays for the settings picker. */
+export function listPartyOverlayDisplays() {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Display ${i + 1}`, width: d.bounds.width, height: d.bounds.height, primary: d.id === primary.id }));
+}
+
 export function destroyPartyOverlay(): void {
   if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
   registeredHotkey = null;
+  if (registeredSwitchHotkey) globalShortcut.unregister(registeredSwitchHotkey);
+  registeredSwitchHotkey = null;
   if (win && !win.isDestroyed()) win.destroy();
   win = null;
 }

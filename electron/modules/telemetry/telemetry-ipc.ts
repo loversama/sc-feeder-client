@@ -17,7 +17,8 @@ import {
 import { getTelemetrySettings } from '../config-manager';
 import { syncOverlayFeature, toggleOverlay, isGameRunning } from './overlay-window';
 import { getPartyOverlaySettings } from '../config-manager';
-import { applyPartyOverlaySettings, getPartyOverlayFeed, togglePartyOverlay } from '../overlay/party-overlay-window';
+import { applyPartyOverlaySettings, getPartyOverlayFeed, listPartyOverlayDisplays, togglePartyOverlay } from '../overlay/party-overlay-window';
+import { getAuthStatus } from '../auth-manager';
 import { renderMarkdown } from '../log-diff/log-diff-tracker';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -62,16 +63,17 @@ export function registerTelemetryIpc(): void {
   ipcMain.handle('party-overlay:get-settings', () => getPartyOverlaySettings());
   ipcMain.handle('party-overlay:set-settings', (_e, patch) => applyPartyOverlaySettings(patch && typeof patch === 'object' ? patch : {}));
   ipcMain.handle('party-overlay:toggle', () => togglePartyOverlay());
+  ipcMain.handle('party-overlay:displays', () => listPartyOverlayDisplays());
   ipcMain.handle('party-overlay:status', () => {
     const s = getPartyOverlayFeed()?.current;
-    return s ? { status: s.status, message: s.message ?? null, source: s.source, party: s.party, online: s.roster?.members.filter((m) => m.status !== 'offline').length ?? 0 } : null;
+    return s ? { status: s.status, message: s.message ?? null, source: s.source, party: s.party, selfId: getAuthStatus().userId, online: s.roster?.members.filter((m) => m.status !== 'offline').length ?? 0 } : null;
   });
   ipcMain.handle('party-overlay:party', async (_e, req: { action?: unknown; code?: unknown; name?: unknown }) => {
     const feed = getPartyOverlayFeed();
     if (!feed) return { ok: false, error: 'Overlay not ready' };
-    const action = typeof req?.action === 'string' && ['get', 'create', 'join', 'leave'].includes(req.action) ? req.action : null;
+    const action = typeof req?.action === 'string' && ['get', 'create', 'join', 'leave', 'kick', 'transfer'].includes(req.action) ? req.action : null;
     if (!action) return { ok: false, error: 'bad action' };
-    return feed.party(action, { code: typeof req.code === 'string' ? req.code.slice(0, 16) : undefined, name: typeof req.name === 'string' ? req.name.slice(0, 40) : undefined });
+    return feed.party(action, { code: typeof req.code === 'string' ? req.code.slice(0, 16) : undefined, name: typeof req.name === 'string' ? req.name.slice(0, 40) : undefined, userId: typeof (req as any).userId === 'string' ? (req as any).userId.slice(0, 64) : undefined });
   });
   ipcMain.handle('telemetry:user-cfg-status', () => getUserCfgStatus());
   ipcMain.handle('telemetry:enable-user-cfg', async (_e, channel?: string) => {

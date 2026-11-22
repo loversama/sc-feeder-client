@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveOverlay, type OverlayLayout, type OverlayRoster } from '../../shared/overlay/overlay-resolve';
 import { healthTone, o2Tone, shieldArcs, shieldColor, shipLabel, topViewUrl } from '../../shared/overlay/overlay-format';
-import { partyOverlayBounds, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
+import { partyOverlayBounds, pickDisplay, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
 import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../electron/modules/overlay/party-overlay-feed';
 
 const vectors = JSON.parse(readFileSync('shared/overlay/overlay-vectors.json', 'utf8'));
@@ -62,6 +62,16 @@ test('settings validation', () => {
   assert.equal(sanitizePartyOverlaySetting('partyOverlayScale', 9), 1.5);
   assert.equal(sanitizePartyOverlaySetting('partyOverlayScale', '1'), undefined);
   assert.equal(sanitizePartyOverlaySetting('partyOverlayOffsetY', -4), 0);
+  assert.equal(sanitizePartyOverlaySetting('partyOverlayDisplayId', 2779098405), 2779098405);
+  assert.equal(sanitizePartyOverlaySetting('partyOverlayDisplayId', -1), undefined);
+  assert.equal(sanitizePartyOverlaySetting('partyOverlayDisplayId', 1.5), undefined);
+  assert.equal(sanitizePartyOverlaySetting('partyOverlaySwitchHotkey', ' Ctrl+Alt+Shift+P '), 'Ctrl+Alt+Shift+P');
+  const prim = { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 } };
+  const side = { id: 7, bounds: { x: 1920, y: 0, width: 2560, height: 1440 } };
+  assert.equal(pickDisplay([prim, side], prim, 0), prim);
+  assert.equal(pickDisplay([prim, side], prim, 7), side);
+  assert.equal(pickDisplay([prim], prim, 7), prim, 'unplugged display falls back to primary');
+  assert.deepEqual(partyOverlayBounds(side.bounds, { partyOverlayScale: 1, partyOverlayOffsetY: 18 }), { x: 4164, y: 259, width: 300, height: 1165 });
   assert.deepEqual(partyOverlayBounds({ x: 0, y: 0, width: 1920, height: 1080 }, { partyOverlayScale: 1, partyOverlayOffsetY: 18 }), { x: 1604, y: 194, width: 300, height: 870 });
 });
 

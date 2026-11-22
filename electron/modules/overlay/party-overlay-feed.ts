@@ -154,12 +154,12 @@ export class PartyOverlayFeed {
     this.d.push(this.state);
   }
 
-  /** Party actions from Settings: { action: 'create' | 'join' | 'leave' | 'get', code?, name? }. */
-  party(action: string, args: { code?: string; name?: string } = {}): Promise<any> {
+  /** Party actions from Settings: { action: 'create' | 'join' | 'leave' | 'get' | 'kick' | 'transfer', code?, name?, userId? }. */
+  party(action: string, args: { code?: string; name?: string; userId?: string } = {}): Promise<any> {
     return new Promise((resolve) => {
       const sent = this.d.link.sendWithAck('overlay_party', { action, ...args }, (ack) => {
         resolve(ack ?? { ok: false, error: 'No answer from VOIDLOG.GG' });
-        if (ack?.ok && action !== 'get' && this.d.getSettings().partyOverlaySource === 'party') this.resubscribe();
+        if (ack?.ok && ['create', 'join', 'leave'].includes(action) && this.d.getSettings().partyOverlaySource === 'party') this.resubscribe();
       });
       if (!sent) resolve({ ok: false, error: 'Not connected to VOIDLOG.GG' });
     });

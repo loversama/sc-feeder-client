@@ -161,6 +161,8 @@ const schema = {
   partyOverlayCompact: { type: 'boolean', default: PARTY_OVERLAY_DEFAULTS.partyOverlayCompact },
   partyOverlayScale: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayScale },
   partyOverlayOffsetY: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayOffsetY },
+  partyOverlayDisplayId: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayDisplayId },
+  partyOverlaySwitchHotkey: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlaySwitchHotkey },
   /** Track Game.log line signatures and diff against the previous log */
   logDiffEnabled: { type: 'boolean', default: true },
   /** Record telemetry changes to <userData>/telemetry-recordings/*.log (local only) */

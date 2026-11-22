@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Settings → Telemetry & Overlay: game telemetry, sharing, in-game overlay, Game.log diff. */
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 
 type Settings = {
@@ -22,13 +22,17 @@ type PartySettings = {
   partyOverlayCompact: boolean;
   partyOverlayScale: number;
   partyOverlayOffsetY: number;
+  partyOverlayDisplayId: number;
+  partyOverlaySwitchHotkey: string;
 };
+type DisplayRow = { id: number; label: string; width: number; height: number; primary: boolean };
 type PartyStatus = {
   status: string;
   message: string | null;
   source: { scope: string; id: string; label: string } | null;
   party: { id: string; name: string; code: string; ownerId: string; members: { userId: string; name: string }[] } | null;
   online: number;
+  selfId: string | null;
 } | null;
 
 type CfgRow = { channel: string; active: boolean; path: string; exists: boolean; enabled: boolean };
@@ -42,11 +46,15 @@ const party = ref<PartySettings | null>(null);
 const partyStatus = ref<PartyStatus>(null);
 const joinCode = ref('');
 const partyBusy = ref(false);
+const displays = ref<DisplayRow[]>([]);
+const isOwner = computed(() => !!partyStatus.value?.party && partyStatus.value.party.ownerId === partyStatus.value.selfId);
+const PARTY_PAGE = 'https://voidlog.gg/party';
 let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
   settings.value = await api.invoke('telemetry:get-settings');
   party.value = await api.invoke('party-overlay:get-settings');
+  displays.value = (await api.invoke('party-overlay:displays')) ?? [];
   cfg.value = await api.invoke('telemetry:user-cfg-status');
 }
 
@@ -57,6 +65,22 @@ async function refreshLive() {
 
 async function saveParty(patch: Partial<PartySettings>) {
   party.value = await api.invoke('party-overlay:set-settings', patch);
+}
+
+async function memberAction(action: 'kick' | 'transfer', userId: string, name: string) {
+  partyBusy.value = true;
+  try {
+    const r = await api.invoke('party-overlay:party', { action, userId });
+    if (!r?.ok) ElMessage.error(r?.error ?? 'Party action failed');
+    else ElMessage.success(action === 'kick' ? `Removed ${name}` : `${name} now owns the party`);
+    partyStatus.value = await api.invoke('party-overlay:status');
+  } finally {
+    partyBusy.value = false;
+  }
+}
+
+function openPartyPage() {
+  void api.invoke('open-external', PARTY_PAGE);
 }
 
 async function partyAction(action: 'create' | 'join' | 'leave') {
@@ -230,14 +254,33 @@ onUnmounted(() => clearInterval(timer));
           <el-input class="max-w-xs" :model-value="party.partyOverlayOrgTag" @change="(v: string) => saveParty({ partyOverlayOrgTag: v })" placeholder="e.g. VOID" />
         </div>
         <div v-else class="space-y-3">
-          <div v-if="partyStatus?.party" class="flex items-center justify-between gap-4">
-            <span class="text-theme-text-white">{{ partyStatus.party.name }} · {{ partyStatus.party.members.length }}/10</span>
-            <div class="flex gap-2">
-              <el-button size="small" @click="copyCode(partyStatus.party.code)">Invite code {{ partyStatus.party.code }}</el-button>
-              <el-button size="small" :loading="partyBusy" @click="partyAction('leave')">Leave</el-button>
+          <div v-if="partyStatus?.party" class="party-box rounded border border-theme-border p-3 space-y-2">
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-theme-text-white font-semibold">{{ partyStatus.party.name }} · {{ partyStatus.party.members.length }}/10</span>
+              <div class="flex gap-2">
+                <el-button size="small" @click="copyCode(partyStatus.party.code)">Copy invite code {{ partyStatus.party.code }}</el-button>
+                <el-button size="small" :loading="partyBusy" @click="partyAction('leave')">Leave</el-button>
+              </div>
+            </div>
+            <ul class="space-y-1">
+              <li v-for="m in partyStatus.party.members" :key="m.userId" class="flex items-center justify-between gap-2 text-sm">
+                <span class="text-theme-text-white">
+                  {{ m.name }}
+                  <span v-if="m.userId === partyStatus.party.ownerId" class="party-tag">Owner</span>
+                  <span v-if="m.userId === partyStatus.selfId" class="party-tag you">You</span>
+                </span>
+                <span v-if="isOwner && m.userId !== partyStatus.selfId" class="flex gap-1">
+                  <el-button size="small" text :disabled="partyBusy" @click="memberAction('transfer', m.userId, m.name)">Make owner</el-button>
+                  <el-button size="small" text type="danger" :disabled="partyBusy" @click="memberAction('kick', m.userId, m.name)">Remove</el-button>
+                </span>
+              </li>
+            </ul>
+            <div class="flex items-center justify-between gap-2 text-sm text-gray-400">
+              <span>{{ isOwner ? 'You set the order and which ships are expanded for everyone in the party.' : 'The party owner sets the order.' }}</span>
+              <el-button v-if="isOwner" size="small" @click="openPartyPage">Edit order on voidlog.gg</el-button>
             </div>
           </div>
-          <div class="flex items-center justify-between gap-4">
+          <div v-if="!partyStatus?.party" class="flex items-center justify-between gap-4">
             <el-button size="small" :loading="partyBusy" @click="partyAction('create')">Create a party</el-button>
             <div class="flex gap-2">
               <el-input v-model="joinCode" class="w-36" size="small" placeholder="Invite code" maxlength="8" />
@@ -256,6 +299,17 @@ onUnmounted(() => clearInterval(timer));
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Distance from top (% of screen)</span>
           <el-slider class="max-w-xs" :model-value="party.partyOverlayOffsetY" :min="0" :max="60" :step="1" @change="(v: any) => saveParty({ partyOverlayOffsetY: Number(v) })" />
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Display</span>
+          <el-select class="max-w-xs" :model-value="party.partyOverlayDisplayId" @change="(v: number) => saveParty({ partyOverlayDisplayId: v })">
+            <el-option :value="0" label="Primary display" />
+            <el-option v-for="d in displays" :key="d.id" :value="d.id" :label="`${d.label} (${d.width}×${d.height})${d.primary ? ' · primary' : ''}`" />
+          </el-select>
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <span class="text-theme-text-white">Party / Org switch hotkey</span>
+          <el-input class="max-w-xs" :model-value="party.partyOverlaySwitchHotkey" @change="(v: string) => saveParty({ partyOverlaySwitchHotkey: v.trim() })" placeholder="CommandOrControl+Alt+Shift+P" />
         </div>
         <div class="flex items-center justify-between gap-4">
           <span class="text-theme-text-white">Hide/show hotkey (while enabled)</span>
@@ -285,3 +339,21 @@ onUnmounted(() => clearInterval(timer));
     </div>
   </div>
 </template>
+
+<style scoped>
+.party-tag {
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #a1a1ae;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.party-tag.you {
+  color: #0b0b0e;
+  background: rgb(132, 132, 252);
+  border-color: rgb(132, 132, 252);
+}
+</style>

@@ -15,6 +15,10 @@ export type PartyOverlaySettings = {
   partyOverlayScale: number;
   /** Distance of the panel's top from the top of the screen, percent of screen height (0 .. 60). */
   partyOverlayOffsetY: number;
+  /** Electron display id to draw on; 0 = primary display (also the fallback when that display is gone). */
+  partyOverlayDisplayId: number;
+  /** Hotkey that switches the overlay between Party and Org (the choice is remembered). */
+  partyOverlaySwitchHotkey: string;
 };
 
 export const PARTY_OVERLAY_DEFAULTS: PartyOverlaySettings = {
@@ -25,6 +29,8 @@ export const PARTY_OVERLAY_DEFAULTS: PartyOverlaySettings = {
   partyOverlayCompact: false,
   partyOverlayScale: 1,
   partyOverlayOffsetY: 18,
+  partyOverlayDisplayId: 0,
+  partyOverlaySwitchHotkey: 'CommandOrControl+Alt+Shift+P',
 };
 
 export const PARTY_OVERLAY_KEYS = Object.keys(PARTY_OVERLAY_DEFAULTS) as (keyof PartyOverlaySettings)[];
@@ -48,11 +54,14 @@ export function sanitizePartyOverlaySetting<K extends keyof PartyOverlaySettings
       return (tag === '' || /^[A-Z0-9_-]{1,20}$/.test(tag) ? tag : undefined) as PartyOverlaySettings[K] | undefined;
     }
     case 'partyOverlayHotkey':
+    case 'partyOverlaySwitchHotkey':
       return (typeof value === 'string' && value.length <= 64 ? value.trim() : undefined) as PartyOverlaySettings[K] | undefined;
     case 'partyOverlayScale':
       return (typeof value === 'number' && Number.isFinite(value) ? Math.round(clamp(value, 0.75, 1.5) * 100) / 100 : undefined) as PartyOverlaySettings[K] | undefined;
     case 'partyOverlayOffsetY':
       return (typeof value === 'number' && Number.isFinite(value) ? Math.round(clamp(value, 0, 60)) : undefined) as PartyOverlaySettings[K] | undefined;
+    case 'partyOverlayDisplayId':
+      return (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined) as PartyOverlaySettings[K] | undefined;
     default:
       return undefined;
   }
@@ -65,4 +74,9 @@ export function partyOverlayBounds(display: { x: number; y: number; width: numbe
   const top = Math.round((display.height * s.partyOverlayOffsetY) / 100);
   const height = Math.max(200, display.height - top - margin);
   return { x: display.x + display.width - width - margin, y: display.y + top, width, height };
+}
+
+/** The display to use: the configured one when it is still connected, else the primary display. */
+export function pickDisplay<D extends { id: number }>(displays: D[], primary: D, displayId: number): D {
+  return (displayId && displays.find((d) => d.id === displayId)) || primary;
 }

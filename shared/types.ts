@@ -143,6 +143,8 @@ export interface StoreSchema {
   partyOverlayCompact: boolean;
   partyOverlayScale: number;
   partyOverlayOffsetY: number;
+  partyOverlayDisplayId: number;
+  partyOverlaySwitchHotkey: string;
   logDiffEnabled: boolean;
   telemetryRecord: boolean;
   logFilePath: string;
