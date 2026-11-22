@@ -1,0 +1,49 @@
+name: Packaged smoke test
+
+# Packaged smoke test (CLAUDE.md "Packaging rules"): on every OS the unpacked app must load its
+# whole main-process module graph and native modules from app.asar and exit 0. Runs on PRs, and
+# release.yml calls it first: nothing is published unless all three OSes pass.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build
+        run: npm run build
+
+      - name: Package app (unpacked)
+        run: >-
+          npx electron-builder --dir --publish never
+          --${{ matrix.os == 'macos-latest' && 'mac' || matrix.os == 'windows-latest' && 'win' || 'linux' }}
+
+      - name: Smoke test packaged app
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a npm run smoke:packaged; else npm run smoke:packaged; fi
+
+      - name: Parser + telemetry tests
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:parser && npm run test:telemetry

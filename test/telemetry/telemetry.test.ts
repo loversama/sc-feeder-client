@@ -7,6 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { isMissingModuleError } from '../../electron/startup-guard.ts';
 import * as grpc from '@grpc/grpc-js';
 import { loadTelemetryRoot, TELEMETRY_PACKAGE, TELEMETRY_SERVICE } from '../../electron/modules/telemetry/telemetry-client';
 import { TelemetryService, type TelemetryUploadPayload } from '../../electron/modules/telemetry/telemetry-service';
@@ -596,4 +597,13 @@ test('TelemetryService: a silent stream is reopened on a fresh connection (old g
   assert.ok(opened >= 2, `expected reopen, opened=${opened}`);
   // every silent reopen must close the previous channel, so the game never sees piled-up clients
   assert.ok(closed >= opened - 1, `opened=${opened} closed=${closed} cancelled=${cancelled}`);
+});
+
+test('startup guard: missing-module errors (mid-update launch) are recognised, other errors are not', () => {
+  const real = Object.assign(new Error("Cannot find package 'undici' imported from C:\\x\\resources\\app\\dist-electron\\main.js"), { code: 'ERR_MODULE_NOT_FOUND' });
+  assert.equal(isMissingModuleError(real), true);
+  assert.equal(isMissingModuleError(Object.assign(new Error("Cannot find module 'bindings'"), { code: 'MODULE_NOT_FOUND' })), true);
+  assert.equal(isMissingModuleError(new Error("Cannot find module './app-main-abc.js'")), true);
+  assert.equal(isMissingModuleError(new TypeError('x is not a function')), false);
+  assert.equal(isMissingModuleError(null), false);
 });
