@@ -5,7 +5,6 @@
  * schema in config-manager.ts is untouched). OFF by default.
  */
 import { app, desktopCapturer, ipcMain, nativeImage, session, BrowserWindow, Notification, type IpcMainInvokeEvent } from 'electron';
-import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import * as logger from './logger';
@@ -108,8 +107,8 @@ async function openCapture(sourceId: string, size: { width: number; height: numb
   closeCapture();
   capSourceId = sourceId;
   try {
-    const page = path.join(app.getPath('userData'), 'bodycam-live.html');
-    fs.writeFileSync(page, '<!doctype html><meta charset="utf-8"><title>bodycam</title>');
+    // Packaged app: the page lives in <app>/dist (inside app.asar), listed in REQUIRED_APP_FILES. A file: page is a secure context.
+    const page = path.join(app.getAppPath(), 'dist', 'bodycam-live.html');
     const ses = session.fromPartition('bodycam-live');
     ses.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'));
     capWin = new BrowserWindow({ show: false, width: size.width, height: size.height, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, session: ses } });
