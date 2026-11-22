@@ -28,6 +28,9 @@ export const BODYCAM_DEFAULT_TITLE_PATTERN = '^Star Citizen$';
 
 import { hwndFromSourceId } from './bodycam-window';
 
+/** Shown in settings when the process check cannot run (fails closed). */
+export const VERIFY_FAILED_MESSAGE = "Couldn't verify the game window — screenshots paused";
+
 export type BodycamState =
   | 'off' // sharing disabled / no orgs chosen
   | 'sharing' // last frame sent
@@ -84,26 +87,25 @@ export function selectGameWindow(sources: readonly CamSource[], matcher: RegExp)
   return only.thumbnail && !only.thumbnail.isEmpty() ? only : null;
 }
 
-/** True when the frame is effectively one flat colour (black screen from exclusive fullscreen etc.). */
+/** True when the frame is one flat colour (black screen from exclusive fullscreen etc.). */
 export function isBlankBitmap(bitmap: Buffer, step = 4): boolean {
   const pixels = Math.floor(bitmap.length / 4);
   if (pixels === 0) return true;
   let n = 0;
   let sum = 0;
   let sumSq = 0;
-  let max = 0;
   for (let p = 0; p < pixels; p += step) {
     const i = p * 4;
     // BGRA or RGBA: a plain average of the first three channels is fine for blankness
     const l = (bitmap[i] + bitmap[i + 1] + bitmap[i + 2]) / 3;
     sum += l;
     sumSq += l * l;
-    if (l > max) max = l;
     n++;
   }
   const mean = sum / n;
   const variance = Math.max(0, sumSq / n - mean * mean);
-  return Math.sqrt(variance) < 2 || max < 12;
+  // Only truly uniform frames count as blank; a dark scene still has some variation and passes.
+  return Math.sqrt(variance) < 1.5;
 }
 
 /** JPEG-encode under the size budget (steps quality down). Null when it cannot fit. */
@@ -123,7 +125,7 @@ export function clampInterval(sec: unknown): number {
 export type BodycamDeps = {
   getSettings: () => { enabled: boolean; intervalSec: number; orgs: string[]; titlePattern?: string };
   /** True only when the window with this HWND belongs to StarCitizen.exe (fails closed: false on any error). */
-  isGameWindow: (hwnd: string) => Promise<boolean>;
+  isGameWindow: (hwnd: string) => Promise<boolean | 'unknown'>;
   /** Re-send the opt-in to the server (after a 'not sharing' reply). */
   resync?: () => Promise<void>;
   isGameRunning: () => boolean;
@@ -188,12 +190,15 @@ export class BodycamSharer {
     this.#d.onStatus?.(this.status);
   }
 
+  #lastVerdict: boolean | 'unknown' = false;
+
   async #safeIsGameWindow(hwnd: string): Promise<boolean> {
     try {
-      return (await this.#d.isGameWindow(hwnd)) === true;
+      this.#lastVerdict = await this.#d.isGameWindow(hwnd);
     } catch {
-      return false;
+      this.#lastVerdict = 'unknown';
     }
+    return this.#lastVerdict === true;
   }
 
   /** One capture attempt (exported for tests). Always reschedules while running. */
@@ -224,8 +229,9 @@ export class BodycamSharer {
           this.#set({ state: 'window-not-found', detail: 'more than one window is titled like the game; capturing nothing' });
         } else if (!win || !hwnd) {
           this.#set({ state: 'window-not-found' });
-        } else if (!(await this.#safeIsGameWindow(hwnd))) {
-          this.#set({ state: 'window-not-found', detail: 'the window is not owned by StarCitizen.exe; capturing nothing' });
+        } else if ((await this.#safeIsGameWindow(hwnd)) !== true) {
+          const unknown = this.#lastVerdict === 'unknown';
+          this.#set({ state: 'window-not-found', detail: unknown ? VERIFY_FAILED_MESSAGE : 'the window is not owned by StarCitizen.exe; capturing nothing' });
         } else if (isBlankBitmap(win.thumbnail.toBitmap())) {
           this.#set({ state: 'blank-frame' });
         } else {

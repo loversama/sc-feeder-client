@@ -11,6 +11,10 @@
 
 export const LIVE_DEADMAN_MS = 60_000;
 export const LIVE_WINDOW_RECHECK_MS = 30_000;
+/** A start arriving this soon after a stop is held back (viewer flapping). */
+export const LIVE_RESTART_DEBOUNCE_MS = 3000;
+/** After a soft stop the hidden capture stays open this long so a quick re-watch is instant. */
+export const LIVE_WARM_MS = 10_000;
 export const LIVE_MIN_FPS = 4;
 export const LIVE_MAX_FPS = 8;
 
@@ -43,6 +47,8 @@ export class LiveSharer {
   #running = false;
   #busy = false;
   #lastKeepalive = 0;
+  #stoppedAt = 0;
+  #warmTimer: unknown = null;
   #windowId: string | null = null;
   #windowCheckedAt = 0;
   #quality = 40;
@@ -80,26 +86,51 @@ export class LiveSharer {
     this.#set({ viewers: params.viewers });
     if (!this.#running) {
       this.#running = true;
+      this.#clearWarm();
+      this.#windowCheckedAt = 0; // always re-verify the window before the first frame (a warm capture is not trusted blindly)
       this.#tokens = (this.#params.maxKbps * 1000) / 8;
       this.#refilledAt = this.#now();
-      this.#schedule(0);
+      // stop->start within 3 s: wait out the rest of the debounce instead of flapping the capture
+      this.#schedule(Math.max(0, this.#stoppedAt + LIVE_RESTART_DEBOUNCE_MS - this.#now()));
     }
   }
 
   /** Server `bodycam_live_stop`, setting turned off, or local shutdown. Immediate. */
-  stop(reason = 'stopped'): void {
+  stop(reason = 'stopped', opts: { soft?: boolean } = {}): void {
     const was = this.#running;
     this.#running = false;
+    if (was) this.#stoppedAt = this.#now();
     if (this.#timer != null) (this.#d.clearTimer ?? clearTimeout)(this.#timer as any);
     this.#timer = null;
-    this.#windowId = null;
     this.#params = null;
+    this.#clearWarm();
+    if (opts.soft && was && this.#windowId) {
+      // Nobody is watching any more: no frames, but keep the (hidden) capture warm for a few seconds.
+      this.#warmTimer = (this.#d.setTimer ?? setTimeout)(() => this.#closeCapture(), LIVE_WARM_MS);
+    } else {
+      this.#closeCapture();
+    }
+    if (was || this.status.state !== 'idle') this.#set({ state: 'idle', viewers: 0, detail: reason === 'stopped' ? undefined : reason });
+  }
+
+  #clearWarm(): void {
+    if (this.#warmTimer != null) (this.#d.clearTimer ?? clearTimeout)(this.#warmTimer as any);
+    this.#warmTimer = null;
+  }
+
+  #closeCapture(): void {
+    this.#warmTimer = null;
+    this.#windowId = null;
     try {
       this.#d.closeCapture();
     } catch {
       /* ignore */
     }
-    if (was || this.status.state !== 'idle') this.#set({ state: 'idle', viewers: 0, detail: reason === 'stopped' ? undefined : reason });
+  }
+
+  /** `bodycam_live_rejected` from the server: show why frames are not getting through. */
+  noteServerRejection(reason: string): void {
+    this.#set({ detail: `live frames rejected: ${reason}` });
   }
 
   #schedule(ms: number): void {
