@@ -1,8 +1,41 @@
 import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
+import electronEntries from 'vite-plugin-electron'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
+
+// Preloads run sandboxed: they can only require('electron'), never another file. Each one is built
+// on its own as a single self-contained CommonJS file (no shared or dynamic chunks); the packaged smoke
+// test checks this. See CLAUDE.md "Packaging rules".
+const PRELOADS: Record<string, string> = {
+  preload: 'electron/preload.ts', // main window, settings, login, …
+  'webview-preload': 'electron/webview-preload.ts',
+  'webcontents-header-preload': 'electron/webcontents-header-preload.ts',
+  'webcontents-view-preload': 'electron/webcontents-view-preload.ts',
+  'overlay-preload': 'electron/overlay-preload.ts', // in-game telemetry overlay
+  'party-overlay-preload': 'electron/party-overlay-preload.ts', // in-game party / org overlay
+}
+
+const preloadBuilds = Object.entries(PRELOADS).map(([name, file]) => ({
+  onstart(args: { reload: () => void }) {
+    args.reload()
+  },
+  vite: {
+    build: {
+      rollupOptions: {
+        input: { [name]: path.join(__dirname, file) },
+        output: {
+          format: 'cjs' as const,
+          inlineDynamicImports: true,
+          entryFileNames: '[name].mjs',
+          chunkFileNames: `${name}-[name].mjs`,
+          assetFileNames: '[name].[ext]',
+        },
+      },
+    },
+  },
+}))
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -22,33 +55,10 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['better-sqlite3', 'bindings', 'node-gyp-build', 'undici', '@grpc/grpc-js', 'protobufjs', 'protobufjs/ext/descriptor/index.js'],
-            },
-          },
-        },
-      },
-      preload: {
-        // Preload scripts for different windows
-        input: {
-          // Preload for main window, settings, etc.
-          preload: path.join(__dirname, 'electron/preload.ts'),
-          // Preload specifically for the webview
-          'webview-preload': path.join(__dirname, 'electron/webview-preload.ts'),
-          // Preload for WebContentsView header
-          'webcontents-header-preload': path.join(__dirname, 'electron/webcontents-header-preload.ts'),
-          // Preload for WebContentsView content
-          'webcontents-view-preload': path.join(__dirname, 'electron/webcontents-view-preload.ts'),
-          // Preload for the in-game telemetry overlay
-          'overlay-preload': path.join(__dirname, 'electron/overlay-preload.ts'),
-          // Preload for the in-game party / org overlay
-          'party-overlay-preload': path.join(__dirname, 'electron/party-overlay-preload.ts'),
-        },
-        vite: {
-          build: {
-            rollupOptions: {
-              output: {
-                inlineDynamicImports: false,
-              },
+              // Native modules ONLY (see CLAUDE.md "Packaging rules"): everything else is bundled into
+              // dist-electron so a half-written node_modules can never break startup.
+              // scripts/check-externals.mjs fails the build on any other bare import.
+              external: ['better-sqlite3', 'bindings', 'node-gyp-build'],
             },
           },
         },
@@ -57,6 +67,7 @@ export default defineConfig({
         ? undefined
         : {},
     }),
+    electronEntries(preloadBuilds),
   ],
   build: {
     rollupOptions: {
