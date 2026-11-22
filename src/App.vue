@@ -2,6 +2,12 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import Navigation from './components/Navigation.vue'
 import KillFeedPage from './pages/KillFeedPage.vue'
+import ControlsPage from './pages/ControlsPage.vue'
+
+const MAIN_TABS = [
+  { id: 'kill-feed', label: 'Feed' },
+  { id: 'controls', label: 'Controls' },
+]
 
 // Window controls are now handled by custom-electron-titlebar
 
@@ -77,14 +83,51 @@ onUnmounted(() => {
       <Navigation :activePage="activePage" @change-page="changePage" />
     </div>
 
+    <!-- Main tabs -->
+    <div class="main-tabs" role="tablist">
+      <button
+        v-for="t in MAIN_TABS"
+        :key="t.id"
+        role="tab"
+        class="main-tab"
+        :class="{ active: activePage === t.id || (t.id === 'kill-feed' && activePage !== 'controls') }"
+        @click="changePage(t.id)"
+      >{{ t.label }}</button>
+    </div>
+
     <!-- Page content -->
-    <main class="flex-1">
-      <KillFeedPage v-if="activePage === 'kill-feed'" />
+    <main class="flex-1 min-h-0">
+      <!-- The feed stays mounted (keeps its listeners and scroll position) while Controls is open -->
+      <ControlsPage v-if="activePage === 'controls'" />
+      <KillFeedPage v-show="activePage !== 'controls'" />
     </main>
   </div>
 </template>
 
 <style>
+/* Main tabs (Feed / Controls) */
+.main-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid #272727;
+  background: var(--color-theme-bg-dark);
+}
+.main-tab {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px 7px;
+  cursor: pointer;
+}
+.main-tab:hover { color: #e5e7eb; }
+.main-tab.active { color: #fff; border-bottom-color: rgb(99, 99, 247); }
+
 /* Header layout */
 .header-container {
   position: relative;

@@ -5,13 +5,16 @@ import { StoreSchema, ProfileData, SessionInfo, EventCategory, SoundPreferences 
 import * as logger from './logger'; // Import the logger utility
 import { PARTY_OVERLAY_DEFAULTS, PARTY_OVERLAY_KEYS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from './overlay/party-overlay-settings';
 
+/** Built-in Game.log location, used only until the player's own install is detected or chosen. */
+export const DEFAULT_LOG_FILE_PATH = 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log';
+
 const MODULE_NAME = 'ConfigManager'; // Define module name for logger
 
 // Schema definition helps with type safety and defaults
 const schema = {
   logFilePath: {
     type: 'string',
-    default: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Game.log' // Default path - Consider making this OS-aware or prompting user
+    default: DEFAULT_LOG_FILE_PATH // Default path - Consider making this OS-aware or prompting user
   },
   /** Star Citizen install root (the folder holding LIVE, PTU, ...). '' = single-file mode (logFilePath only). */
   gameRoot: { type: 'string', default: '' },
@@ -167,6 +170,12 @@ const schema = {
   logDiffEnabled: { type: 'boolean', default: true },
   /** Record telemetry changes to <userData>/telemetry-recordings/*.log (local only) */
   telemetryRecord: { type: 'boolean', default: true },
+  // --- Game control (TriggerGameAction on the player's own game; local only) ---
+  /** Off by default: the player turns it on in the Controls page. */
+  gameControlEnabled: { type: 'boolean', default: false },
+  gameControlFavourites: { type: 'array', default: [] as string[] },
+  /** action name → accelerator */
+  gameControlHotkeys: { type: 'object', default: {} as Record<string, string> },
   scannedLogBackups: {
     type: 'object',
     default: {} as Record<string, { size: number; mtime: number; scannedAt: string }>
@@ -563,4 +572,35 @@ export function setTelemetrySettings(patch: Partial<TelemetrySettings>): Telemet
     if (k === 'overlayHotkey' ? typeof v === 'string' : typeof v === 'boolean') (store as any).set(k, v);
   }
   return getTelemetrySettings();
+}
+
+// --- Game control settings ---
+export type GameControlSettings = { enabled: boolean; favourites: string[]; hotkeys: Record<string, string> };
+
+const ACTION_NAME_OK = /^[A-Za-z0-9_]{1,64}$/;
+/** Stored hotkeys: action-name keys only, string accelerators of sane length, bounded count. */
+function cleanHotkeys(hk: unknown): Record<string, string> {
+  if (!hk || typeof hk !== 'object' || Array.isArray(hk)) return {};
+  return Object.fromEntries(
+    Object.entries(hk as Record<string, unknown>)
+      .filter(([k, v]) => ACTION_NAME_OK.test(k) && typeof v === 'string' && v.length > 0 && v.length <= 64)
+      .slice(0, 64),
+  ) as Record<string, string>;
+}
+
+export function getGameControlSettings(): GameControlSettings {
+  const fav = (store as any).get('gameControlFavourites');
+  const hk = (store as any).get('gameControlHotkeys');
+  return {
+    enabled: (store as any).get('gameControlEnabled') === true,
+    favourites: Array.isArray(fav) ? fav.filter((x: unknown) => typeof x === 'string' && ACTION_NAME_OK.test(x)) : [],
+    hotkeys: cleanHotkeys(hk),
+  };
+}
+
+export function setGameControlSettings(patch: Partial<GameControlSettings>): GameControlSettings {
+  if (typeof patch.enabled === 'boolean') (store as any).set('gameControlEnabled', patch.enabled);
+  if (Array.isArray(patch.favourites)) (store as any).set('gameControlFavourites', [...new Set(patch.favourites.filter((x) => typeof x === 'string' && ACTION_NAME_OK.test(x)))].slice(0, 48));
+  if (patch.hotkeys && typeof patch.hotkeys === 'object') (store as any).set('gameControlHotkeys', cleanHotkeys(patch.hotkeys));
+  return getGameControlSettings();
 }

@@ -16,6 +16,7 @@ import { buildSignatureSet, diffSignatureSets, lineSignature, extractBuildInfo }
 // Connection reliability + contextual feed events (same runner, one esbuild bundle)
 import './server-link.test';
 import './telemetry-events.test';
+import './game-control.test';
 
 const root = loadTelemetryRoot();
 const T = (n: string) => root.lookupType(`${TELEMETRY_PACKAGE}.${n}`);

@@ -26,6 +26,8 @@ import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry-manager'
 import { initOverlay, destroyOverlay } from './telemetry/overlay-window';
 import { initPartyOverlay, destroyPartyOverlay } from './overlay/party-overlay-window';
 import { registerTelemetryIpc } from './telemetry/telemetry-ipc';
+import { initBodycam, registerBodycamIpc, shutdownBodycam } from './bodycam-manager';
+import { initGameControl, shutdownGameControl } from './telemetry/game-control-manager';
 import {
   getOfflineMode,
   getLaunchOnStartup,
@@ -387,6 +389,20 @@ async function onReady() {
   } catch (error) {
     logger.error(MODULE_NAME, 'Failed to initialise telemetry (continuing without it):', error);
   }
+  // Local game control (TriggerGameAction); off until the player enables it on the Controls page
+  try {
+    initGameControl();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise game control (continuing without it):', error);
+  }
+
+  // Optional body-cam screenshots (off unless the user opts in)
+  try {
+    registerBodycamIpc();
+    initBodycam();
+  } catch (error) {
+    logger.error(MODULE_NAME, 'Failed to initialise body-cam (continuing without it):', error);
+  }
 
   try {
     registerAuthIpcHandlers();
@@ -584,7 +600,9 @@ async function performCleanup() {
     // Overlay + telemetry (saves the Game.log diff baseline)
     destroyOverlay();
     destroyPartyOverlay();
+    shutdownGameControl();
     await shutdownTelemetry();
+    await shutdownBodycam();
 
     // Stop watching log file
     await stopWatchingLogFile(); // This now also calls endCurrentSession

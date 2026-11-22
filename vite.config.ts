@@ -79,6 +79,7 @@ export default defineConfig({
         login: path.resolve(__dirname, 'login.html'),
         overlay: path.resolve(__dirname, 'overlay.html'),
         partyOverlay: path.resolve(__dirname, 'party-overlay.html'),
+        bodycamLive: path.resolve(__dirname, 'bodycam-live.html'),
       },
       output: {
         // Explicitly disable inlineDynamicImports for multiple inputs
