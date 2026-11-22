@@ -160,6 +160,7 @@ const schema = {
   partyOverlayEnabled: { type: 'boolean', default: PARTY_OVERLAY_DEFAULTS.partyOverlayEnabled },
   partyOverlaySource: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlaySource },
   partyOverlayOrgTag: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlayOrgTag },
+  partyOverlayOrgsUnticked: { type: 'array', items: { type: 'string' }, default: PARTY_OVERLAY_DEFAULTS.partyOverlayOrgsUnticked },
   partyOverlayHotkey: { type: 'string', default: PARTY_OVERLAY_DEFAULTS.partyOverlayHotkey },
   partyOverlayCompact: { type: 'boolean', default: PARTY_OVERLAY_DEFAULTS.partyOverlayCompact },
   partyOverlayScale: { type: 'number', default: PARTY_OVERLAY_DEFAULTS.partyOverlayScale },

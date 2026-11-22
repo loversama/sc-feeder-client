@@ -67,9 +67,20 @@ export function registerTelemetryIpc(): void {
   ipcMain.handle('party-overlay:displays', () => listPartyOverlayDisplays());
   ipcMain.handle('party-overlay:status', () => {
     const s = getPartyOverlayFeed()?.current;
-    return s ? { status: s.status, message: s.message ?? null, source: s.source, party: s.party, selfId: s.party?.selfId ?? s.selfId ?? null, online: s.roster?.members.filter((m) => m.status !== 'offline').length ?? 0 } : null;
+    if (!s) return null;
+    const online = (r: { members: { status: string }[] } | null) => r?.members.filter((m) => m.status !== 'offline').length ?? 0;
+    return {
+      status: s.status,
+      message: s.message ?? null,
+      source: s.source,
+      sections: s.sections.map((x) => ({ source: x.source, online: online(x.roster) })),
+      party: s.party,
+      selfId: s.party?.selfId ?? s.selfId ?? null,
+      online: online(s.roster),
+    };
   });
-  ipcMain.handle('party-overlay:orgs', async () => (await getPartyOverlayFeed()?.orgs()) ?? []);
+  // null = could not load (offline / older server); [] = no verified orgs.
+  ipcMain.handle('party-overlay:orgs', async () => (await getPartyOverlayFeed()?.refreshOrgs()) ?? null);
   ipcMain.handle('party-overlay:party', async (_e, req: { action?: unknown; code?: unknown; name?: unknown }) => {
     const feed = getPartyOverlayFeed();
     if (!feed) return { ok: false, error: 'Overlay not ready' };

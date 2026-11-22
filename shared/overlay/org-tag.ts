@@ -23,7 +23,7 @@ export function sanitizeOrgChoices(raw: unknown): OrgChoice[] {
     if (!tag || seen.has(tag)) continue;
     seen.add(tag);
     const name = typeof (o as any)?.name === 'string' ? (o as any).name.slice(0, 80) : null;
-    out.push({ tag, name, primary: (o as any)?.primary === true });
+    out.push({ tag, name, primary: (o as any)?.primary === true || (o as any)?.isMain === true });
   }
   return out.sort((a, b) => Number(b.primary) - Number(a.primary) || a.tag.localeCompare(b.tag));
 }

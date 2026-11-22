@@ -6,8 +6,13 @@ export type PartyOverlaySettings = {
   partyOverlayEnabled: boolean;
   /** Which list to show: an org (by tag) or the user's current party. */
   partyOverlaySource: 'org' | 'party';
-  /** Org tag for source 'org' (empty = not chosen yet). */
+  /** Legacy single org tag (0.3.4/0.3.5). Only used when the server cannot list the user's orgs. */
   partyOverlayOrgTag: string;
+  /**
+   * Orgs the user switched OFF in the org checklist. Everything else the user is a verified member of
+   * is shown, so orgs joined later appear automatically.
+   */
+  partyOverlayOrgsUnticked: string[];
   partyOverlayHotkey: string;
   /** Local override: denser rows, smaller dials. */
   partyOverlayCompact: boolean;
@@ -25,6 +30,7 @@ export const PARTY_OVERLAY_DEFAULTS: PartyOverlaySettings = {
   partyOverlayEnabled: false,
   partyOverlaySource: 'org',
   partyOverlayOrgTag: '',
+  partyOverlayOrgsUnticked: [],
   partyOverlayHotkey: 'CommandOrControl+Alt+P',
   partyOverlayCompact: false,
   partyOverlayScale: 1,
@@ -52,6 +58,11 @@ export function sanitizePartyOverlaySetting<K extends keyof PartyOverlaySettings
       if (typeof value !== 'string') return undefined;
       const tag = value.trim().toUpperCase();
       return (tag === '' || /^[A-Z0-9_-]{1,20}$/.test(tag) ? tag : undefined) as PartyOverlaySettings[K] | undefined;
+    }
+    case 'partyOverlayOrgsUnticked': {
+      if (!Array.isArray(value)) return undefined;
+      const tags = [...new Set(value.filter((t): t is string => typeof t === 'string').map((t) => t.trim().toUpperCase()).filter((t) => /^[A-Z0-9_-]{1,20}$/.test(t)))].slice(0, 100);
+      return tags as PartyOverlaySettings[K];
     }
     case 'partyOverlayHotkey':
     case 'partyOverlaySwitchHotkey':
