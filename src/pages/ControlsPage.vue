@@ -2,7 +2,8 @@
 /**
  * Game Controls: trigger Star Citizen actions on the player's own game through the local
  * telemetry API (TriggerGameAction). Local only; nothing here is sent to VOIDLOG.GG.
- * Dangerous actions use hold-to-confirm (enforced again in the main process).
+ * Dangerous actions use hold-to-confirm here; the main process additionally enforces a minimum
+ * delay between arm() and trigger() (a delay, not proof that a person held the button).
  */
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 import { CONTROL_GROUPS, HOTKEY_PROBLEMS, type ControlAction, type ControlResult, type ControlState, type VoidlogControlApi, type UserCfgPreview } from '../types/game-control';
@@ -177,9 +178,10 @@ async function pickGameFolder() {
 }
 
 async function enableCfg() {
-  if (!api) return;
+  if (!api || !cfgPreview.value) return;
+  const token = cfgPreview.value.token;
   cfgPreview.value = null;
-  const r = await api.enableTriggerInUserCfg();
+  const r = await api.enableTriggerInUserCfg(token);
   pushToast({ ok: r.ok, code: r.ok ? 'OK' : 'ERROR', action: 'user.cfg', label: 'user.cfg', message: r.ok ? 'Game control enabled in user.cfg. Restart Star Citizen to apply.' : `Could not update user.cfg: ${r.error}`, sent: false, at: Date.now() });
   applyState(await api.getState());
 }

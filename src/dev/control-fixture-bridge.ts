@@ -69,6 +69,7 @@ export function installFixtureControlBridge(params: URLSearchParams): void {
     // Mirrors a player whose configured Game.log is E:\StarCitizen\LIVE\Game.log (LIVE + PTU folders exist).
     userCfgPreview: async () => ({
       line: 'server.game.telemetry.trigger.actions.enabled=1',
+      token: 'preview-token',
       root: 'E:\\StarCitizen',
       source: params.get('cfgsrc') === 'default' ? 'default' : 'game-folder',
       files: [
@@ -77,7 +78,7 @@ export function installFixtureControlBridge(params: URLSearchParams): void {
       ],
     }),
     selectGameRoot: async () => ({ ok: false, canceled: true, preview: await api.userCfgPreview() }),
-    enableTriggerInUserCfg: async () => ({ ok: true, changed: true }),
+    enableTriggerInUserCfg: async (token) => (token ? { ok: true, changed: true } : { ok: false, error: 'Open the user.cfg preview first.' }),
     onEvent: (cb) => (listeners.add(cb), () => listeners.delete(cb)),
   };
   (window as any).voidlogControl = api;

@@ -5,8 +5,10 @@
  * server. Safety rules enforced here, not just in the UI:
  *   - off unless the player enabled game control
  *   - only actions the game listed are sent (unknown names never reach the game)
- *   - dangerous actions need a single-use confirmation token from arm(), redeemed only after the
- *     hold time has elapsed (a compromised renderer can't skip the hold)
+ *   - dangerous actions need a single-use token from arm(), redeemed only after a minimum delay
+ *     (the hold time). This is a minimum delay enforced in the main process so a fast click or a
+ *     buggy page can't fire instantly; it is NOT proof that a person held the button (a compromised
+ *     renderer can still call arm(), wait, then trigger). The renderer's hold UI provides the intent.
  *   - client-side rate limit (global gap, per-action cooldown, burst cap) on top of the game debounce
  *   - hold_ms only for holdable actions
  *   - a failed or timed-out trigger is NEVER retried (toggles would double-fire)
@@ -310,6 +312,17 @@ export class GameControl extends EventEmitter {
     this.emit('result', r);
     return r;
   }
+}
+
+/**
+ * Address for TriggerGameAction: always 127.0.0.1. The telemetry service may learn another address
+ * from Game.log (e.g. with grpc.client.server.external on); control never follows it off the
+ * machine. Only the port is taken from it, and only if valid.
+ */
+export function loopbackControlAddress(address: string | null | undefined, defaultPort = 2942): string {
+  const m = String(address ?? '').match(/:(\d{1,5})$/);
+  const port = m ? Number(m[1]) : NaN;
+  return `127.0.0.1:${port >= 1 && port <= 65535 ? port : defaultPort}`;
 }
 
 /** gRPC error → result code. 14 UNAVAILABLE, 4 DEADLINE_EXCEEDED. */

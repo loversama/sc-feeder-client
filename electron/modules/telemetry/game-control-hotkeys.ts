@@ -10,6 +10,8 @@
  *     keys are unregistered (never unregisterAll)
  */
 
+import { ACTION_NAME_RE } from './game-control-catalog';
+
 export type ShortcutApi = {
   register(accelerator: string, callback: () => void): boolean;
   unregister(accelerator: string): void;
@@ -129,7 +131,7 @@ export class HotkeyBinder {
   setBindings(bindings: Record<string, string>): HotkeyStatus[] {
     const clean: Record<string, string> = {};
     for (const [a, raw] of Object.entries(bindings ?? {})) {
-      if (typeof a !== 'string' || typeof raw !== 'string' || !raw.trim()) continue;
+      if (typeof a !== 'string' || !ACTION_NAME_RE.test(a) || typeof raw !== 'string' || !raw.trim() || raw.length > 64) continue;
       clean[a] = normalizeAccelerator(raw) ?? raw;
     }
     this.#bindings = clean;

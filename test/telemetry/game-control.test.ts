@@ -6,11 +6,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as grpc from '@grpc/grpc-js';
 import { loadTelemetryRoot, TelemetryClient, TELEMETRY_PACKAGE, TELEMETRY_SERVICE } from '../../electron/modules/telemetry/telemetry-client';
-import { GameControl, mapGameStatus, type ControlClient } from '../../electron/modules/telemetry/game-control';
+import { GameControl, mapGameStatus, loopbackControlAddress, type ControlClient } from '../../electron/modules/telemetry/game-control';
 import { classifyAction, dangerInfo } from '../../electron/modules/telemetry/game-control-catalog';
 import { HotkeyBinder, normalizeAccelerator, type ShortcutApi } from '../../electron/modules/telemetry/game-control-hotkeys';
 import { isTrustedControlSender } from '../../electron/modules/telemetry/game-control-security';
-import { enableCfgFlag, cfgFlag, resolveCfgTargets, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
+import { enableCfgFlag, cfgFlag, resolveCfgTargets, readCfgForEdit, redeemCfgGrant, CFG_PREVIEW_TTL_MS, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
 import { SAMPLE_ACTIONS as FIXTURE } from './fixtures/sample-actions';
 
 // --- user.cfg edits (player's real game config) -----------------------------------------------
@@ -39,6 +39,61 @@ test('user.cfg: enable telemetry / game control keys safely', () => {
   assert.equal(cfgFlag(`${TEL}=\n1\n`, TEL), false);
   // empty / new file
   assert.equal(enableCfgFlag('', TEL).text, `${TEL}=1\n`);
+});
+
+test('user.cfg: key=0 with trailing whitespace/comment is rewritten in place (comment kept)', () => {
+  assert.equal(enableCfgFlag(`a=1\n${TRG}=0 ; off for now\nb=2\n`, TRG).text, `a=1\n${TRG}=1 ; off for now\nb=2\n`);
+  assert.equal(enableCfgFlag(`${TRG} = 0   \r\nb=2\r\n`, TRG).text, `${TRG}=1\r\nb=2\r\n`);
+  assert.equal(enableCfgFlag(`${TRG}=0;note\n`, TRG).text, `${TRG}=1;note\n`);
+  assert.equal(enableCfgFlag(`${TRG}=0 -- note\n`, TRG).text, `${TRG}=1 -- note\n`);
+  assert.equal(enableCfgFlag(`${TRG}=0 # note\n`, TRG).text, `${TRG}=1 # note\n`);
+  // already on, with a comment → no-op; flag reader ignores the comment
+  assert.equal(enableCfgFlag(`${TRG}=1 ; on\n`, TRG).changed, false);
+  assert.equal(cfgFlag(`${TRG}=1;on\n`, TRG), true);
+  assert.equal(cfgFlag(`${TRG}=0 ; 1\n`, TRG), false);
+  // a commented-out line is not the key: append
+  assert.equal(enableCfgFlag(`; ${TRG}=1\n`, TRG).text, `; ${TRG}=1\n${TRG}=1\n`);
+});
+
+test('user.cfg: only ENOENT is a new file; other read errors abort', async () => {
+  const fail = (code: string) => async () => {
+    throw Object.assign(new Error(code), { code });
+  };
+  assert.deepEqual(await readCfgForEdit('x/user.cfg', fail('ENOENT')), { text: '', exists: false });
+  await assert.rejects(readCfgForEdit('x/user.cfg', fail('EACCES')), /EACCES.*nothing was changed/);
+  await assert.rejects(readCfgForEdit('x/user.cfg', fail('EBUSY')), /EBUSY/);
+  await assert.rejects(readCfgForEdit('x/user.cfg', async () => Promise.reject(new Error('boom'))), /boom/);
+  assert.deepEqual(await readCfgForEdit('x/user.cfg', async () => 'a=1\n'), { text: 'a=1\n', exists: true });
+});
+
+test('user.cfg: write needs the preview one-time token, within 2 minutes', () => {
+  const grant = { token: 'abc', targets: [{ channel: 'LIVE', path: 'E:\\StarCitizen\\LIVE\\user.cfg' }], expiresAt: 1000 + CFG_PREVIEW_TTL_MS };
+  assert.equal(CFG_PREVIEW_TTL_MS, 120_000);
+  assert.equal(redeemCfgGrant(null, 'abc', 1000).ok, false, 'no preview shown');
+  assert.equal(redeemCfgGrant(grant, undefined, 1000).ok, false, 'no token');
+  assert.equal(redeemCfgGrant(grant, 'abd', 1000).ok, false, 'wrong token');
+  assert.equal(redeemCfgGrant(grant, 'abc', 1000 + CFG_PREVIEW_TTL_MS + 1).ok, false, 'expired');
+  const ok = redeemCfgGrant(grant, 'abc', 1000 + 60_000);
+  assert.ok(ok.ok);
+  if (ok.ok) assert.deepEqual(ok.targets, grant.targets, 'writes exactly the previewed files');
+});
+
+test('game control: TriggerGameAction is pinned to 127.0.0.1', () => {
+  assert.equal(loopbackControlAddress('127.0.0.1:2942'), '127.0.0.1:2942');
+  assert.equal(loopbackControlAddress('192.168.1.50:2942'), '127.0.0.1:2942', 'LAN address from Game.log ignored');
+  assert.equal(loopbackControlAddress('0.0.0.0:3001'), '127.0.0.1:3001', 'port kept');
+  assert.equal(loopbackControlAddress('evil.example.com:443'), '127.0.0.1:443');
+  assert.equal(loopbackControlAddress('[::1]:99999'), '127.0.0.1:2942', 'invalid port → default');
+  assert.equal(loopbackControlAddress(undefined), '127.0.0.1:2942');
+});
+
+test('game control: hotkey bindings drop invalid action names', () => {
+  const { api, reg } = fakeShortcuts();
+  const hk = new HotkeyBinder({ api, reserved: () => [], isDangerous: () => false, onFire: () => {} });
+  const st = hk.setBindings({ v_lights: 'Ctrl+Alt+L', 'bad name!': 'Ctrl+Alt+B', ['x'.repeat(65)]: 'Ctrl+Alt+X', mobiglas: 'Ctrl+' + 'A'.repeat(70) } as any);
+  assert.deepEqual(st.map((s) => s.action), ['v_lights']);
+  hk.activate();
+  assert.deepEqual([...reg.keys()], ['CommandOrControl+Alt+L']);
 });
 
 test('user.cfg: targets come from the configured install, default path only when nothing is configured', async () => {

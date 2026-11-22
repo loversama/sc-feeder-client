@@ -23,7 +23,7 @@ import { LogDiffTracker, type LogDiffReport } from '../log-diff/log-diff-tracker
 import { extractBuildInfo, type LogBuildInfo } from '../log-diff/log-signature';
 import { TelemetryRecorder, computeFieldUniverse, computeGameEventTypes } from './telemetry-recorder';
 import { loadTelemetryRoot } from './telemetry-client';
-import { TELEMETRY_CFG_KEY, TRIGGER_CFG_KEY, cfgFlag, enableCfgFlag } from './user-cfg';
+import { TELEMETRY_CFG_KEY, TRIGGER_CFG_KEY, cfgFlag, enableCfgFlag, readCfgForEdit } from './user-cfg';
 
 const MODULE_NAME = 'Telemetry';
 
@@ -288,12 +288,8 @@ export async function enableKeyInCfgFiles(targets: Array<{ channel: string; path
 }
 
 async function enableInCfgFile(p: string, channel: string, key: string): Promise<{ path: string; changed: boolean; backup?: string }> {
-  let text = '';
-  try {
-    text = await fsp.readFile(p, 'utf8');
-  } catch {
-    /* new file */
-  }
+  // Only ENOENT means "new file"; any other read error throws (never overwrite without a backup).
+  const { text } = await readCfgForEdit(p, (f) => fsp.readFile(f, 'utf8'));
   const { text: next, changed } = enableCfgFlag(text, key);
   if (!changed) return { path: p, changed: false };
   let backup: string | undefined;

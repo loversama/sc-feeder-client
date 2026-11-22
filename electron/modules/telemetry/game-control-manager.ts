@@ -14,9 +14,11 @@ import { getGameControlSettings, setGameControlSettings, getTelemetrySettings, g
 import { getChannelTracker, selectGameRoot } from '../channel-manager';
 import { discoverChannels } from '../game-channels';
 import { applyGameRootChange } from '../log-watcher';
-import { resolveCfgTargets, type CfgTarget } from './user-cfg';
+import { resolveCfgTargets, redeemCfgGrant, CFG_PREVIEW_TTL_MS, type CfgPreviewGrant } from './user-cfg';
 import { getMainWindow, getSettingsWindow } from '../window-manager';
-import { GameControl, type ControlClient } from './game-control';
+import { GameControl, loopbackControlAddress, type ControlClient } from './game-control';
+import { ACTION_NAME_RE } from './game-control-catalog';
+import { randomBytes } from 'node:crypto';
 import { HotkeyBinder } from './game-control-hotkeys';
 import { dangerInfo } from './game-control-catalog';
 import { isTrustedControlSender } from './game-control-security';
@@ -30,8 +32,8 @@ let control: GameControl | null = null;
 let hotkeys: HotkeyBinder | null = null;
 let client: TelemetryClient | null = null;
 let triggerCfgEnabled: boolean | null = null;
-/** Files listed in the last preview shown to the player: the only files "Write" may touch. */
-let previewTargets: CfgTarget[] | null = null;
+/** Last preview shown to the player: its files are the only ones "Write" may touch, with its one-time token. */
+let previewGrant: CfgPreviewGrant | null = null;
 
 async function userCfgPreview() {
   const r = await resolveCfgTargets({
@@ -41,19 +43,21 @@ async function userCfgPreview() {
     defaultLogPath: DEFAULT_LOG_FILE_PATH,
     discover: discoverChannels,
   });
-  previewTargets = r.targets;
+  previewGrant = { token: randomBytes(16).toString('hex'), targets: r.targets, expiresAt: Date.now() + CFG_PREVIEW_TTL_MS };
+  const token = previewGrant.token;
   const files = await Promise.all(
     r.targets.map(async (t) => {
       const st = await readUserCfgStatus(t.path);
       return { channel: t.channel, path: t.path, exists: st.exists, alreadyEnabled: st.triggerEnabled };
     }),
   );
-  return { line: `${TRIGGER_CFG_KEY}=1`, root: r.root, source: r.source, files };
+  return { line: `${TRIGGER_CFG_KEY}=1`, root: r.root, source: r.source, files, token };
 }
 
 
 function getClient(): ControlClient {
-  const address = getTelemetryService()?.address ?? '127.0.0.1:2942';
+  // Pinned to loopback: never trigger actions on another machine, whatever Game.log says.
+  const address = loopbackControlAddress(getTelemetryService()?.address);
   if (!client || client.address !== address) {
     client?.close();
     client = new TelemetryClient(address);
@@ -197,6 +201,8 @@ export function initGameControl(): void {
   handle('game-control:check-hotkey', (action: unknown, accel: unknown) => hotkeys!.check(String(action), String(accel)));
   handle('game-control:set-hotkey', (action: unknown, accel: unknown) => {
     const name = String(action);
+    if (!ACTION_NAME_RE.test(name)) return { state: snapshot(), problem: 'invalid' };
+    if (accel != null && (typeof accel !== 'string' || accel.length > 64)) return { state: snapshot(), problem: 'invalid' };
     const next = { ...hotkeys!.bindings };
     let problem: string | null = null;
     if (typeof accel === 'string' && accel.trim()) {
@@ -222,12 +228,12 @@ export function initGameControl(): void {
     return { ok: res.ok, error: res.error, preview: await userCfgPreview() };
   });
   // Only ever called from the confirm dialog's button (explicit player click); backs up each file first.
-  handle('game-control:enable-user-cfg', async () => {
+  handle('game-control:enable-user-cfg', async (token: unknown) => {
     try {
-      const targets = previewTargets;
-      if (!targets?.length) return { ok: false, error: 'Open the preview first.' };
-      previewTargets = null;
-      const r = await enableKeyInCfgFiles(targets, TRIGGER_CFG_KEY);
+      const grant = redeemCfgGrant(previewGrant, token, Date.now());
+      if (!grant.ok) return { ok: false, error: grant.error };
+      previewGrant = null; // single use
+      const r = await enableKeyInCfgFiles(grant.targets, TRIGGER_CFG_KEY);
       await refreshCfgStatus();
       broadcastState();
       return { ok: true, changed: r.changed };

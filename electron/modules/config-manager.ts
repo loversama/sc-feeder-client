@@ -547,19 +547,30 @@ export function setTelemetrySettings(patch: Partial<TelemetrySettings>): Telemet
 // --- Game control settings ---
 export type GameControlSettings = { enabled: boolean; favourites: string[]; hotkeys: Record<string, string> };
 
+const ACTION_NAME_OK = /^[A-Za-z0-9_]{1,64}$/;
+/** Stored hotkeys: action-name keys only, string accelerators of sane length, bounded count. */
+function cleanHotkeys(hk: unknown): Record<string, string> {
+  if (!hk || typeof hk !== 'object' || Array.isArray(hk)) return {};
+  return Object.fromEntries(
+    Object.entries(hk as Record<string, unknown>)
+      .filter(([k, v]) => ACTION_NAME_OK.test(k) && typeof v === 'string' && v.length > 0 && v.length <= 64)
+      .slice(0, 64),
+  ) as Record<string, string>;
+}
+
 export function getGameControlSettings(): GameControlSettings {
   const fav = (store as any).get('gameControlFavourites');
   const hk = (store as any).get('gameControlHotkeys');
   return {
     enabled: (store as any).get('gameControlEnabled') === true,
-    favourites: Array.isArray(fav) ? fav.filter((x: unknown) => typeof x === 'string') : [],
-    hotkeys: hk && typeof hk === 'object' ? Object.fromEntries(Object.entries(hk).filter(([k, v]) => typeof k === 'string' && typeof v === 'string')) as Record<string, string> : {},
+    favourites: Array.isArray(fav) ? fav.filter((x: unknown) => typeof x === 'string' && ACTION_NAME_OK.test(x)) : [],
+    hotkeys: cleanHotkeys(hk),
   };
 }
 
 export function setGameControlSettings(patch: Partial<GameControlSettings>): GameControlSettings {
   if (typeof patch.enabled === 'boolean') (store as any).set('gameControlEnabled', patch.enabled);
-  if (Array.isArray(patch.favourites)) (store as any).set('gameControlFavourites', [...new Set(patch.favourites.filter((x) => typeof x === 'string' && /^[A-Za-z0-9_]{1,64}$/.test(x)))].slice(0, 48));
-  if (patch.hotkeys && typeof patch.hotkeys === 'object') (store as any).set('gameControlHotkeys', patch.hotkeys);
+  if (Array.isArray(patch.favourites)) (store as any).set('gameControlFavourites', [...new Set(patch.favourites.filter((x) => typeof x === 'string' && ACTION_NAME_OK.test(x)))].slice(0, 48));
+  if (patch.hotkeys && typeof patch.hotkeys === 'object') (store as any).set('gameControlHotkeys', cleanHotkeys(patch.hotkeys));
   return getGameControlSettings();
 }

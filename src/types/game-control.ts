@@ -44,6 +44,8 @@ export type UserCfgPreview = {
   root: string;
   source: 'game-folder' | 'log-path' | 'default';
   files: Array<{ channel: string; path: string; exists: boolean; alreadyEnabled: boolean }>;
+  /** One-time token (2 min) that the write must present: ties the write to this dialog. */
+  token: string;
 };
 
 export type VoidlogControlApi = {
@@ -58,7 +60,7 @@ export type VoidlogControlApi = {
   checkHotkey(action: string, accelerator: string): Promise<string | null>;
   userCfgPreview(): Promise<UserCfgPreview>;
   selectGameRoot(): Promise<{ ok: boolean; canceled?: boolean; error?: string; preview: UserCfgPreview }>;
-  enableTriggerInUserCfg(): Promise<{ ok: boolean; error?: string; changed?: boolean }>;
+  enableTriggerInUserCfg(token: string): Promise<{ ok: boolean; error?: string; changed?: boolean }>;
   onEvent(cb: (e: ControlEvent) => void): () => void;
 };
 

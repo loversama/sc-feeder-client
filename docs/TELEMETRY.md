@@ -133,8 +133,16 @@ The **Controls** tab in the main window triggers actions on the player's own gam
   third-party notes, unverified in a live game).
 - The action list is reloaded every time the telemetry stream (re)connects. Only listed actions are sent.
 - Dangerous actions (self-destruct, eject, emergency exit, power off / power toggle, and look-alike
-  names) need hold-to-confirm: `game-control:arm` gives a single-use token that `trigger` accepts only
-  after 1.2 s. They can't be bound to hotkeys (globalShortcut has no key-up).
+  names) need hold-to-confirm in the UI. The main process also enforces a minimum delay:
+  `game-control:arm` gives a single-use token that `trigger` accepts only after 1.2 s. That stops a fast
+  click or a buggy page from firing instantly, but it is a delay, not proof that a person held the button.
+  They can't be bound to hotkeys (globalShortcut has no key-up).
+- Control always targets `127.0.0.1` (only the port is taken from the telemetry address), even if
+  Game.log reports a LAN address.
+- user.cfg: the "Add to user.cfg..." dialog shows the exact line and files (from the configured SC
+  folder or Game.log path). Writing needs the dialog's one-time token (2 min) and touches only those
+  files. Each existing file is backed up first. Only a missing file counts as new; any other read error
+  aborts. `key=0 ; comment` lines are rewritten in place and keep the comment.
 - Client rate limit: 200 ms between any presses, 600 ms per action, max 10 per 10 s. Failed or timed-out
   triggers are never retried (toggles would double-fire).
 - Global hotkeys need Ctrl/Alt/Win (F13-F24 allowed alone), are checked against the overlay hotkey,

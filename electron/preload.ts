@@ -671,7 +671,7 @@ contextBridge.exposeInMainWorld('voidlogControl', {
   checkHotkey: (action: string, accelerator: string) => ipcRenderer.invoke('game-control:check-hotkey', action, accelerator),
   userCfgPreview: () => ipcRenderer.invoke('game-control:user-cfg-preview'),
   selectGameRoot: () => ipcRenderer.invoke('game-control:select-game-root'),
-  enableTriggerInUserCfg: () => ipcRenderer.invoke('game-control:enable-user-cfg'),
+  enableTriggerInUserCfg: (token: string) => ipcRenderer.invoke('game-control:enable-user-cfg', token),
   onEvent: (cb: (e: unknown) => void) => {
     const listener = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
     ipcRenderer.on('game-control:event', listener);
