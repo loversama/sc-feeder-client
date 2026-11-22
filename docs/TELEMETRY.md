@@ -49,6 +49,7 @@ After a patch that changes the API, regenerate it from a new `.desc`:
 | `telemetry/telemetry-service.ts` | connection loop (quiet retries while the game is closed, reopens a silent stream), throttled upload |
 | `telemetry/telemetry-manager.ts` | Electron glue, user.cfg, overlay state |
 | `telemetry/debug-bus.ts` | ring buffer of every event passing through the client + upload counters |
+| `telemetry/game-control*.ts` | local game control: action catalog, trigger/confirm/rate limit, hotkeys, IPC sender check (see below) |
 
 ### Sharing with VOIDLOG.GG
 
@@ -119,3 +120,27 @@ recorded; files are capped at 50 MB, the newest 30 are kept.
 
 `npm run test:telemetry` — fake game gRPC server built from the embedded schema, state/event
 derivation, sharing filters, signatures, tracker baseline rotation.
+
+
+## Game control (local only)
+
+The **Controls** tab in the main window triggers actions on the player's own game through
+`ListTriggerableActions` / `TriggerGameAction`. Nothing is sent to or received from VOIDLOG.GG
+(remote control was deliberately not built; see `GAME-CONTROL-OPTIONS.md` in the team notes).
+
+- Off by default (`gameControlEnabled`). The game also needs
+  `server.game.telemetry.trigger.actions.enabled=1` in user.cfg (button on the page; key name from
+  third-party notes, unverified in a live game).
+- The action list is reloaded every time the telemetry stream (re)connects. Only listed actions are sent.
+- Dangerous actions (self-destruct, eject, emergency exit, power off / power toggle, and look-alike
+  names) need hold-to-confirm: `game-control:arm` gives a single-use token that `trigger` accepts only
+  after 1.2 s. They can't be bound to hotkeys (globalShortcut has no key-up).
+- Client rate limit: 200 ms between any presses, 600 ms per action, max 10 per 10 s. Failed or timed-out
+  triggers are never retried (toggles would double-fire).
+- Global hotkeys need Ctrl/Alt/Win (F13-F24 allowed alone), are checked against the overlay hotkey,
+  duplicates and keys held by other apps, and are registered only while control is on and the game streams.
+- IPC is accepted only from the main/settings windows' top frame served from the app's own `dist/`
+  (or the dev server), not from hosted voidlog.gg views or webviews.
+- Fixture preview without Electron: `npx vite build --config scripts/controls-preview.vite.config.ts`, then
+  serve `test/telemetry/.out/controls-preview/` (uses our sample list in `test/telemetry/fixtures/sample-actions.ts`;
+  the app itself always shows the list the game returns).

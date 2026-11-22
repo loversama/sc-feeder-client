@@ -657,3 +657,24 @@ function createControlButton(text: string, onclick: () => void) {
   button.addEventListener('click', onclick);
   return button;
 }
+
+// --- Game control (local TriggerGameAction). The main process also checks the sender frame. ---
+contextBridge.exposeInMainWorld('voidlogControl', {
+  getState: () => ipcRenderer.invoke('game-control:get-state'),
+  setEnabled: (enabled: boolean) => ipcRenderer.invoke('game-control:set-enabled', enabled === true),
+  refresh: () => ipcRenderer.invoke('game-control:refresh'),
+  trigger: (name: string, opts?: { holdMs?: number; confirmToken?: string }) => ipcRenderer.invoke('game-control:trigger', name, opts ?? {}),
+  arm: (name: string) => ipcRenderer.invoke('game-control:arm', name),
+  disarm: (token: string) => ipcRenderer.invoke('game-control:disarm', token),
+  setFavourites: (names: string[]) => ipcRenderer.invoke('game-control:set-favourites', names),
+  setHotkey: (action: string, accelerator: string | null) => ipcRenderer.invoke('game-control:set-hotkey', action, accelerator),
+  checkHotkey: (action: string, accelerator: string) => ipcRenderer.invoke('game-control:check-hotkey', action, accelerator),
+  userCfgPreview: () => ipcRenderer.invoke('game-control:user-cfg-preview'),
+  selectGameRoot: () => ipcRenderer.invoke('game-control:select-game-root'),
+  enableTriggerInUserCfg: () => ipcRenderer.invoke('game-control:enable-user-cfg'),
+  onEvent: (cb: (e: unknown) => void) => {
+    const listener = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+    ipcRenderer.on('game-control:event', listener);
+    return () => ipcRenderer.removeListener('game-control:event', listener);
+  },
+});
