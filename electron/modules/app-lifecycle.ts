@@ -25,11 +25,8 @@ import { initializeEventProcessor } from './event-processor'; // Import EventPro
 import { initTelemetry, shutdownTelemetry } from './telemetry/telemetry-manager';
 import { initOverlay, destroyOverlay } from './telemetry/overlay-window';
 import { registerTelemetryIpc } from './telemetry/telemetry-ipc';
-<<<<<<< HEAD
 import { initBodycam, registerBodycamIpc, shutdownBodycam } from './bodycam-manager';
-=======
 import { initGameControl, shutdownGameControl } from './telemetry/game-control-manager';
->>>>>>> origin/main
 import {
   getOfflineMode,
   getLaunchOnStartup,
