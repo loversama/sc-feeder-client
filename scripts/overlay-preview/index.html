@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Party overlay preview</title>
+  <style>
+    html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; }
+    /* Game-like backdrop: a dim planet horizon and cockpit glass. Preview only. */
+    .stage {
+      position: relative; width: 1920px; height: 1080px;
+      background:
+        radial-gradient(ellipse 1400px 520px at 40% 118%, #3b4a5e 0%, #1d2633 38%, transparent 70%),
+        radial-gradient(circle at 18% 22%, rgba(255,255,255,.55) 0 1px, transparent 2px),
+        radial-gradient(circle at 63% 12%, rgba(255,255,255,.45) 0 1px, transparent 2px),
+        radial-gradient(circle at 77% 35%, rgba(255,255,255,.35) 0 1px, transparent 2px),
+        radial-gradient(circle at 33% 48%, rgba(255,255,255,.4) 0 1px, transparent 2px),
+        linear-gradient(180deg, #05070c 0%, #0b1220 55%, #1a2230 100%);
+    }
+    .stage::before { /* cockpit frame */
+      content: ''; position: absolute; inset: 0;
+      background:
+        linear-gradient(100deg, #0a0c10 0 9%, transparent 9.2%),
+        linear-gradient(-100deg, #0a0c10 0 6%, transparent 6.2%),
+        linear-gradient(0deg, #0a0c10 0 14%, transparent 14.2%);
+      opacity: .9;
+    }
+    .stage::after { /* in-game HUD hint */
+      content: '1,240 m/s   SCM'; position: absolute; left: 50%; top: 58%; transform: translateX(-50%);
+      font: 600 14px/1 monospace; letter-spacing: .2em; color: rgba(120, 220, 255, .55);
+    }
+    .overlay-frame { position: absolute; right: 24px; top: 160px; z-index: 2; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
