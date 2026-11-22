@@ -238,3 +238,13 @@ test('watcher: non-Windows never runs anything and never errors', async () => {
   assert.equal(d.error, null);
   assert.equal(f.calls.length, 0);
 });
+
+test('watcher: a 6 s tasklist (and no PowerShell) still detects the game via the watcher path', async () => {
+  const f = fake({ tasklist: { ms: 6000, out: CSV }, powershell: { err: new Error('powershell blocked') } });
+  const { w } = watcher(f);
+  const d = await w.tick();
+  assert.equal(d.running, true);
+  assert.equal(d.via, 'tasklist');
+  assert.equal(d.durations.tasklist, 6000);
+  assert.ok(f.calls.every((c) => c.timeout >= 20_000), 'every spawned check allows at least 20 s');
+});
