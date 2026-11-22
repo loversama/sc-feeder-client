@@ -24,6 +24,21 @@ export const previewRoster: OverlayRoster = {
   ],
 };
 
+/** A 5-person party: two in a Cutlass, one on foot, two offline (party lists show offline members last). */
+export const previewParty: OverlayRoster = {
+  scope: 'party',
+  id: 'p1',
+  generatedAt: '2026-11-22T12:00:00.000Z',
+  ships: [{ key: '555000111222', className: 'DRAK_Cutlass_Black', name: 'DRAK_Cutlass_Black_555000111222', hull: 76, shields: 48, faces: [48] }],
+  members: [
+    { userId: 'u-bo', name: 'Bo_Kestrel', status: 'ship', health: 100, o2: 100, shipKey: '555000111222', crewRole: 'PILOT' },
+    { userId: 'u-ava', name: 'AvaNightjar', status: 'ship', health: 72, o2: 100, shipKey: '555000111222', crewRole: 'TURRET' },
+    { userId: 'u-cy', name: 'cy-runner', status: 'foot', health: 34, o2: 31, shipKey: null },
+    { userId: 'u-hal', name: 'HalBrenner', status: 'offline', health: null, o2: null, shipKey: null },
+    { userId: 'u-ivy', name: 'IvyQuill', status: 'offline', health: null, o2: null, shipKey: null },
+  ],
+};
+
 export const previewLayout: OverlayLayout = {
   scope: 'org',
   id: 'VOID',

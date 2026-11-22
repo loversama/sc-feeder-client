@@ -97,7 +97,9 @@ export class PartyOverlayFeed {
       if (!ack) return this.set({ status: 'error', message: 'No answer from VOIDLOG.GG' });
       if (!ack.ok) {
         const status: FeedStatus = ack.error === 'no-access' || ack.error === 'no-party' || ack.error === 'signed-out' ? ack.error : 'error';
-        return this.set({ status, roster: null, layout: null, message: MESSAGES[status] ?? String(ack.error ?? 'Unavailable') });
+        // Keep a header label for the overlay even though the server sent no source.
+        const source = s.partyOverlaySource === 'org' ? { scope: 'org' as const, id: s.partyOverlayOrgTag, label: `[${s.partyOverlayOrgTag}]` } : null;
+        return this.set({ status, source, roster: null, layout: null, message: MESSAGES[status] ?? String(ack.error ?? 'Unavailable') });
       }
       this.d.log?.('info', `Overlay subscribed to ${ack.source?.scope} ${ack.source?.label}`);
       this.set({ status: 'live', message: undefined, source: ack.source ?? null, roster: ack.roster ?? null, layout: ack.layout ?? null, party: ack.party ?? null });
