@@ -37,6 +37,7 @@ const available = computed(() => info.value?.server?.availableOrgs ?? []);
 const statusText = computed(() => {
   const s = info.value?.status;
   if (!s) return '';
+  if (s.detail?.startsWith("Couldn't")) return s.detail; // e.g. "Couldn't verify the game window — screenshots paused"
   return (STATE_TEXT[s.state] ?? s.state) + (s.detail ? ` (${s.detail})` : '');
 });
 const lastSent = computed(() => {
@@ -92,7 +93,8 @@ onUnmounted(() => clearInterval(timer));
       Optional and off by default. While Star Citizen is running, VOIDLOG takes a small picture of the
       <b>Star Citizen window only</b> (never your screen or any other window) every few seconds and shows it to the members of the org(s) you
       choose, on their live page next to your character vitals. Only the newest picture is kept, for about two minutes; nothing is stored or
-      recorded. Nothing is injected into or read from the game. Turn it off at any time and the picture is removed immediately.
+      recorded. The pictures are produced by this app on your PC; the server only checks their format and size and passes them on (live view is not re-encoded or inspected).
+      Nothing is injected into or read from the game. Turn it off at any time and the picture is removed immediately.
     </p>
     <p v-if="serverOff" class="text-orange-400 text-sm">Body-cam is not enabled on the VOIDLOG.GG server yet.</p>
 

@@ -13,7 +13,7 @@ import { store } from './config-manager';
 import { getServerLink } from './server-connection';
 import { getSettingsWindow, createSettingsWindow } from './window-manager';
 import { setBodycamTrayState } from './tray-manager';
-import { makeProcessChecker, resolveWindowProcessName, hwndFromSourceId } from './bodycam-window';
+import { makeProcessChecker, checkGameWindow, hwndFromSourceId } from './bodycam-window';
 import { LiveSharer, type LiveParams, type LiveStatus } from './bodycam-live';
 import { getAuthStatus, getPersistedClientId } from './auth-manager';
 import {
@@ -21,6 +21,7 @@ import {
   BODYCAM_DEFAULT_INTERVAL_S,
   BODYCAM_DEFAULT_TITLE_PATTERN,
   clampInterval,
+  VERIFY_FAILED_MESSAGE,
   isBlankBitmap,
   makeTitleMatcher,
   matchingWindows,
@@ -71,7 +72,8 @@ function saveBodycamSettings(patch: Partial<BodycamSettings>): BodycamSettings {
 let sharer: BodycamSharer | null = null;
 let live: LiveSharer | null = null;
 let liveStatus: LiveStatus = { state: 'idle', viewers: 0, framesSent: 0 };
-const isGameWindow = makeProcessChecker((hwnd) => resolveWindowProcessName(hwnd));
+/** 'yes' / 'no' / 'unknown' (the check could not run). Cached 3 s; pass { fresh: true } to bypass. */
+const isGameWindow = makeProcessChecker((hwnd) => checkGameWindow(hwnd));
 
 // ---- live capture adapter -------------------------------------------------------------------
 // Primary: ONE window captured through getUserMedia(chromeMediaSourceId) in a hidden, sandboxed
@@ -87,7 +89,7 @@ async function findGameWindow(): Promise<{ sourceId: string } | null> {
   const matches = matchingWindows(sources, makeTitleMatcher(getBodycamSettings().titlePattern));
   if (matches.length !== 1 || matches[0].thumbnail.isEmpty()) return null;
   const hwnd = hwndFromSourceId(matches[0].id);
-  if (!hwnd || !(await isGameWindow(hwnd))) return null;
+  if (!hwnd || (await isGameWindow(hwnd)) !== 'yes') return null;
   return { sourceId: matches[0].id };
 }
 
@@ -100,6 +102,9 @@ function closeCapture(): void {
 
 async function openCapture(sourceId: string, size: { width: number; height: number }, fps: number): Promise<void> {
   if (!/^window:\d+:\d+$/.test(sourceId)) throw new Error('bad source id');
+  // Verify the window is the game IMMEDIATELY before capturing it (no cache).
+  const hwnd = hwndFromSourceId(sourceId);
+  if (!hwnd || (await isGameWindow(hwnd, { fresh: true })) !== 'yes') throw new Error('window is not the verified game window');
   closeCapture();
   capSourceId = sourceId;
   try {
@@ -113,7 +118,9 @@ async function openCapture(sourceId: string, size: { width: number; height: numb
       const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: ${JSON.stringify(sourceId)}, maxFrameRate: ${Math.round(fps)} } } });
       const v = document.createElement('video'); v.muted = true; v.srcObject = stream; await v.play();
       const c = document.createElement('canvas'); c.width = ${size.width}; c.height = ${size.height};
-      window.__bc = { stream, v, c, ctx: c.getContext('2d') };
+      window.__bc = { stream, v, c, ctx: c.getContext('2d'), ended: false };
+      // The window closed / capture was revoked: never keep sending the last (frozen) frame.
+      stream.getVideoTracks().forEach((t) => t.addEventListener('ended', () => { window.__bc.ended = true; }));
     })()`);
     capMode = 'media';
   } catch (err) {
@@ -127,8 +134,14 @@ async function openCapture(sourceId: string, size: { width: number; height: numb
 async function grabFrame(quality: number, size: { width: number; height: number }): Promise<{ jpeg: Buffer; blank: boolean } | null> {
   if (capMode === 'media' && capWin && !capWin.isDestroyed()) {
     const url: string | null = await capWin.webContents.executeJavaScript(
-      `(() => { const b = window.__bc; if (!b || !b.v.videoWidth) return null; b.ctx.drawImage(b.v, 0, 0, b.c.width, b.c.height); return b.c.toDataURL('image/jpeg', ${(quality / 100).toFixed(2)}); })()`,
+      `(() => { const b = window.__bc; if (!b) return null; if (b.ended) return 'ended'; const vw = b.v.videoWidth, vh = b.v.videoHeight; if (!vw || !vh) return null;
+        // letterbox: keep the game's aspect ratio, black bars instead of stretching
+        const k = Math.min(b.c.width / vw, b.c.height / vh), dw = Math.round(vw * k), dh = Math.round(vh * k);
+        b.ctx.fillStyle = '#000'; b.ctx.fillRect(0, 0, b.c.width, b.c.height);
+        b.ctx.drawImage(b.v, Math.round((b.c.width - dw) / 2), Math.round((b.c.height - dh) / 2), dw, dh);
+        return b.c.toDataURL('image/jpeg', ${(quality / 100).toFixed(2)}); })()`,
     );
+    if (url === 'ended') throw new Error('capture ended (the game window closed)');
     if (!url || !url.startsWith('data:image/jpeg;base64,')) return null;
     const jpeg = Buffer.from(url.slice('data:image/jpeg;base64,'.length), 'base64');
     const img = nativeImage.createFromBuffer(jpeg);
@@ -204,7 +217,8 @@ function refreshBanner(): void {
   const text = liveStatus.state === 'live' || (live?.active && liveStatus.viewers > 0)
     ? `LIVE - being watched by ${liveStatus.viewers}`
     : `Sharing game screenshots with ${s.orgs.join(', ')}`;
-  setBodycamTrayState({ text, onStop: () => void stopSharing() });
+  const isLive = liveStatus.state === 'live' || (!!live?.active && liveStatus.viewers > 0);
+  setBodycamTrayState({ text, onStop: () => void stopSharing(), live: isLive });
 }
 
 /** Switch sharing off (tray "Stop", notification action, settings). The server deletes the frame immediately. */
@@ -236,6 +250,16 @@ function announceAutoResume(): void {
   }
 }
 
+/** Toast when somebody starts watching the live view (viewers 0 -> N). */
+function announceViewer(): void {
+  const tags = getBodycamSettings().orgs.join(', ');
+  try {
+    if (Notification.isSupported()) new Notification({ title: 'Live view is being watched', body: `Someone is watching your game view (${tags}).`, silent: false }).show();
+  } catch (err) {
+    logger.warn(MODULE_NAME, `Could not show the live-view notice: ${(err as Error).message}`);
+  }
+}
+
 /** Only the settings window may read/change body-cam settings. */
 function assertSettingsSender(e: IpcMainInvokeEvent): void {
   const win = getSettingsWindow();
@@ -252,7 +276,10 @@ export function initBodycam(): void {
     getSettings: getBodycamSettings,
     isGameRunning: () => gameRunning,
     // The title alone is not enough: the window must belong to StarCitizen.exe (fails closed).
-    isGameWindow: makeProcessChecker((hwnd) => resolveWindowProcessName(hwnd)),
+    isGameWindow: async (hwnd) => {
+      const v = await isGameWindow(hwnd);
+      return v === 'yes' ? true : v === 'no' ? false : 'unknown';
+    },
     resync: () => syncServer(),
     isOnline,
     // The ONLY capture call in the app: window sources only (never 'screen'), small thumbnails.
@@ -277,7 +304,9 @@ export function initBodycam(): void {
     closeCapture,
     send: (jpeg) => getServerLink().send('submit_bodycam_live', { frame: jpeg }),
     onStatus: (st) => {
+      const before = liveStatus.viewers;
       liveStatus = st;
+      if (before === 0 && st.viewers > 0) announceViewer();
       refreshBanner();
       for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('bodycam:live-status', st);
     },
@@ -288,7 +317,8 @@ export function initBodycam(): void {
     const n = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
     live?.start({ fps: n(p?.fps, 5), width: Math.min(640, Math.max(64, n(p?.width, 480))), height: Math.min(360, Math.max(36, n(p?.height, 270))), maxFrameBytes: n(p?.maxFrameBytes, 10_000), maxKbps: n(p?.maxKbps, 400), viewers: n(p?.viewers, 1) });
   });
-  getServerLink().onServer('bodycam_live_stop', () => live?.stop('stopped'));
+  getServerLink().onServer('bodycam_live_stop', () => live?.stop('stopped', { soft: true })); // keeps the hidden capture warm for 10 s
+  getServerLink().onServer('bodycam_live_rejected', (p: any) => live?.noteServerRejection(String(p?.reason ?? 'unknown').slice(0, 200)));
   getServerLink().on('unauthenticated', () => live?.stop('disconnected'));
   pollGame();
   pollTimer = setInterval(pollGame, PROCESS_POLL_MS);
@@ -315,7 +345,7 @@ export function registerBodycamIpc(): void {
   ipcMain.handle('bodycam:get', async (e) => {
     assertSettingsSender(e);
     const server = isOnline() ? await emitAck('bodycam_get') : undefined;
-    return { settings: publicSettings(), status: lastStatus, live: liveStatus, gameRunning, online: isOnline(), server: server ?? null };
+    return { settings: publicSettings(), status: lastStatus, live: liveStatus, verifyProblem: lastStatus.detail === VERIFY_FAILED_MESSAGE, gameRunning, online: isOnline(), server: server ?? null };
   });
   ipcMain.handle('bodycam:set-settings', async (e, patch: Partial<BodycamSettings>) => {
     assertSettingsSender(e);

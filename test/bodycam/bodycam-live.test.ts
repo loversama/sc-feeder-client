@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LiveSharer, LIVE_DEADMAN_MS, type LiveDeps, type LiveParams } from '../../electron/modules/bodycam-live';
+import { LiveSharer, LIVE_DEADMAN_MS, LIVE_RESTART_DEBOUNCE_MS, LIVE_WARM_MS, type LiveDeps, type LiveParams } from '../../electron/modules/bodycam-live';
 
 const PARAMS: LiveParams = { fps: 5, width: 480, height: 270, maxFrameBytes: 10_000, maxKbps: 400, viewers: 1 };
 
@@ -168,4 +168,66 @@ test('a throwing capture closes the source and backs off instead of crashing', a
   assert.ok(log.closed >= 1);
   assert.equal(timers.at(-1)!.ms, 2000);
   assert.equal(live.status.state, 'blocked');
+});
+
+test('soft stop keeps the hidden capture warm for 10 s, then closes it; a quick re-watch reuses it', async () => {
+  const { live, log, timers, advance } = harness();
+  live.start(PARAMS);
+  await live.tick();
+  assert.equal(log.opened.length, 1);
+  const closedBefore = log.closed;
+  live.stop('stopped', { soft: true });
+  assert.equal(live.active, false); // frames stop immediately
+  assert.equal(log.closed, closedBefore); // capture still warm
+  const warm = timers.at(-1)!;
+  assert.equal(warm.ms, LIVE_WARM_MS);
+  // re-watch after the debounce reuses the open capture
+  advance(LIVE_RESTART_DEBOUNCE_MS + 1);
+  live.start(PARAMS);
+  assert.equal(timers.at(-1)!.ms, 0);
+  await live.tick();
+  assert.equal(log.opened.length, 1);
+  assert.equal(log.closed, closedBefore);
+  // and a soft stop that is not followed by a start closes it when the warm timer fires
+  live.stop('stopped', { soft: true });
+  timers.at(-1)!.fn();
+  assert.equal(log.closed, closedBefore + 1);
+});
+
+test('stop -> start within 3 s is held back until the debounce has passed', async () => {
+  const { live, timers, advance } = harness();
+  live.start(PARAMS);
+  await live.tick();
+  live.stop('stopped', { soft: true });
+  advance(1000);
+  live.start(PARAMS);
+  assert.equal(timers.at(-1)!.ms, LIVE_RESTART_DEBOUNCE_MS - 1000);
+});
+
+test('hard stops (setting off, not allowed) close the capture immediately', async () => {
+  const { live, log } = harness();
+  live.start(PARAMS);
+  await live.tick();
+  const c = log.closed;
+  live.stop('live view off');
+  assert.equal(log.closed, c + 1);
+});
+
+test('a warm capture is re-verified before the first frame of the next watch', async () => {
+  const { live, log, advance } = harness();
+  live.start(PARAMS);
+  await live.tick();
+  live.stop('stopped', { soft: true });
+  advance(LIVE_RESTART_DEBOUNCE_MS + 1);
+  live.start(PARAMS);
+  const finds = log.finds;
+  await live.tick();
+  assert.equal(log.finds, finds + 1);
+});
+
+test('server rejection reasons are surfaced in the status', async () => {
+  const { live } = harness();
+  live.start(PARAMS);
+  live.noteServerRejection('EXIF/XMP metadata (APP1) is not allowed');
+  assert.match(live.status.detail ?? '', /live frames rejected: EXIF/);
 });

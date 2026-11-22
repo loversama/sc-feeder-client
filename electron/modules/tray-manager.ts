@@ -16,15 +16,47 @@ const __dirname = path.dirname(__filename);
 let tray: Tray | null = null;
 
 /** Body-cam privacy indicator: tooltip line + a "Stop sharing" menu entry while screenshots are shared. */
-let bodycamBanner: { text: string; onStop: () => void } | null = null;
+let bodycamBanner: { text: string; onStop: () => void; live?: boolean } | null = null;
+let baseTrayIcon: Electron.NativeImage | null = null;
+let liveTrayIcon: Electron.NativeImage | null = null;
+
+/** Copy of the tray icon with a red dot in the top-right corner (BGRA bitmap, same layout both ways). */
+function withRedDot(icon: Electron.NativeImage): Electron.NativeImage {
+    const { width, height } = icon.getSize();
+    if (!width || !height) return icon;
+    const buf = Buffer.from(icon.toBitmap());
+    const r = Math.max(3, Math.round(Math.min(width, height) * 0.22));
+    const cx = width - r - 1;
+    const cy = r + 1;
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) {
+                const i = (y * width + x) * 4;
+                buf[i] = 0x1e; buf[i + 1] = 0x1e; buf[i + 2] = 0xe6; buf[i + 3] = 0xff; // red (BGRA)
+            }
+        }
+    }
+    return nativeImage.createFromBitmap(buf, { width, height });
+}
 const BASE_TOOLTIP = 'SC Kill Feed';
 const tooltipText = () => (bodycamBanner ? `${BASE_TOOLTIP}\n${bodycamBanner.text}` : BASE_TOOLTIP);
 
-export function setBodycamTrayState(banner: { text: string; onStop: () => void } | null): void {
+export function setBodycamTrayState(banner: { text: string; onStop: () => void; live?: boolean } | null): void {
     bodycamBanner = banner;
     if (tray && !tray.isDestroyed()) {
         tray.setToolTip(tooltipText());
         tray.setContextMenu(buildTrayMenuTemplate());
+        try {
+            if (!baseTrayIcon) {
+                const p = getIconPath();
+                baseTrayIcon = p && fsSync.existsSync(p) ? nativeImage.createFromPath(p) : null;
+                liveTrayIcon = baseTrayIcon && !baseTrayIcon.isEmpty() ? withRedDot(baseTrayIcon) : null;
+            }
+            // red-dot icon while a live view is being watched
+            if (baseTrayIcon && liveTrayIcon) tray.setImage(banner?.live ? liveTrayIcon : baseTrayIcon);
+        } catch (err: any) {
+            logger.warn(MODULE_NAME, `Could not switch the tray icon: ${err?.message}`);
+        }
     }
 }
 

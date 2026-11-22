@@ -12,6 +12,7 @@ import {
   type BodycamDeps,
   type CamImage,
   type CamSource,
+  VERIFY_FAILED_MESSAGE,
 } from '../../electron/modules/bodycam';
 
 /** Fake NativeImage: `kind` picks the pixel content. */
@@ -70,6 +71,16 @@ test('malformed source ids are ignored', () => {
 
 test('minimised (empty thumbnail) game window is not selected', () => {
   assert.equal(selectGameWindow([src('window:1:0', 'Star Citizen', img('empty'))], M), null);
+});
+
+test('dark scenes are not blank; only truly uniform frames are', () => {
+  const dark = Buffer.alloc(640 * 360 * 4);
+  for (let i = 0; i < dark.length; i += 4) {
+    const v = (i * 7 + (i >> 5)) % 9; // values 0..8: very dark but varied
+    dark[i] = v; dark[i + 1] = v; dark[i + 2] = v; dark[i + 3] = 255;
+  }
+  assert.equal(isBlankBitmap(dark), false);
+  assert.equal(isBlankBitmap(Buffer.alloc(640 * 360 * 4, 200)), true); // flat white is blank too
 });
 
 test('blank/black frames are detected, real frames are not', () => {
@@ -214,4 +225,14 @@ test("'not sharing' re-syncs once, then pauses until resume()", async () => {
   sharer.resume();
   await sharer.tick();
   assert.equal(calls3.length, n + 1);
+});
+
+test("when the process check cannot run, screenshots pause with a clear message and nothing is captured", async () => {
+  const { sharer, calls } = harness({ isGameWindow: async () => 'unknown' });
+  const st = await sharer.tick();
+  assert.equal(st.state, 'window-not-found');
+  assert.equal(st.detail, VERIFY_FAILED_MESSAGE);
+  assert.equal(calls.uploads.length, 0);
+  const t2 = harness({ isGameWindow: async () => { throw new Error('x'); } });
+  assert.equal((await t2.sharer.tick()).detail, VERIFY_FAILED_MESSAGE);
 });
