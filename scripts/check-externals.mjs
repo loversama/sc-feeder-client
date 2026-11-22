@@ -48,7 +48,7 @@ for (const file of fs.readdirSync(dir).filter((f) => /\.(m?js|cjs)$/.test(f))) {
   for (const re of PATTERNS) {
     for (const m of code.matchAll(re)) {
       const spec = m[1];
-      if (!isBare(spec) || spec.startsWith('node:') || BUILTINS.has(spec) || BUILTINS.has(spec.split('/')[0])) continue;
+      if (spec.includes('${') || !isBare(spec) || spec.startsWith('node:') || BUILTINS.has(spec) || BUILTINS.has(spec.split('/')[0])) continue;
       const name = packageName(spec);
       if (OPTIONAL_GUARDED.has(name)) continue;
       seen.set(name, [...new Set([...(seen.get(name) ?? []), file])]);
@@ -61,6 +61,18 @@ for (const file of fs.readdirSync(dir).filter((f) => /\.(m?js|cjs)$/.test(f))) {
 }
 for (const name of NATIVE_EXTERNALS.filter((n) => n === 'better-sqlite3')) {
   if (!deps.has(name)) problems.push(`native external '${name}' must be in package.json dependencies`);
+}
+
+// Sandboxed preloads: one self-contained file each, only require('electron') (+ sandbox modules).
+const SANDBOX_OK = new Set(['electron', 'events', 'timers', 'url', 'node:events', 'node:timers', 'node:url']);
+for (const file of fs.readdirSync(dir).filter((f) => /preload\.mjs$/.test(f))) {
+  const code = fs.readFileSync(path.join(dir, file), 'utf8');
+  for (const m of code.matchAll(/(?<![\w$.])require\(\s*["']([^"']+)["']\s*\)/g)) {
+    if (!SANDBOX_OK.has(m[1])) problems.push(`${file}: sandboxed preload requires '${m[1]}' (must be one self-contained file)`);
+  }
+  for (const m of code.matchAll(/(?<![\w$.])import\(\s*["']([^"']+)["']\s*\)/g)) {
+    problems.push(`${file}: sandboxed preload uses import('${m[1]}') (must be one self-contained file)`);
+  }
 }
 
 if (problems.length) {

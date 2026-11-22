@@ -31,9 +31,16 @@ pure-JS package. Fixed in 0.3.4. Keep it fixed:
    - What it does: `--smoke-test` loads the whole main-process module graph, runs the bundled
      gRPC/protobuf code and better-sqlite3 from app.asar, checks the packaged files, opens no window
      and exits 0.
-5. `electron/main.ts` is a tiny bootstrap that imports only Electron and Node built-ins. It
+5. **Preloads are sandboxed, one self-contained file each.** They can only `require('electron')`;
+   a split chunk such as `./index.mjs` cannot load. Add a new preload to `PRELOADS` in
+   `vite.config.ts` (each one is built on its own with `inlineDynamicImports`) and to
+   `REQUIRED_APP_FILES`. The externals check and the smoke test fail on chunk imports in preloads.
+6. `electron/main.ts` is a tiny bootstrap that imports only Electron and Node built-ins. It
    dynamically imports `app-main.ts`, and a missing module becomes a "finishing an update" dialog with
-   Retry instead of a raw crash. Keep it free of other imports.
+   Retry instead of a raw crash. Keep it free of other imports. App start-up code goes in
+   `startApp()` in `app-main.ts`; importing `app-main.ts` must have no app-level side effects.
+7. A new HTML page needs its own input in `vite.config.ts` `build.rollupOptions.input`, and it must be
+   loaded from `path.join(app.getAppPath(), 'dist', '<page>.html')` (or the dev server URL).
 
 ## Other conventions
 

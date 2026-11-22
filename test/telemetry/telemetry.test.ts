@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isMissingModuleError } from '../../electron/startup-guard.ts';
+import { isMissingModuleError, preloadBundleProblems } from '../../electron/startup-guard.ts';
 import * as grpc from '@grpc/grpc-js';
 import { loadTelemetryRoot, TELEMETRY_PACKAGE, TELEMETRY_SERVICE } from '../../electron/modules/telemetry/telemetry-client';
 import { TelemetryService, type TelemetryUploadPayload } from '../../electron/modules/telemetry/telemetry-service';
@@ -606,4 +606,11 @@ test('startup guard: missing-module errors (mid-update launch) are recognised, o
   assert.equal(isMissingModuleError(new Error("Cannot find module './app-main-abc.js'")), true);
   assert.equal(isMissingModuleError(new TypeError('x is not a function')), false);
   assert.equal(isMissingModuleError(null), false);
+});
+
+test('startup guard: sandboxed preloads must be self-contained', () => {
+  assert.deepEqual(preloadBundleProblems('"use strict";const n=require("electron");n.contextBridge.exposeInMainWorld("x",{});'), []);
+  // the 0.3.3 preload: dynamic import of a shared chunk
+  assert.deepEqual(preloadBundleProblems('const n=require("electron");const t=await R(()=>import("./index.mjs"),[]);'), ["import('./index.mjs')"]);
+  assert.deepEqual(preloadBundleProblems('const a=require("./chunk.mjs");'), ["require('./chunk.mjs')"]);
 });

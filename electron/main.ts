@@ -13,7 +13,7 @@ import { app, dialog } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { isMissingModuleError } from './startup-guard';
+import { isMissingModuleError, preloadBundleProblems } from './startup-guard';
 
 const SMOKE_TEST = process.argv.includes('--smoke-test');
 
@@ -86,6 +86,13 @@ async function runSmokeTest(): Promise<void> {
     const missing = REQUIRED_APP_FILES.filter((f) => !fs.existsSync(path.join(app.getAppPath(), f)));
     if (missing.length) throw new Error(`missing app files: ${missing.join(', ')}`);
     result.checks.push(`${REQUIRED_APP_FILES.length} app files present`);
+
+    const preloads = REQUIRED_APP_FILES.filter((f) => /preload\.mjs$/.test(f));
+    const bad = preloads.flatMap((f) =>
+      preloadBundleProblems(fs.readFileSync(path.join(app.getAppPath(), f), 'utf8')).map((p) => `${f}: ${p}`),
+    );
+    if (bad.length) throw new Error(`preloads must be self-contained (sandbox): ${bad.join('; ')}`);
+    result.checks.push(`${preloads.length} preloads self-contained`);
 
     await app.whenReady();
     result.checks.push('app ready (no window opened)');
