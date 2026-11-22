@@ -332,6 +332,8 @@ declare global {
       };
     };
     logMonitorApi: LogMonitorApi;
+    /** Local game control bridge (electron/preload.ts). */
+    voidlogControl?: import('./types/game-control').VoidlogControlApi;
     // For webview preload to communicate back to Electron host (WebContentPage.vue)
     electronAuthBridge: { // Changed to required as it's always exposed
       getStoredAuthData: () => Promise<AuthData>; // Added

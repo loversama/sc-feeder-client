@@ -227,14 +227,17 @@ export function noteLogChunk(chunk: string): void {
 
 // --- user.cfg -----------------------------------------------------------------
 
-const CFG_LINE = 'server.game.telemetry.enabled=1';
+const TELEMETRY_CFG_KEY = 'server.game.telemetry.enabled';
+/** Lets local tools trigger allowlisted actions (game control). Name from third-party notes, unverified in a live game. */
+export const TRIGGER_CFG_KEY = 'server.game.telemetry.trigger.actions.enabled';
+const escapeRe = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** user.cfg sits next to Game.log at the root of the game channel (LIVE / PTU / EPTU). */
 export function getUserCfgPath(logPath = getCurrentLogPath()): string {
   return path.join(path.dirname(logPath), 'user.cfg');
 }
 
-export type UserCfgStatus = { path: string; exists: boolean; enabled: boolean };
+export type UserCfgStatus = { path: string; exists: boolean; enabled: boolean; triggerEnabled: boolean };
 export type ChannelCfgStatus = UserCfgStatus & { channel: string; active: boolean };
 
 /** user.cfg of the active channel plus every detected channel (`channels`). */
@@ -246,16 +249,20 @@ export async function getUserCfgStatus(): Promise<UserCfgStatus & { channels: Ch
   );
   let own: ChannelCfgStatus | undefined = channels.find((c) => c.active);
   if (!own) own = { channel: channelNow(), active: true, ...(await readUserCfgStatus(getUserCfgPath())) };
-  return { path: own.path, exists: own.exists, enabled: own.enabled, channels: channels.length ? channels : [own] };
+  return { path: own.path, exists: own.exists, enabled: own.enabled, triggerEnabled: own.triggerEnabled, channels: channels.length ? channels : [own] };
+}
+
+function cfgFlag(text: string, key: string): boolean {
+  const m = text.match(new RegExp(`^\\s*${escapeRe(key)}\\s*=\\s*(\\S+)`, 'im'));
+  return !!m && /^(1|true)$/i.test(m[1]);
 }
 
 async function readUserCfgStatus(p: string): Promise<UserCfgStatus> {
   try {
     const text = await fsp.readFile(p, 'utf8');
-    const m = text.match(/^\s*server\.game\.telemetry\.enabled\s*=\s*(\S+)/im);
-    return { path: p, exists: true, enabled: !!m && /^(1|true)$/i.test(m[1]) };
+    return { path: p, exists: true, enabled: cfgFlag(text, TELEMETRY_CFG_KEY), triggerEnabled: cfgFlag(text, TRIGGER_CFG_KEY) };
   } catch {
-    return { path: p, exists: false, enabled: false };
+    return { path: p, exists: false, enabled: false, triggerEnabled: false };
   }
 }
 
@@ -266,6 +273,7 @@ async function readUserCfgStatus(p: string): Promise<UserCfgStatus> {
  */
 export async function enableTelemetryInUserCfg(
   channel: string | 'all' = 'all',
+  key: string = TELEMETRY_CFG_KEY,
 ): Promise<{ path: string; changed: boolean; backup?: string; results: Array<{ channel: string; path: string; changed: boolean; backup?: string }> }> {
   const t = getChannelTracker();
   const list = t?.channels ?? [];
@@ -274,19 +282,25 @@ export async function enableTelemetryInUserCfg(
     : [{ channel: channelNow(), path: getUserCfgPath() }];
   if (!targets.length) throw new Error(`Unknown channel ${channel}`);
   const results = [];
-  for (const tg of targets) results.push({ channel: tg.channel, ...(await enableInCfgFile(tg.path, tg.channel)) });
+  for (const tg of targets) results.push({ channel: tg.channel, ...(await enableInCfgFile(tg.path, tg.channel, key)) });
   const first = results.find((r) => r.channel === channelNow()) ?? results[0];
   return { path: first.path, changed: results.some((r) => r.changed), backup: first.backup, results };
 }
 
-async function enableInCfgFile(p: string, channel: string): Promise<{ path: string; changed: boolean; backup?: string }> {
+/** Enable game control (TriggerGameAction) in user.cfg; same rules as enableTelemetryInUserCfg. */
+export function enableGameControlInUserCfg(channel: string | 'all' = 'all') {
+  return enableTelemetryInUserCfg(channel, TRIGGER_CFG_KEY);
+}
+
+async function enableInCfgFile(p: string, channel: string, key: string): Promise<{ path: string; changed: boolean; backup?: string }> {
+  const line = `${key}=1`;
   let text = '';
   try {
     text = await fsp.readFile(p, 'utf8');
   } catch {
     /* new file */
   }
-  const re = /^(\s*)server\.game\.telemetry\.enabled\s*=\s*(\S*)\s*$/im;
+  const re = new RegExp(`^(\\s*)${escapeRe(key)}\\s*=\\s*(\\S*)\\s*$`, 'im');
   const m = text.match(re);
   if (m && /^(1|true)$/i.test(m[2])) return { path: p, changed: false };
   let backup: string | undefined;
@@ -295,10 +309,11 @@ async function enableInCfgFile(p: string, channel: string): Promise<{ path: stri
     await fsp.writeFile(backup, text);
   }
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const next = m ? text.replace(re, `${m[1]}${CFG_LINE}`) : `${text}${text && !text.endsWith('\n') ? eol : ''}${CFG_LINE}${eol}`;
+  const next = m ? text.replace(re, `${m[1]}${line}`) : `${text}${text && !text.endsWith('\n') ? eol : ''}${line}${eol}`;
   await fsp.writeFile(p, next);
-  logger.info(MODULE_NAME, `Enabled game telemetry in ${p}`);
-  pushDebugEvent({ source: 'system', type: 'user_cfg', summary: `Telemetry enabled in ${channel} user.cfg (restart the game)` });
+  logger.info(MODULE_NAME, `Enabled ${key} in ${p}`);
+  const what = key === TELEMETRY_CFG_KEY ? 'Telemetry' : 'Game control';
+  pushDebugEvent({ source: 'system', type: 'user_cfg', summary: `${what} enabled in ${channel} user.cfg (restart the game)` });
   return { path: p, changed: true, backup };
 }
 
