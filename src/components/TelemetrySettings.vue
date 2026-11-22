@@ -278,7 +278,7 @@ onUnmounted(() => clearInterval(timer));
                   <el-button size="small" @click="copyCode(partyStatus.party.code)">Copy invite code {{ partyStatus.party.code }}</el-button>
                   <el-button size="small" :disabled="partyBusy" title="Make a new code; the old one stops working" @click="rotateCode">New code</el-button>
                 </template>
-                <span v-else-if="!isOwner" class="text-gray-400 text-sm self-center">Invite via the owner</span>
+                <span v-else-if="!isOwner" class="text-gray-400 text-sm self-center">Ask the owner for the invite code</span>
                 <el-button size="small" :loading="partyBusy" @click="partyAction('leave')">Leave</el-button>
               </div>
             </div>
@@ -303,7 +303,7 @@ onUnmounted(() => clearInterval(timer));
           <div v-if="!partyStatus?.party" class="flex items-center justify-between gap-4">
             <el-button size="small" :loading="partyBusy" @click="partyAction('create')">Create a party</el-button>
             <div class="flex gap-2">
-              <el-input v-model="joinCode" class="w-36" size="small" placeholder="Invite code" maxlength="8" />
+              <el-input :model-value="joinCode" class="w-36 join-code" size="small" placeholder="e.g. K7QX4M" maxlength="8" @update:model-value="(v: string) => (joinCode = v.toUpperCase())" />
               <el-button size="small" :loading="partyBusy" :disabled="!joinCode.trim()" @click="partyAction('join')">Join</el-button>
             </div>
           </div>
@@ -361,6 +361,14 @@ onUnmounted(() => clearInterval(timer));
 </template>
 
 <style scoped>
+.join-code :deep(input) {
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.1em;
+}
+.join-code :deep(input::placeholder) {
+  font-family: inherit;
+  letter-spacing: normal;
+}
 .party-tag {
   margin-left: 6px;
   padding: 0 4px;
