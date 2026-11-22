@@ -14,7 +14,7 @@
     "test:telemetry": "esbuild test/telemetry/telemetry.test.ts --bundle --platform=node --format=esm --packages=external --outfile=test/telemetry/.out/telemetry.test.mjs && node --test test/telemetry/.out/telemetry.test.mjs",
     "test:bodycam": "esbuild test/bodycam/bodycam.test.ts test/bodycam/bodycam-window.test.ts test/bodycam/bodycam-live.test.ts --bundle --platform=node --format=esm --packages=external --outdir=test/bodycam/.out --out-extension:.js=.mjs && node --test test/bodycam/.out/bodycam.test.mjs test/bodycam/.out/bodycam-window.test.mjs test/bodycam/.out/bodycam-live.test.mjs",
     "test:parser": "node test/parser/run.mjs",
-    "test:settings-inputs": "vite build --config scripts/overlay-preview/vite.config.ts --outDir ../../test/settings-inputs/.out --emptyOutDir --logLevel warn && electron test/settings-inputs/run.cjs",
+    "test:settings-inputs": "vite build --config scripts/overlay-preview/vite.config.ts --outDir ../../test/settings-inputs/.out --emptyOutDir --logLevel warn && electron test/settings-inputs/run.cjs --no-sandbox --disable-gpu",
     "test:overlay": "esbuild test/overlay/overlay.test.ts test/overlay/overlay-socket.test.ts --bundle --platform=node --format=esm --packages=external --outdir=test/overlay/.out --out-extension:.js=.mjs --log-level=warning && node --test test/overlay/.out/overlay.test.mjs test/overlay/.out/overlay-socket.test.mjs",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
