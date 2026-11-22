@@ -93,6 +93,16 @@ export class TelemetryClient {
     );
   }
 
+  /**
+   * TriggerGameAction. Resolves with the game's status enum name (TRIGGER_GAME_ACTION_STATUS_*) and
+   * message; rejects only on transport errors. Callers must not retry (toggles would double-fire).
+   */
+  triggerAction(name: string, holdMs = 0, timeoutMs = 2000): Promise<{ status: string; message: string }> {
+    const req: Record<string, unknown> = { action_name: name };
+    if (holdMs > 0) req.hold_ms = Math.round(holdMs);
+    return this.#unary('TriggerGameAction', req, timeoutMs).then((res) => ({ status: String(res.status), message: String(res.message ?? '') }));
+  }
+
   close(): void {
     this.#client.close();
   }
