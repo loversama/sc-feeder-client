@@ -19,6 +19,11 @@ export type OverlaySectionState = {
   roster: OverlayRoster | null;
   layout: OverlayLayout | null;
   selfId: string | null;
+  /**
+   * Viewer-scoped cross-room ids from the server ({ room member id: vid }), multi-org only. The same member
+   * has the same vid in every section of this viewer; used to list them once.
+   */
+  vids?: Record<string, string> | null;
 };
 
 /**
@@ -36,30 +41,57 @@ export function toggleOrg(unticked: string[], tag: string, on: boolean): string[
   return on ? rest : [...rest, tag];
 }
 
-const nameKey = (n: string) => n.trim().toLowerCase();
+const onlineCount = (members: { status: string }[]) => members.filter((m) => m.status !== 'offline').length;
 
 /**
- * Sections as drawn: a member who is in several shown orgs appears once, in the first section (member
- * ids differ per room, so the match is on the RSI handle shown as the name). `online` counts the members
- * left in that section.
+ * Sections as drawn: a member who is in several shown orgs appears once, in the first section. Member ids
+ * differ per room, so the match uses the server's viewer-scoped `vids` (no vid = never merged).
+ * `online` is the org's real online total; `shownOnline` counts the members left in that section.
  */
-export function mergeSections(sections: OverlaySectionState[]): Array<OverlaySectionState & { online: number }> {
+export function mergeSections(sections: OverlaySectionState[]): Array<OverlaySectionState & { online: number; shownOnline: number }> {
   const seen = new Set<string>();
   return sections.map((s) => {
-    if (!s.roster) return { ...s, online: 0 };
+    if (!s.roster) return { ...s, online: 0, shownOnline: 0 };
     const members = s.roster.members.filter((m) => {
-      const k = nameKey(m.name);
-      if (!k) return true;
-      if (seen.has(k)) return false;
-      seen.add(k);
+      const vid = s.vids?.[m.userId];
+      if (!vid) return true;
+      if (seen.has(vid)) return false;
+      seen.add(vid);
       return true;
     });
-    const roster = { ...s.roster, members };
-    return { ...s, roster, online: members.filter((m) => m.status !== 'offline').length };
+    return { ...s, roster: { ...s.roster, members }, online: onlineCount(s.roster.members), shownOnline: onlineCount(members) };
   });
 }
 
-export type OverlayCard = { title: string; detail?: string; tone: 'info' | 'warn' };
+/**
+ * How the overlay fits the height it has (screen minus the top offset): `compact` rows, and the lowest
+ * `collapsed` sections shown as their header row only ("+N more online"). The first (main org) section is
+ * never collapsed.
+ */
+export type FitPlan = { compact: boolean; collapsed: number };
+
+/** The candidate plans in order: full, compact, then compact with 1, 2, ... lowest sections collapsed. */
+export function fitPlans(sectionCount: number, userCompact: boolean): FitPlan[] {
+  const plans: FitPlan[] = userCompact ? [] : [{ compact: false, collapsed: 0 }];
+  for (let c = 0; c < Math.max(1, sectionCount); c++) plans.push({ compact: true, collapsed: c });
+  return plans;
+}
+
+/**
+ * First plan whose measured height fits `maxHeight` (the most collapsed one when none fits). `measure`
+ * renders a plan and returns its height (the renderer measures the DOM; tests pass a fake).
+ */
+export async function planFit(sectionCount: number, userCompact: boolean, maxHeight: number | null | undefined, measure: (p: FitPlan) => Promise<number>): Promise<FitPlan> {
+  const plans = fitPlans(sectionCount, userCompact);
+  if (!maxHeight || maxHeight <= 0) return plans[0];
+  for (const p of plans) if ((await measure(p)) <= maxHeight) return p;
+  return plans[plans.length - 1];
+}
+
+/** Is section `index` (of `count`) collapsed under `plan`? Never the first one. */
+export const isCollapsed = (plan: FitPlan, index: number, count: number) => index > 0 && index >= count - plan.collapsed;
+
+export type OverlayCard ={ title: string; detail?: string; tone: 'info' | 'warn' };
 
 const CARD_TITLES: Record<string, string> = {
   connecting: 'Connecting to VOIDLOG.GG',

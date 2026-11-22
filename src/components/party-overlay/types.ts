@@ -10,6 +10,8 @@ export type PartyOverlayState = {
   sections?: OverlaySectionState[];
   /** ms since Star Citizen was detected (null = not running / unknown): drives the "waiting" card. */
   gameSinceMs?: number | null;
+  /** Height the panel may use (screen minus the top offset), CSS px before scaling: drives auto-fit. */
+  maxHeight?: number | null;
   /** First section (older pushes / party mode). */
   source: { scope: 'org' | 'party'; id: string; label: string } | null;
   roster: OverlayRoster | null;

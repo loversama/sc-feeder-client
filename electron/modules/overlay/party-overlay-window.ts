@@ -87,7 +87,10 @@ function send(state: PartyOverlayState): void {
   if (!win || win.isDestroyed() || !win.isVisible()) return;
   const s = getPartyOverlaySettings();
   try {
-    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale, gameSinceMs: gameSeenAt === null ? null : Date.now() - gameSeenAt });
+    // Room the panel may use (screen minus top offset), in CSS px before scaling: the renderer auto-fits to it.
+    const display = pickDisplay(screen.getAllDisplays(), screen.getPrimaryDisplay(), s.partyOverlayDisplayId);
+    const maxHeight = Math.floor(partyOverlayBounds(display.bounds, s).height / s.partyOverlayScale) - 2;
+    win.webContents.send('party-overlay-state', { ...state, compact: s.partyOverlayCompact, scale: s.partyOverlayScale, maxHeight, gameSinceMs: gameSeenAt === null ? null : Date.now() - gameSeenAt });
   } catch (err) {
     logger.debug(MODULE_NAME, `push failed: ${err}`);
   }
@@ -200,7 +203,11 @@ export function initPartyOverlay(): void {
   }
   if (!displayListener) {
     displayListener = true;
-    const rebound = () => win && !win.isDestroyed() && win.setBounds(bounds());
+    const rebound = () => {
+      if (!win || win.isDestroyed()) return;
+      win.setBounds(bounds());
+      if (lastState) send(lastState); // new screen height: the renderer re-fits
+    };
     screen.on('display-metrics-changed', rebound);
     screen.on('display-added', rebound);
     screen.on('display-removed', rebound);

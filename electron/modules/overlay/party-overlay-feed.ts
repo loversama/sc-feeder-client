@@ -109,6 +109,7 @@ export class PartyOverlayFeed {
     link.onServer('overlay_roster', (r: OverlayRoster) => this.onRoster(r));
     link.onServer('overlay_layout', (l: OverlayLayout) => this.onLayout(l));
     link.onServer('overlay_party', (p: PartyInfo | null) => this.onParty(p));
+    link.onServer('overlay_vids', (v: { scope?: string; id?: string; vids?: Record<string, string> } | undefined) => this.onVids(v));
     link.onServer('overlay_revoked', (r: { scope?: string; id?: string } | undefined) => this.onRevoked(r));
   }
 
@@ -162,7 +163,7 @@ export class PartyOverlayFeed {
         return this.set({ status, ...mirror(sections), roster: null, message: MESSAGES[status] ?? MESSAGES[ack.error as 'rate-limited'] ?? String(ack.error ?? 'Unavailable') });
       }
       const sections: OverlaySectionState[] = ack.multi
-        ? (Array.isArray(ack.sections) ? ack.sections : []).map((x: any) => ({ source: x.source, roster: x.roster ?? null, layout: x.layout ?? null, selfId: x.selfId ?? null }))
+        ? (Array.isArray(ack.sections) ? ack.sections : []).map((x: any) => ({ source: x.source, roster: x.roster ?? null, layout: x.layout ?? null, selfId: x.selfId ?? null, vids: x.vids ?? null }))
         : [{ source: ack.source, roster: ack.roster ?? null, layout: ack.layout ?? null, selfId: ack.selfId ?? null }];
       this.d.log?.('info', `Overlay subscribed to ${sections.map((x) => `${x.source?.scope} ${x.source?.label}`).join(', ')}`);
       if (ack.refused?.length) this.d.log?.('warn', `Overlay refused: ${ack.refused.map((r: any) => `${r.tag} (${r.error})`).join(', ')}`);
@@ -191,6 +192,13 @@ export class PartyOverlayFeed {
     if (!this.enabled() || !r) return;
     const i = this.sectionIndex(r.scope, r.id);
     if (i >= 0) this.patchSection(i, { roster: r });
+  }
+
+  /** Fresh viewer-scoped ids for one room (its member set changed). */
+  private onVids(v?: { scope?: string; id?: string; vids?: Record<string, string> }): void {
+    if (!this.enabled() || !v?.scope || !v.id || !v.vids || typeof v.vids !== 'object') return;
+    const i = this.sectionIndex(v.scope, v.id);
+    if (i >= 0) this.patchSection(i, { vids: v.vids });
   }
 
   private onLayout(l: OverlayLayout): void {

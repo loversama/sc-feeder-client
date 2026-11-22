@@ -10,7 +10,7 @@ import { healthTone, o2Tone, shieldArcs, shieldColor, shipLabel, topViewUrl } fr
 import { normalizeOrgTag, sanitizeOrgChoices } from '../../shared/overlay/org-tag';
 import { partyOverlayBounds, pickDisplay, PARTY_OVERLAY_DEFAULTS, sanitizePartyOverlaySetting, type PartyOverlaySettings } from '../../electron/modules/overlay/party-overlay-settings';
 import { PartyOverlayFeed, type FeedLink, type PartyOverlayState } from '../../electron/modules/overlay/party-overlay-feed';
-import { mergeSections, overlayCard, selectedOrgTags, toggleOrg, WAITING_CARD_MS } from '../../shared/overlay/overlay-sections';
+import { fitPlans, isCollapsed, mergeSections, overlayCard, planFit, selectedOrgTags, toggleOrg, WAITING_CARD_MS } from '../../shared/overlay/overlay-sections';
 
 const vectors = JSON.parse(readFileSync('shared/overlay/overlay-vectors.json', 'utf8'));
 const roster = vectors.roster as OverlayRoster;
@@ -385,13 +385,37 @@ test('feed multi-org: org list cached across settings saves; a failed refetch on
   assert.deepEqual(link.sent.at(-1)!.payload, { scope: 'org', tags: ['VOID', 'WING'] });
 });
 
-test('sections: a member in two orgs is listed once, in the first section; online counts what is shown', () => {
+test('sections: a member in two orgs is listed once, in the first section (by vid, not name); online = real org total', () => {
   const m = (userId: string, name: string, status = 'on-foot') => ({ userId, name, status, health: 100, o2: null, shipKey: null }) as any;
-  const sec = (id: string, members: any[]) => ({ source: { scope: 'org' as const, id, label: `[${id}]` }, selfId: null, layout: null, roster: { scope: 'org' as const, id, generatedAt: 'x', members, ships: [] } });
-  const out = mergeSections([sec('A', [m('a1', 'Bo'), m('a2', 'Ava', 'offline')]), sec('B', [m('b1', 'bo'), m('b2', 'Cy')])]);
-  assert.deepEqual(out[0].roster!.members.map((x) => x.name), ['Bo', 'Ava']);
-  assert.deepEqual(out[1].roster!.members.map((x) => x.name), ['Cy']);
-  assert.deepEqual(out.map((x) => x.online), [1, 1]);
+  const sec = (id: string, members: any[], vids?: Record<string, string>) => ({ source: { scope: 'org' as const, id, label: `[${id}]` }, selfId: null, layout: null, vids, roster: { scope: 'org' as const, id, generatedAt: 'x', members, ships: [] } });
+  // Bo is a1 in A and b1 in B (room ids differ) with the same vid; "Twin" in B is a different person with the same name
+  const out = mergeSections([
+    sec('A', [m('a1', 'Bo'), m('a2', 'Ava', 'offline'), m('a3', 'Twin')], { a1: 'v-bo', a2: 'v-ava', a3: 'v-twin1' }),
+    sec('B', [m('b1', 'Bo'), m('b2', 'Cy'), m('b3', 'Twin')], { b1: 'v-bo', b2: 'v-cy', b3: 'v-twin2' }),
+  ]);
+  assert.deepEqual(out[0].roster!.members.map((x) => x.name), ['Bo', 'Ava', 'Twin']);
+  assert.deepEqual(out[1].roster!.members.map((x) => x.name), ['Cy', 'Twin'], 'same name, different vid: both shown');
+  assert.deepEqual(out.map((x) => x.online), [2, 3], 'header count = the org\'s real online total');
+  assert.deepEqual(out.map((x) => x.shownOnline), [2, 2]);
+  // no vids (single org / older server): nothing is merged
+  const plain = mergeSections([sec('A', [m('a1', 'Bo')]), sec('B', [m('b1', 'Bo')])]);
+  assert.deepEqual(plain.map((x) => x.roster!.members.length), [1, 1]);
+});
+
+test('feed multi-org: vids from the ack and overlay_vids updates land on the right section', async () => {
+  const { link, feed } = makeFeed();
+  feed.resubscribe();
+  const ack = multiAck('VOID', 'WING');
+  (ack.sections[0] as any).vids = { x1: 'v1' };
+  (ack.sections[1] as any).vids = { y1: 'v1' };
+  (await answerOrgs(link, [...VOID_ORG, { tag: 'WING', name: 'W' }])).ack!(ack);
+  assert.deepEqual(feed.current.sections[1].vids, { y1: 'v1' });
+  link.handlers.get('overlay_vids')!({ scope: 'org', id: 'WING', vids: { y1: 'v1', y2: 'v9' } });
+  assert.deepEqual(feed.current.sections[1].vids, { y1: 'v1', y2: 'v9' });
+  assert.deepEqual(feed.current.sections[0].vids, { x1: 'v1' });
+  link.handlers.get('overlay_vids')!({ scope: 'org', id: 'NOPE', vids: { z: 'z' } });
+  link.handlers.get('overlay_vids')!(undefined);
+  assert.equal(feed.current.sections.length, 2);
 });
 
 test('status card: shown without a live roster; "Waiting for Star Citizen" only for the first 30 s', () => {
@@ -404,4 +428,19 @@ test('status card: shown without a live roster; "Waiting for Star Citizen" only 
   const onlineSelf = JSON.parse(JSON.stringify(offlineSelf));
   onlineSelf[0].roster.members[0].status = 'on-foot';
   assert.equal(overlayCard({ status: 'live', sections: onlineSelf }, 1000), null);
+});
+
+test('auto-fit: full if it fits, else compact, else collapse the lowest sections; the main org never collapses', async () => {
+  // fake renderer: 3 sections, full rows 400 px each, compact 250, a collapsed section 30
+  const height = (p: { compact: boolean; collapsed: number }) => [0, 1, 2].reduce((h, i) => h + (isCollapsed(p, i, 3) ? 30 : p.compact ? 250 : 400), 0);
+  const fit = (max: number, userCompact = false) => planFit(3, userCompact, max, async (p) => height(p));
+  assert.deepEqual(await fit(1300), { compact: false, collapsed: 0 }, 'everything fits');
+  assert.deepEqual(await fit(869), { compact: true, collapsed: 0 }, '1080p: compact fits');
+  assert.deepEqual(await fit(600), { compact: true, collapsed: 1 }, 'lowest section folded');
+  assert.deepEqual(await fit(320), { compact: true, collapsed: 2 }, 'all but the main org folded');
+  assert.deepEqual(await fit(100), { compact: true, collapsed: 2 }, 'nothing fits: most folded, main org still open');
+  assert.deepEqual(await fit(1300, true), { compact: true, collapsed: 0 }, 'user compact: never goes back to full');
+  assert.deepEqual(await planFit(3, false, null, async () => 99999), { compact: false, collapsed: 0 }, 'unknown height: no fitting');
+  assert.equal(isCollapsed({ compact: true, collapsed: 5 }, 0, 3), false);
+  assert.deepEqual(fitPlans(1, false), [{ compact: false, collapsed: 0 }, { compact: true, collapsed: 0 }]);
 });

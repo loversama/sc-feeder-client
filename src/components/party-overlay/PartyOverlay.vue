@@ -7,10 +7,10 @@
  * Org mode shows one section per selected org (the user's org order); a member in several of them is
  * listed once, in the first. Without a live roster a small status card says why.
  */
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { resolveOverlay } from '../../../shared/overlay/overlay-resolve';
 import { shipLabel } from '../../../shared/overlay/overlay-format';
-import { mergeSections, overlayCard, type OverlaySectionState } from '../../../shared/overlay/overlay-sections';
+import { isCollapsed, mergeSections, overlayCard, planFit, type FitPlan, type OverlaySectionState } from '../../../shared/overlay/overlay-sections';
 import MemberRow from './MemberRow.vue';
 import type { PartyOverlayState } from './types';
 import ShipDial from './ShipDial.vue';
@@ -31,27 +31,50 @@ const sections = computed(() =>
 const card = computed(() => overlayCard({ status: props.state.status, message: props.state.message, sections: rawSections.value }, props.state.gameSinceMs ?? null));
 /** Which orgs / party a status card is about (not shown once live: the section headers say it). */
 const cardLabel = computed(() => (props.state.status === 'live' || props.state.status === 'no-source' ? null : rawSections.value.map((s) => s.source.label).join(' · ') || null));
-const compact = computed(() => props.state.compact);
+
+/**
+ * Auto-fit to the height the window may use (`maxHeight`, CSS px before scaling): full layout, else
+ * compact, else collapse the lowest sections to their header (never the main org's). Each candidate is
+ * rendered and measured inside one tick, so nothing in between is painted.
+ */
+const root = ref<HTMLElement | null>(null);
+const plan = ref<FitPlan>({ compact: false, collapsed: 0 });
+let fitRun = 0;
+async function refit() {
+  const run = ++fitRun;
+  const measure = async (p: FitPlan) => {
+    plan.value = p;
+    await nextTick();
+    return root.value?.offsetHeight ?? 0;
+  };
+  const best = await planFit(sections.value.length, props.state.compact, props.state.maxHeight, measure);
+  if (run === fitRun) plan.value = best;
+}
+watch(() => [sections.value, props.state.maxHeight, props.state.compact, card.value], () => void refit(), { flush: 'post', immediate: true });
+
+const compact = computed(() => props.state.compact || plan.value.compact);
+const collapsed = (i: number) => isCollapsed(plan.value, i, sections.value.length);
 const dialSize = computed(() => (compact.value ? 40 : 64));
 const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n)}%`);
 </script>
 
 <template>
-  <div class="po" :class="{ compact }">
+  <div ref="root" class="po" :class="{ compact }">
     <div v-if="card" class="card" :class="card.tone" data-test="overlay-card">
       <div class="card-title">{{ card.title }}</div>
       <div v-if="card.detail" class="card-detail">{{ card.detail }}</div>
       <div v-if="cardLabel" class="card-src">{{ cardLabel }}</div>
     </div>
 
-    <section v-for="sec in sections" :key="sec.key" class="sec" data-test="overlay-section">
+    <section v-for="(sec, i) in sections" :key="sec.key" class="sec" :class="{ folded: collapsed(i) }" data-test="overlay-section">
     <header class="head">
       <span class="label">{{ sec.source.scope === 'party' ? 'Party' : 'Org' }}</span>
       <span class="title">{{ sec.source.label }}</span>
       <span class="count">{{ sec.online }} online</span>
     </header>
+    <div v-if="collapsed(i)" class="more" data-test="overlay-more">{{ sec.shownOnline ? `+${sec.shownOnline} more online` : 'Nobody else online' }}</div>
 
-    <div class="list">
+    <div v-else class="list">
       <template v-for="row in sec.rows" :key="row.key">
         <section v-if="row.kind === 'ship'" class="ship" :class="{ collapsed: !row.expanded }">
           <div class="ship-head">
@@ -128,6 +151,20 @@ const pct = (n: number | null) => (n === null ? '—' : `${Math.round(n)}%`);
 }
 .sec + .sec {
   margin-top: 8px;
+}
+.compact .sec + .sec {
+  margin-top: 4px;
+}
+.more {
+  padding: 3px 10px 4px;
+  background: rgba(11, 11, 14, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #a1a1ae;
 }
 .card {
   padding: 8px 10px;
