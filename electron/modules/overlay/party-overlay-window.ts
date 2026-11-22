@@ -9,9 +9,8 @@
  *
  * Data: PartyOverlayFeed (socket subscription), pushed at most 4 Hz; nothing is sent while hidden.
  */
-import { BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import * as logger from '../logger';
 import { getPreloadPath } from '../window-manager';
 import { getPartyOverlaySettings, getTelemetrySettings, setPartyOverlaySettings } from '../config-manager';
@@ -32,7 +31,6 @@ let contentHeight = 0;
 let lastState: PartyOverlayState | null = null;
 let displayListener = false;
 
-const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
 function bounds() {
   const s = getPartyOverlaySettings();
@@ -71,7 +69,7 @@ function createWindow(): BrowserWindow {
   w.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   w.setIgnoreMouseEvents(true, { forward: false });
   const devServerUrl = process.env['VITE_DEV_SERVER_URL'];
-  const load = devServerUrl ? w.loadURL(`${devServerUrl}/party-overlay.html`) : w.loadFile(path.join(thisDir, '..', 'dist', 'party-overlay.html'));
+  const load = devServerUrl ? w.loadURL(`${devServerUrl}/party-overlay.html`) : w.loadFile(path.join(app.getAppPath(), 'dist', 'party-overlay.html'));
   load.catch((err) => logger.error(MODULE_NAME, `Failed to load party-overlay.html: ${err}`));
   w.webContents.on('did-finish-load', () => lastState && send(lastState));
   w.on('closed', () => {
