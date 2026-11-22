@@ -51,8 +51,27 @@ const fixtures: Record<string, unknown> = {
   'party-overlay:status': { status: party ? 'live' : 'no-party', message: party ? null : 'Not in a party', source: party ? { scope: 'party', id: 'p1', label: party.name } : null, party, selfId: self, online: 3 },
 };
 
+// ?orgs=none: the server sent no org list (free-text tag field). ?tag=VOID: a stored org tag.
+fixtures['party-overlay:orgs'] = q.get('orgs') === 'none' ? [] : [
+  { tag: 'VOID', name: 'Voidrunners', primary: true },
+  { tag: 'WING', name: 'Wingmen', primary: false },
+];
+if (q.get('source') === 'org') (fixtures['party-overlay:get-settings'] as any).partyOverlaySource = 'org';
+(fixtures['party-overlay:get-settings'] as any).partyOverlayOrgTag = q.get('tag') ?? '';
+
+/** Every invoke is recorded so tests can check what was saved (window.__calls). Saves merge like the real IPC. */
+const calls: Array<{ channel: string; arg: unknown }> = [];
+(window as any).__calls = calls;
 (window as any).logMonitorApi = {
-  invoke: async (channel: string) => fixtures[channel] ?? null,
+  invoke: async (channel: string, arg?: unknown) => {
+    calls.push({ channel, arg });
+    if (channel === 'party-overlay:set-settings' || channel === 'telemetry:set-settings') {
+      const key = channel === 'telemetry:set-settings' ? 'telemetry:get-settings' : 'party-overlay:get-settings';
+      fixtures[key] = { ...(fixtures[key] as object), ...(arg as object) };
+      return fixtures[key];
+    }
+    return fixtures[channel] ?? null;
+  },
 };
 
 createApp(TelemetrySettings).use(ElementPlus).mount('#app');

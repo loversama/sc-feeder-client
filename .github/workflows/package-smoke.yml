@@ -46,4 +46,8 @@ jobs:
 
       - name: Parser + telemetry tests
         if: matrix.os == 'ubuntu-latest'
-        run: npm run test:parser && npm run test:telemetry
+        run: npm run test:parser && npm run test:telemetry && npm run test:overlay
+
+      - name: Settings inputs (typing in a real window)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a npm run test:settings-inputs

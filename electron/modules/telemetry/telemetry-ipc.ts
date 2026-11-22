@@ -67,6 +67,7 @@ export function registerTelemetryIpc(): void {
     const s = getPartyOverlayFeed()?.current;
     return s ? { status: s.status, message: s.message ?? null, source: s.source, party: s.party, selfId: s.party?.selfId ?? s.selfId ?? null, online: s.roster?.members.filter((m) => m.status !== 'offline').length ?? 0 } : null;
   });
+  ipcMain.handle('party-overlay:orgs', async () => (await getPartyOverlayFeed()?.orgs()) ?? []);
   ipcMain.handle('party-overlay:party', async (_e, req: { action?: unknown; code?: unknown; name?: unknown }) => {
     const feed = getPartyOverlayFeed();
     if (!feed) return { ok: false, error: 'Overlay not ready' };
