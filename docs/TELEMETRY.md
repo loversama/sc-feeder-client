@@ -142,5 +142,5 @@ The **Controls** tab in the main window triggers actions on the player's own gam
 - IPC is accepted only from the main/settings windows' top frame served from the app's own `dist/`
   (or the dev server), not from hosted voidlog.gg views or webviews.
 - Fixture preview without Electron: `npx vite build --config scripts/controls-preview.vite.config.ts`, then
-  serve `test/telemetry/.out/controls-preview/` (uses `test/telemetry/fixtures/sc-actions-5.0-ptu.json`,
-  a third-party 5.0 PTU capture of the 112 allowlisted actions).
+  serve `test/telemetry/.out/controls-preview/` (uses our sample list in `test/telemetry/fixtures/sample-actions.ts`;
+  the app itself always shows the list the game returns).

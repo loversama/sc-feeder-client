@@ -1,8 +1,8 @@
 /**
- * Dev-only fake window.voidlogControl backed by the 5.0 PTU action fixture
- * (third-party capture, see test/telemetry/fixtures). Used for UI previews/screenshots only.
+ * Dev-only fake window.voidlogControl backed by our SAMPLE action list (test/telemetry/fixtures).
+ * Used for UI previews/screenshots only; the real app always shows the game's own list.
  */
-import FIXTURE from '../../test/telemetry/fixtures/sc-actions-5.0-ptu.json';
+import { SAMPLE_ACTIONS as FIXTURE } from '../../test/telemetry/fixtures/sample-actions';
 import { classifyAction } from '../../electron/modules/telemetry/game-control-catalog';
 import type { ControlResult, ControlState, VoidlogControlApi, ControlEvent } from '../types/game-control';
 
@@ -66,6 +66,13 @@ export function installFixtureControlBridge(params: URLSearchParams): void {
       return { state: { ...state }, problem: null };
     },
     checkHotkey: async () => null,
+    userCfgPreview: async () => ({
+      line: 'server.game.telemetry.trigger.actions.enabled=1',
+      files: [
+        { channel: 'LIVE', path: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\user.cfg', exists: true, alreadyEnabled: false },
+        { channel: 'PTU', path: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\PTU\\user.cfg', exists: false, alreadyEnabled: false },
+      ],
+    }),
     enableTriggerInUserCfg: async () => ({ ok: true, changed: true }),
     onEvent: (cb) => (listeners.add(cb), () => listeners.delete(cb)),
   };

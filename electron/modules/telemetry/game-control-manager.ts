@@ -17,7 +17,7 @@ import { HotkeyBinder } from './game-control-hotkeys';
 import { dangerInfo } from './game-control-catalog';
 import { isTrustedControlSender } from './game-control-security';
 import { TelemetryClient } from './telemetry-client';
-import { getTelemetryService, getUserCfgStatus, enableGameControlInUserCfg } from './telemetry-manager';
+import { getTelemetryService, getUserCfgStatus, enableGameControlInUserCfg, TRIGGER_CFG_KEY } from './telemetry-manager';
 
 const MODULE_NAME = 'GameControl';
 const EVENT_CHANNEL = 'game-control:event';
@@ -187,6 +187,15 @@ export function initGameControl(): void {
     broadcastState();
     return { state: snapshot(), problem };
   });
+  /** Exactly what "Add to user.cfg" would write, per channel (shown to the player before any write). */
+  handle('game-control:user-cfg-preview', async () => {
+    const st = await getUserCfgStatus();
+    return {
+      line: `${TRIGGER_CFG_KEY}=1`,
+      files: st.channels.map((c) => ({ channel: c.channel, path: c.path, exists: c.exists, alreadyEnabled: c.triggerEnabled })),
+    };
+  });
+  // Only ever called from the confirm dialog's button (explicit player click); backs up each file first.
   handle('game-control:enable-user-cfg', async () => {
     try {
       const r = await enableGameControlInUserCfg('all');

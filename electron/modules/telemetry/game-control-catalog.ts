@@ -1,9 +1,11 @@
 /**
  * Classification of Star Citizen triggerable actions (ListTriggerableActions) for the Controls page.
  *
- * The game's own list is the source of truth: anything it returns is shown, with unknown names
- * falling back to a group derived from the game category. This file only adds UI grouping,
- * friendly labels and the "dangerous" flag (hold-to-confirm, never on a hotkey).
+ * RUNTIME SOURCE OF TRUTH = the game: the action list always comes from ListTriggerableActions
+ * (cached, refreshed on every session start). Nothing here adds, removes or ships actions. This file
+ * only maps each name the game returns to a UI group, a friendly label (our own mapping, with a
+ * generic fallback from the name) and the "dangerous" flag (hold-to-confirm, never on a hotkey).
+ * Unknown names fall back to a group derived from the game category.
  * Pure module (no Electron) so it is shared by the main process, renderer and tests.
  */
 

@@ -39,6 +39,8 @@ export type ControlEvent =
   | { type: 'state'; state: ControlState }
   | { type: 'result'; result: ControlResult };
 
+export type UserCfgPreview = { line: string; files: Array<{ channel: string; path: string; exists: boolean; alreadyEnabled: boolean }> };
+
 export type VoidlogControlApi = {
   getState(): Promise<ControlState>;
   setEnabled(enabled: boolean): Promise<ControlState>;
@@ -49,6 +51,7 @@ export type VoidlogControlApi = {
   setFavourites(names: string[]): Promise<ControlState>;
   setHotkey(action: string, accelerator: string | null): Promise<{ state: ControlState; problem: string | null }>;
   checkHotkey(action: string, accelerator: string): Promise<string | null>;
+  userCfgPreview(): Promise<UserCfgPreview>;
   enableTriggerInUserCfg(): Promise<{ ok: boolean; error?: string; changed?: boolean }>;
   onEvent(cb: (e: ControlEvent) => void): () => void;
 };

@@ -5,7 +5,7 @@
  * Dangerous actions use hold-to-confirm (enforced again in the main process).
  */
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
-import { CONTROL_GROUPS, HOTKEY_PROBLEMS, type ControlAction, type ControlResult, type ControlState, type VoidlogControlApi } from '../types/game-control';
+import { CONTROL_GROUPS, HOTKEY_PROBLEMS, type ControlAction, type ControlResult, type ControlState, type VoidlogControlApi, type UserCfgPreview } from '../types/game-control';
 
 const api = (window as any).voidlogControl as VoidlogControlApi | undefined;
 
@@ -158,8 +158,20 @@ async function refresh() {
   }
 }
 
+// user.cfg: show exactly what will be written; only the dialog's confirm button writes.
+const cfgPreview = ref<UserCfgPreview | null>(null);
+async function openCfgDialog() {
+  if (!api) return;
+  try {
+    cfgPreview.value = await api.userCfgPreview();
+  } catch (err) {
+    pushToast({ ok: false, code: 'ERROR', action: 'user.cfg', label: 'user.cfg', message: `Could not read user.cfg: ${(err as Error)?.message ?? err}`, sent: false, at: Date.now() });
+  }
+}
+
 async function enableCfg() {
   if (!api) return;
+  cfgPreview.value = null;
   const r = await api.enableTriggerInUserCfg();
   pushToast({ ok: r.ok, code: r.ok ? 'OK' : 'ERROR', action: 'user.cfg', label: 'user.cfg', message: r.ok ? 'Game control enabled in user.cfg. Restart Star Citizen to apply.' : `Could not update user.cfg: ${r.error}`, sent: false, at: Date.now() });
   applyState(await api.getState());
@@ -275,7 +287,7 @@ const ago = (t: number) => {
       </div>
       <div v-if="state.triggerCfgEnabled === false" class="banner banner-warn">
         <span><strong>user.cfg:</strong> Star Citizen only accepts actions with <code>server.game.telemetry.trigger.actions.enabled=1</code>.</span>
-        <button class="btn-small" @click="enableCfg">Add to user.cfg</button>
+        <button class="btn-small" @click="openCfgDialog">Add to user.cfg...</button>
       </div>
 
       <div class="cp-tools">
@@ -378,6 +390,26 @@ const ago = (t: number) => {
       </div>
     </div>
 
+    <!-- user.cfg confirm -->
+    <div v-if="cfgPreview" class="modal-back" @click.self="cfgPreview = null">
+      <div class="modal modal-wide">
+        <h3>Enable game control in user.cfg</h3>
+        <p class="muted">This line will be added (or an existing value changed to 1). A dated <code>.bak</code> copy of each existing file is saved first. Restart Star Citizen afterwards.</p>
+        <pre class="cfg-line">{{ cfgPreview.line }}</pre>
+        <ul class="cfg-files">
+          <li v-for="f in cfgPreview.files" :key="f.path">
+            <span class="cfg-ch">{{ f.channel }}</span>
+            <span class="cfg-path">{{ f.path }}</span>
+            <span class="cfg-st">{{ f.alreadyEnabled ? 'already set' : f.exists ? 'add line (backup first)' : 'create file' }}</span>
+          </li>
+        </ul>
+        <div class="modal-actions">
+          <button class="btn-ghost" @click="cfgPreview = null">Cancel</button>
+          <button class="btn-primary" :disabled="cfgPreview.files.every((f) => f.alreadyEnabled)" @click="enableCfg">Write to user.cfg</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Toasts -->
     <div class="toasts">
       <div v-for="t in toasts" :key="t.id" class="toast" :class="codeTone(t.result)">
@@ -451,6 +483,16 @@ h2 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacin
 .action-label { position: relative; font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .action.danger .action-label { color: #fca5a5; }
 .action-sub { position: relative; line-height: 1.45; padding-bottom: 1px; font-size: 10.5px; color: #8a8a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, 'Cascadia Mono', monospace; }
+.action.danger .action-sub { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-family: inherit; }
+.modal-wide { width: 560px; }
+.modal code { font-size: 11px; background: #1a1a1a; padding: 1px 4px; border-radius: 3px; }
+.cfg-line { margin: 0 0 10px; padding: 10px 12px; background: #161616; border: 1px solid #404040; border-radius: 6px; font-size: 12.5px; color: #c7c7ff; white-space: pre-wrap; word-break: break-all; }
+.cfg-files { list-style: none; padding: 0; margin: 0; font-size: 11.5px; border: 1px solid #333; border-radius: 6px; }
+.cfg-files li { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; padding: 6px 10px; border-top: 1px solid #2a2a2a; align-items: baseline; }
+.cfg-files li:first-child { border-top: 0; }
+.cfg-ch { font-weight: 700; color: #fff; }
+.cfg-path { font-family: ui-monospace, monospace; color: #a3a3a3; word-break: break-all; }
+.cfg-st { color: #fbbf24; white-space: nowrap; }
 .hold-fill { position: absolute; inset: 0 auto 0 0; background: rgba(248,113,113,.28); pointer-events: none; }
 .action-side { display: flex; flex-direction: column; border-left: 1px solid #2e2e2e; }
 .icon { flex: 1; min-width: 34px; background: none; border: 0; color: #5f5f5f; cursor: pointer; font-size: 12px; padding: 0 8px; }

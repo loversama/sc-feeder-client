@@ -11,7 +11,7 @@ import { classifyAction, dangerInfo } from '../../electron/modules/telemetry/gam
 import { HotkeyBinder, normalizeAccelerator, type ShortcutApi } from '../../electron/modules/telemetry/game-control-hotkeys';
 import { isTrustedControlSender } from '../../electron/modules/telemetry/game-control-security';
 import { enableCfgFlag, cfgFlag, TELEMETRY_CFG_KEY as TEL, TRIGGER_CFG_KEY as TRG } from '../../electron/modules/telemetry/user-cfg';
-import FIXTURE from './fixtures/sc-actions-5.0-ptu.json';
+import { SAMPLE_ACTIONS as FIXTURE } from './fixtures/sample-actions';
 
 // --- user.cfg edits (player's real game config) -----------------------------------------------
 
@@ -111,7 +111,7 @@ test('game control: client lists actions and sends action_name / hold_ms on the 
   const client = new TelemetryClient(`127.0.0.1:${game.port}`);
   try {
     const list = await client.listActions();
-    assert.equal(list.length, 112);
+    assert.equal(list.length, FIXTURE.length);
     assert.ok(list.find((a) => a.name === 'v_invoke_ping' && a.holdable));
     const r = await client.triggerAction('v_toggle_landing_system');
     assert.equal(r.status, 'TRIGGER_GAME_ACTION_STATUS_OK');
@@ -261,7 +261,7 @@ test('game control: client-side rate limit (gap, per-action cooldown, burst cap)
   c.advance(700);
   assert.equal((await gc.trigger('v_lights')).code, 'OK');
   // burst: 10 per 10 s
-  const names = FIXTURE.map((a: any) => a.action_name).filter((n: string) => n.startsWith('emote_'));
+  const names = FIXTURE.map((a: any) => a.action_name).filter((n: string) => !dangerInfo(n).dangerous && n !== 'v_lights' && n !== 'mobiglas' && n !== 'emote_wave');
   let limited = 0;
   for (let i = 0; i < 12; i++) {
     c.advance(250);
@@ -323,7 +323,7 @@ test('game control: dangerous actions require an armed, held, single-use confirm
   assert.equal((await gc.trigger('v_eject', { confirmToken: arm4.ok ? arm4.token : '' })).code, 'OK');
 });
 
-test('game control: catalog groups the real 5.0 list and flags look-alike dangerous names', () => {
+test('game control: catalog groups the sample list and flags look-alike dangerous names', () => {
   const all = FIXTURE.map((a: any) => classifyAction({ name: a.action_name, category: a.category, holdable: a.holdable }));
   const by = (g: string) => all.filter((a) => a.group === g).map((a) => a.name);
   assert.ok(by('flight').includes('v_master_mode_set_scm'));
@@ -333,7 +333,7 @@ test('game control: catalog groups the real 5.0 list and flags look-alike danger
   assert.ok(by('power').includes('v_power_toggle_shields'));
   assert.ok(by('combat').includes('v_invoke_ping'));
   assert.ok(by('utility').includes('v_lights'));
-  assert.equal(by('emotes').length, 34);
+  assert.equal(by('emotes').length, 6);
   assert.deepEqual(by('emergency').sort(), ['v_eject', 'v_emergency_exit', 'v_self_destruct']);
   assert.equal(all.filter((a) => a.dangerous).length, 5);
   assert.equal(dangerInfo('v_ship_self_destruct_v2').dangerous, true);
