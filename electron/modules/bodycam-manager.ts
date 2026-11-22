@@ -6,7 +6,6 @@
  */
 import { app, desktopCapturer, ipcMain, nativeImage, session, BrowserWindow, Notification, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
 import * as logger from './logger';
 import { store } from './config-manager';
 import { getServerLink } from './server-connection';
@@ -15,6 +14,8 @@ import { setBodycamTrayState } from './tray-manager';
 import { makeProcessChecker, checkGameWindow, hwndFromSourceId } from './bodycam-window';
 import { LiveSharer, type LiveParams, type LiveStatus } from './bodycam-live';
 import { getAuthStatus, getPersistedClientId } from './auth-manager';
+import type { DetectStep } from './game-detect';
+import { watchGame, unwatchGame, isGameRunning, gameStatusMessage, gameDetectionSummary, diagnoseGame } from './game-state';
 import {
   BodycamSharer,
   BODYCAM_DEFAULT_INTERVAL_S,
@@ -29,8 +30,6 @@ import {
 } from './bodycam';
 
 const MODULE_NAME = 'Bodycam';
-const GAME_EXE = 'StarCitizen.exe';
-const PROCESS_POLL_MS = 5000;
 
 /** What the renderer may read/write. The window-title matcher is deliberately NOT here. */
 export type BodycamSettings = { enabled: boolean; intervalSec: number; orgs: string[]; allowLive: boolean };
@@ -170,18 +169,33 @@ async function grabFrame(quality: number, size: { width: number; height: number 
   }
   return null;
 }
-let gameRunning = false;
-let pollTimer: NodeJS.Timeout | null = null;
 let lastStatus: BodycamStatus = { state: 'off', lastSentAt: null, framesSent: 0, lastBytes: null };
 
-function pollGame(): void {
-  if (process.platform !== 'win32') {
-    gameRunning = false;
-    return;
+/** Diagnose button: every detection step once (incl. the PowerShell fallback) plus the window checks, each with its result. */
+async function diagnose(): Promise<{ steps: DetectStep[]; summary: string }> {
+  const d = await diagnoseGame();
+  const steps: DetectStep[] = [...d.steps];
+  if (process.platform === 'win32') {
+    try {
+      const sources = (await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 16, height: 9 }, fetchWindowIcons: false })) as unknown as CamSource[];
+      steps.push({ step: 'windows', ok: true, found: sources.length > 0, detail: `${sources.length} capturable windows listed (titles are not shown)` });
+      const matches = matchingWindows(sources, makeTitleMatcher(getBodycamSettings().titlePattern));
+      steps.push({ step: 'window title', ok: true, found: matches.length === 1, detail: matches.length === 0 ? 'no window is titled exactly "Star Citizen"' : matches.length === 1 ? 'exactly one window titled "Star Citizen"' : `${matches.length} windows are titled like the game (capturing nothing)` });
+      if (matches.length === 1) {
+        steps.push({ step: 'window thumbnail', ok: true, found: !matches[0].thumbnail.isEmpty(), detail: matches[0].thumbnail.isEmpty() ? 'the window has no thumbnail (minimised?)' : 'window has a thumbnail' });
+        const hwnd = hwndFromSourceId(matches[0].id);
+        if (!hwnd) steps.push({ step: 'window handle', ok: false, found: false, detail: 'could not read the window handle from the capture source id' });
+        else {
+          const v = await isGameWindow(hwnd, { fresh: true });
+          steps.push({ step: 'window owner', ok: v !== 'unknown', found: v === 'yes', detail: v === 'yes' ? 'the window belongs to StarCitizen.exe' : v === 'no' ? 'the window is NOT owned by StarCitizen.exe (capturing nothing)' : 'the ownership check could not run (PowerShell failed or timed out)' });
+        }
+      }
+    } catch (err) {
+      steps.push({ step: 'windows', ok: false, found: false, detail: `could not list windows: ${(err as Error).message}` });
+    }
   }
-  execFile('tasklist', ['/FI', `IMAGENAME eq ${GAME_EXE}`, '/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 4000 }, (err, stdout) => {
-    gameRunning = !err && stdout.toLowerCase().includes(GAME_EXE.toLowerCase());
-  });
+  const failing = steps.find((s) => !s.ok || !s.found);
+  return { steps, summary: d.running ? (failing ? `Game detected; problem: ${failing.step} - ${failing.detail}` : 'Everything checks out') : (d.error ? `Could not check for the game: ${d.error}` : d.launcherOnly ? 'Only the launcher is running; start the game itself (StarCitizen.exe)' : 'Star Citizen was not detected as running') };
 }
 
 function isOnline(): boolean {
@@ -287,7 +301,8 @@ export function initBodycam(): void {
   if (sharer) return;
   sharer = new BodycamSharer({
     getSettings: getBodycamSettings,
-    isGameRunning: () => gameRunning,
+    isGameRunning,
+    gameDetail: gameStatusMessage,
     // The title alone is not enough: the window must belong to StarCitizen.exe (fails closed).
     isGameWindow: async (hwnd) => {
       const v = await isGameWindow(hwnd);
@@ -309,7 +324,7 @@ export function initBodycam(): void {
       const g = getBodycamSettings();
       return { enabled: g.enabled, allowLive: g.allowLive, orgs: g.orgs };
     },
-    isGameRunning: () => gameRunning,
+    isGameRunning,
     isOnline,
     findWindow: findGameWindow,
     windowAlive,
@@ -334,9 +349,7 @@ export function initBodycam(): void {
   getServerLink().onServer('bodycam_live_stop', () => live?.stop('stopped', { soft: true })); // keeps the hidden capture warm for 10 s
   getServerLink().onServer('bodycam_live_rejected', (p: any) => live?.noteServerRejection(String(p?.reason ?? 'unknown').slice(0, 200)));
   getServerLink().on('unauthenticated', () => live?.stop('disconnected'));
-  pollGame();
-  pollTimer = setInterval(pollGame, PROCESS_POLL_MS);
-  pollTimer.unref?.();
+  watchGame('bodycam'); // shared detector (signals first, slow-tolerant process check)
   getServerLink().on('authenticated', () => {
     sharer?.resume(); // a reconnect clears a "server is not sharing" pause
     void syncServer();
@@ -350,8 +363,7 @@ export async function shutdownBodycam(): Promise<void> {
   sharer?.stop();
   live?.stop('shutdown');
   setBodycamTrayState(null);
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
+  unwatchGame('bodycam');
   // Deliberately keep the opt-in; the frame expires on the server within 120 s.
 }
 
@@ -359,7 +371,11 @@ export function registerBodycamIpc(): void {
   ipcMain.handle('bodycam:get', async (e) => {
     assertSettingsSender(e);
     const server = isOnline() ? await emitAck('bodycam_get') : undefined;
-    return { settings: publicSettings(), status: lastStatus, live: liveStatus, verifyProblem: lastStatus.detail === VERIFY_FAILED_MESSAGE, gameRunning, online: isOnline(), server: server ?? null };
+    return { settings: publicSettings(), status: lastStatus, live: liveStatus, verifyProblem: lastStatus.detail === VERIFY_FAILED_MESSAGE, gameRunning: isGameRunning(), gameDetection: gameDetectionSummary(), online: isOnline(), server: server ?? null };
+  });
+  ipcMain.handle('bodycam:diagnose', async (e) => {
+    assertSettingsSender(e);
+    return diagnose();
   });
   ipcMain.handle('bodycam:set-settings', async (e, patch: Partial<BodycamSettings>) => {
     assertSettingsSender(e);

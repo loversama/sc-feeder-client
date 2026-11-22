@@ -6,12 +6,11 @@
  * access), so it is anti-cheat safe — but it is only visible when the game runs in Borderless or
  * Windowed mode, not exclusive Fullscreen.
  *
- * Off by default. When the setting is on: StarCitizen.exe is polled every 5 s and the panel shows
- * while the game runs (or always, with "always show"); the hotkey (default Ctrl+Alt+O) hides/shows
- * it. When the setting is off there is no hotkey grab and no process polling.
+ * Off by default. When the setting is on: the shared game detector (game-detect.ts / game-state.ts) says
+ * whether StarCitizen is running and the panel shows while it does (or always, with "always show"); the
+ * hotkey (default Ctrl+Alt+O) hides/shows it. When the setting is off there is no hotkey grab and no polling.
  */
 import { BrowserWindow, globalShortcut, screen } from 'electron';
-import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as logger from '../logger';
@@ -19,19 +18,17 @@ import { getPreloadPath } from '../window-manager';
 import { getTelemetrySettings, getPartyOverlaySettings } from '../config-manager';
 import { getOverlayState } from './telemetry-manager';
 import { pushDebugEvent } from './debug-bus';
+import { watchGame, unwatchGame, isGameRunning, onGamePoll } from '../game-state';
 
 const MODULE_NAME = 'Overlay';
 const WIDTH = 460;
 const HEIGHT = 820;
 const MARGIN = 12;
 const PUSH_MS = 250;
-const PROCESS_POLL_MS = 5000;
-const GAME_EXE = 'StarCitizen.exe';
 
 let overlay: BrowserWindow | null = null;
 let pushTimer: NodeJS.Timeout | null = null;
-let pollTimer: NodeJS.Timeout | null = null;
-let gameRunning = false;
+let pollRegistered = false;
 let registeredHotkey: string | null = null;
 /** Runtime hide via hotkey (not persisted). */
 let hiddenByHotkey = false;
@@ -39,30 +36,12 @@ let displayListener = false;
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
-export function isGameRunning(): boolean {
-  return gameRunning;
-}
-
-/** Other overlays (party overlay) follow the same StarCitizen.exe poll. */
-const gameStateListeners: Array<(running: boolean) => void> = [];
-export function onGamePoll(fn: (running: boolean) => void): void {
-  gameStateListeners.push(fn);
-}
+// Re-exported so the party overlay (and anything else) keeps importing them from here.
+export { isGameRunning, onGamePoll };
 
 /** Poll the game process while either overlay is enabled. */
 function pollWanted(): boolean {
   return getTelemetrySettings().overlayEnabled || getPartyOverlaySettings().partyOverlayEnabled;
-}
-
-/** Windows: is StarCitizen.exe running? (tasklist, no extra deps) */
-function checkGameProcess(): Promise<boolean> {
-  if (process.platform !== 'win32') return Promise.resolve(false);
-  return new Promise((resolve) => {
-    execFile('tasklist', ['/FI', `IMAGENAME eq ${GAME_EXE}`, '/FO', 'CSV', '/NH'], { windowsHide: true, timeout: 4000 }, (err, stdout) => {
-      if (err) return resolve(false);
-      resolve(stdout.toLowerCase().includes(GAME_EXE.toLowerCase()));
-    });
-  });
 }
 
 function overlayBounds() {
@@ -118,7 +97,7 @@ function startPush(): void {
   pushTimer = setInterval(() => {
     if (!overlay || overlay.isDestroyed() || !overlay.isVisible()) return;
     try {
-      overlay.webContents.send('overlay-state', { ...getOverlayState(), gameRunning, hotkey: registeredHotkey });
+      overlay.webContents.send('overlay-state', { ...getOverlayState(), gameRunning: isGameRunning(), hotkey: registeredHotkey });
     } catch (err) {
       logger.debug(MODULE_NAME, `overlay push failed: ${err}`);
     }
@@ -133,7 +112,7 @@ function stopPush(): void {
 /** Show/hide according to settings + game state. */
 export function refreshOverlay(): void {
   const s = getTelemetrySettings();
-  const shouldShow = s.overlayEnabled && !hiddenByHotkey && (gameRunning || s.overlayAlwaysShow);
+  const shouldShow = s.overlayEnabled && !hiddenByHotkey && (isGameRunning() || s.overlayAlwaysShow);
   if (shouldShow) {
     if (!overlay || overlay.isDestroyed()) overlay = createOverlay();
     overlay.setBounds(overlayBounds());
@@ -176,23 +155,6 @@ export function registerOverlayHotkey(): void {
   }
 }
 
-async function poll(): Promise<void> {
-  const running = await checkGameProcess();
-  if (running !== gameRunning) {
-    gameRunning = running;
-    logger.info(MODULE_NAME, `${GAME_EXE} ${running ? 'detected' : 'exited'}`);
-    pushDebugEvent({ source: 'system', type: running ? 'game_started' : 'game_exited', summary: `${GAME_EXE} ${running ? 'running' : 'exited'}` });
-  }
-  refreshOverlay();
-  for (const fn of gameStateListeners) {
-    try {
-      fn(gameRunning);
-    } catch (err) {
-      logger.debug(MODULE_NAME, `game poll listener failed: ${err}`);
-    }
-  }
-}
-
 /** Apply the overlay setting: start/stop process polling and the hotkey. Safe to call repeatedly. */
 export function syncOverlayFeature(): void {
   const s = getTelemetrySettings();
@@ -203,16 +165,12 @@ export function syncOverlayFeature(): void {
     registeredHotkey = null;
     hiddenByHotkey = false;
   }
-  if (pollWanted()) {
-    if (!pollTimer) {
-      void poll();
-      pollTimer = setInterval(poll, PROCESS_POLL_MS);
-    }
-  } else {
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = null;
-    gameRunning = false;
+  if (!pollRegistered) {
+    pollRegistered = true;
+    onGamePoll(() => refreshOverlay()); // the shared detector ticks every 5 s while someone watches
   }
+  if (pollWanted()) watchGame('overlay');
+  else unwatchGame('overlay');
   refreshOverlay();
 }
 
@@ -225,8 +183,7 @@ export function initOverlay(): void {
 }
 
 export function destroyOverlay(): void {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = null;
+  unwatchGame('overlay');
   stopPush();
   if (registeredHotkey) globalShortcut.unregister(registeredHotkey);
   registeredHotkey = null;

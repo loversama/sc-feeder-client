@@ -48,7 +48,7 @@ export function checkGameWindow(hwnd: string, exec: ExecFn = execFile as unknown
       powershellPath(env),
       // -EncodedCommand (UTF-16LE base64) avoids every quoting problem; the script is fixed apart from the digits-only HWND.
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(buildScript(hwnd), 'utf16le').toString('base64')],
-      { windowsHide: true, timeout: 8000 },
+      { windowsHide: true, timeout: 15000 },
       (err, stdout) => {
         if (err) return resolve('unknown');
         const out = String(stdout).trim();

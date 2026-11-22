@@ -20,6 +20,20 @@ const info = ref<Info | null>(null);
 const busy = ref(false);
 let timer: ReturnType<typeof setInterval> | undefined;
 const offs: unknown[] = [];
+type DiagStep = { step: string; ok: boolean; found: boolean; detail: string; durationMs?: number };
+const diag = ref<{ steps: DiagStep[]; summary: string } | null>(null);
+const diagBusy = ref(false);
+
+async function diagnose() {
+  diagBusy.value = true;
+  try {
+    diag.value = await api.invoke('bodycam:diagnose');
+  } catch (err) {
+    diag.value = { steps: [], summary: `Diagnose failed: ${(err as Error).message}` };
+  } finally {
+    diagBusy.value = false;
+  }
+}
 
 const STATE_TEXT: Record<string, string> = {
   off: 'Not sharing',
@@ -155,6 +169,19 @@ onUnmounted(() => {
         <div class="text-gray-500 text-xs">
           Last frame: {{ lastSent }}<template v-if="info?.status.lastBytes"> · {{ Math.round(info.status.lastBytes / 1024) }} KB</template>
           · {{ info?.status.framesSent ?? 0 }} sent this session
+        </div>
+      </div>
+    </div>
+
+    <div v-if="settings.enabled" class="space-y-2">
+      <el-button size="small" :loading="diagBusy" @click="diagnose">Diagnose</el-button>
+      <span class="text-gray-500 text-xs ml-2">Checks, once, whether VOIDLOG can see the game and its window.</span>
+      <div v-if="diag" class="border border-theme-border rounded p-3 text-xs space-y-1">
+        <div class="text-theme-text-white">{{ diag.summary }}</div>
+        <div v-for="st in diag.steps" :key="st.step" class="flex gap-2">
+          <span :class="!st.ok ? 'text-red-400' : st.found ? 'text-green-400' : 'text-orange-400'">{{ !st.ok ? 'ERROR' : st.found ? 'OK' : 'NO' }}</span>
+          <span class="text-gray-400 w-28 shrink-0">{{ st.step }}</span>
+          <span class="text-gray-300">{{ st.detail }}<template v-if="st.durationMs !== undefined"> ({{ st.durationMs }} ms)</template></span>
         </div>
       </div>
     </div>
